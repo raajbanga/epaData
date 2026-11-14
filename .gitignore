@@ -4,7 +4,6 @@
 epaData_requirements.txt
 rubric.txt
 prompt.txt
-/docs
 
 # Coding-agent instructions (local only)
 AGENTS.md

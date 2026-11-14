@@ -1,334 +1,96 @@
-# epaData — EPA CAMPD Data Management System
+# epaData
 
-epaData is a web application for retrieving, validating, storing, searching, and downloading
-annual operating and emissions data for U.S. power-plant units. Data comes from the EPA Clean
-Air Markets Program Data (CAMPD) API and from CSV/Excel files that users upload. Everything is
-stored in a local SQLite database.
+**Explore, analyze, and predict U.S. power-plant emissions.**
 
-Built for **CS396** by Raaj Banga and Arnav Bawankule. **Phase 1** is the data-management
-website (retrieve, upload, validate, store, search, download). **Phase 2** adds analysis and
-decision support on top of it: descriptive statistics, derived indicators, interactive charts,
-group comparisons with statistical tests, EPA TRACI 2.2 impact indicators, a NOₓ prediction
-model compared with a baseline, sensitivity and scenario analysis, and exports with
-reproducibility metadata (see [Phase 2](#phase-2-analysis-and-prediction)).
+epaData is a web app for the EPA's Clean Air Markets Program Data (CAMPD). It pulls annual
+operating and emissions data for every U.S. power-plant unit from the EPA API or from your own
+CSV and Excel files, checks it, and lets you search, map, analyze, and download it. A built-in
+NOₓ model answers what-if questions, such as how a unit's emissions change with new controls or
+a fuel switch.
 
-| Document                                         | Contents                                                                |
-| :----------------------------------------------- | :---------------------------------------------------------------------- |
-| This README                                      | Setup, configuration, how to reproduce the results                      |
-| [DATABASE_BREAKDOWN.md](./DATABASE_BREAKDOWN.md) | Column-level schema, which view reads which table, ingestion flow       |
-| [samples/README.md](./samples/README.md)         | The sample upload file, row by row, with the expected validation report |
-| [report/README.md](./report/README.md)           | Map of the report folder: which file is which phase                     |
-| [report/phase2/](./report/phase2/)               | Phase 2 report source and PDF (build with `npm run report`)             |
-| [report/phase1/](./report/phase1/)               | Phase 1 report and slides (submitted, frozen)                           |
+**[Live demo →](https://epadata.vercel.app)** The hosted copy is read-only, so Retrieve and Upload
+only work when you run it yourself.
 
----
-
-## Contents of the committed database
-
-`db.sqlite` is committed, so the app works right after setup without an API key or seeding.
-
-| Table             |   Rows | Notes                                                                                                                                                                               |
-| :---------------- | -----: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `facilities`      |  1,777 | 50 states, DC, and Puerto Rico                                                                                                                                                      |
-| `units`           |  6,031 | 1,108.2 GW nameplate capacity                                                                                                                                                       |
-| `annual_records`  | 57,414 | One row per facility-unit-year: 6,467 from uploads (1996–98, 2006–08) and 50,947 from the CAMPD API (2015–2026; 2026 is partial). 176 API records replaced uploaded 2023–25 records |
-| `datasets`        |    153 | 14 CAMPD API syncs, 13 facility-file uploads, and 126 daily-emissions uploads (14 uploads superseded by the API sync)                                                               |
-| `data_audit_logs` |  7,603 | Physical-sanity flags on 7,056 records: 6,516 CO₂ not reported, 963 extreme heat rates (WARN), 124 zero emissions with high heat input (ERROR)                                      |
-| `import_issues`   |      0 | Filled by uploads and retrievals that reject or skip rows                                                                                                                           |
-| `traci_factors`   |      6 | Phase 2: TRACI 2.2 factors for CO₂, SO₂, and NOₓ to air (`npm run traci:import`)                                                                                                    |
-| `models`          |      3 | Phase 2: the NOₓ baseline, Ridge, and decision-tree models with metrics and parameters (`npm run ml:train`)                                                                         |
-
----
+![epaData home page: coverage by year, data sources, and what you can do](docs/screenshots/home.jpg)
 
 ## Features
 
-The specification's pages are real routes, ordered by workflow in the navigation bar: **Home**,
-**Explore**, **Map**, **Analyze**, **Predict**, then **Retrieve**, **Upload**, **Download**. Facility, unit, and
-comparison details open in one dialog over any page; the open item is kept in the URL
-(`?facility=3`, `?unit=…`), so it survives a reload and can be shared.
+- **Explore**: search 1,777 facilities and 57,000+ unit-years by name, any field, numeric
+  ranges, or a plain-English description ("coal units in Kentucky with high CO2"). Rank the top N
+  overall or per state, and compare up to four facilities or units side by side.
+- **Map**: every facility on a 3D globe or a flat map, colored by fuel and sized by capacity or CO₂.
+- **Retrieve and Upload**: pull data from the EPA API or import a CSV or Excel file, review what
+  is new, changed, or rejected, and approve before anything is saved. Every record is checked
+  against physical-sanity rules.
+- **Analyze**: distributions, derived indicators (emission intensity, heat rate, capacity
+  factor), correlations, group comparisons with statistical tests, and EPA TRACI 2.2 impact
+  indicators.
+- **Predict**: annual NOₓ models (Ridge regression and a decision tree, measured against a
+  baseline), with sensitivity curves and scenarios.
+- **Download**: CSV for any dataset, search, or selection. Analysis exports include the chart
+  and a metadata file so results can be reproduced.
 
-| Specification (`epaData_requirements` §) | Where it is in epaData                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| :--------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §9.1 Home page                           | `/`: introduction and summary figures, links to every function, unit-years per reporting year, data sources, glossary                                                                                                                                                                                                                                                                                                                                          |
-| §5, §9.2 Retrieval                       | **Retrieve** page (`/retrieve`). Method: EPA CAM API, apportioned annual emissions. Filters: year range, state, facility IDs, fuel, unit type, control technology. Shows what the database already holds, previews what the API returns (New / Changed / Unchanged / Dropped, with database → API values for changed fields), then saves on approval. Past retrievals are listed with their parameters and counts. **Try** samples fill the form in one click. |
-| §6, §9.3 Upload                          | **Upload** page (`/upload`). CSV or Excel (≤ 100 MB), read by `scripts/parse_import.py`. Shows the column mapping, missing values, rejected rows with reasons, duplicate facility-unit-years, sanity flags, and New/Changed/Unchanged counts. Approve or cancel. Rejected and duplicate rows are stored in `import_issues`; the original file is archived in `uploads/`. Past uploads are listed below the drop zone.                                          |
-| §8.1 Basic search                        | **Explore** page (`/explore`), **Facilities** and **Unit-years** tabs. Always visible: one search box (description or name), state, year, fuel, unit type, facility ID, unit ID. **Advanced**: county, NERC region, secondary fuel, SO₂/NOₓ/PM control, operating status, audit flag/severity, origin                                                                                                                                                          |
-| §8.2 Multi-criteria and range search     | All filters combine with AND. Min/max ranges for year, operating time, gross load, heat input, CO₂, SO₂, NOₓ, each inclusive (≥/≤) or strict (>/<) via the toggle beside it (under **Advanced**, which opens by itself when one of its filters is set)                                                                                                                                                                                                         |
-| Rubric 6: Description search             | The Explore search box. A sentence such as "coal units in Kentucky with high CO2" becomes ordinary filters, shown as removable **Interpreted as** chips; text with nothing recognizable falls back to a name search. See [Description search](#description-search).                                                                                                                                                                                            |
-| §8.3 Ranking and comparison              | **Ranking**: sort by any metric, keep the first N, overall or per state (`ROW_NUMBER() OVER (PARTITION BY state)`). **Compare**: tick 2–4 facilities or units, then **Compare** in the dock. **History**: the unit details list every reporting year.                                                                                                                                                                                                          |
-| §8.4 Result requirements                 | Sortable, paginated tables; every row opens its details; **Download all** exports the current search; the tab, filters, sort, and page live in the URL                                                                                                                                                                                                                                                                                                         |
-| §9.5 Facility / unit detail              | One detail dialog (`?facility=` / `?unit=`): identification, operating data and emissions per year, fuels and controls, source dataset and origin per year, audit flags. Facilities also have a granular time series (hourly to yearly, live API).                                                                                                                                                                                                             |
-| §9.6, §10 Download                       | **Download** page (`/download`): complete dataset, valid records, invalid-record report, search results, selected facilities/units, provenance. CSV only.                                                                                                                                                                                                                                                                                                      |
-| Data quality                             | **Audit flags** tab on Explore: every physical-sanity flag, paginated, sortable, and filtered by the same search form; each row links to its unit                                                                                                                                                                                                                                                                                                              |
-| Extras                                   | **Map** page (`/map`): D3 globe and Leaflet map of all facilities with the Explore filters; DB-vs-API source labels throughout                                                                                                                                                                                                                                                                                                                                 |
+Every view lives in the URL, so any search, chart, or prediction can be reloaded or shared. See
+the [feature reference](docs/features.md) for the details.
 
-### Physical-sanity rules
+## Screenshots
 
-Applied to every annual record written by a retrieval, an upload, or the CLI sync
-(`AUDIT_THRESHOLDS` in `src/lib/emissions-metrics.ts`). Flagged records are stored, not
-dropped, and appear in the Audit flags tab and the invalid-record report.
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/explore.jpg" alt="Explore: Kentucky coal units in 2025, ranked by CO₂"><br><sub><b>Explore</b>: filters as chips, sortable results, CSV export</sub></td>
+    <td width="50%"><img src="docs/screenshots/map.jpg" alt="Map: every facility on a globe, colored by fuel"><br><sub><b>Map</b>: every facility on a globe or flat map</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/analyze.jpg" alt="Analyze: a plain-language summary and CO₂ by year and fuel class"><br><sub><b>Analyze</b>: a plain-language reading above every chart</sub></td>
+    <td><img src="docs/screenshots/models.jpg" alt="Predict: test error and R² for each NOx model"><br><sub><b>Predict</b>: each model's test error and R², with 95% intervals</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/whatif.jpg" alt="What-if: predicted NOx as heat input changes, for Ridge and the decision tree"><br><sub><b>What-if</b>: change one input and watch both models respond; shading marks inputs outside the training data</sub></td>
+  </tr>
+</table>
 
-| Flag                       | Severity | Condition                                          |
-| :------------------------- | :------- | :------------------------------------------------- |
-| `ZERO_EMISSIONS_HIGH_HEAT` | ERROR    | heat input > 1,000 MMBtu and CO₂ reported as 0     |
-| `CO2_NOT_REPORTED`         | WARN     | heat input > 1,000 MMBtu and no CO₂ value reported |
-| `PHANTOM_GENERATION`       | ERROR    | gross load > 0 MWh and operating time reported 0 h |
-| `EXTREME_HEAT_RATE`        | WARN     | heat input ÷ gross load < 5 or > 25 MMBtu/MWh      |
-
-Metrics the source leaves blank are stored as `NULL` ("not reported"), not 0, so the rules
-can tell a missing value from a reported zero. Derived values stored with each record: CO₂
-intensity = CO₂ (short tons) × 2,000 ÷ gross load (lb/MWh), and heat rate = heat input ÷
-gross load (MMBtu/MWh); both are `NULL` when an input is missing or gross load is 0.
-
-### Description search
-
-`src/lib/describe-search.ts` turns a sentence into filters without a language model:
-
-1. It matches the longest known phrase at each position against a vocabulary built from the
-   database's own filter values (states, fuels, unit types, controls, counties) plus synonyms
-   ("scrubber" → SO₂ control, "gas" → Natural Gas, state names → codes). Two-letter state codes
-   count only in capitals, so "in" and "or" stay English.
-2. It binds numbers to metrics ("CO2 over 500k tons", "under 50 tons SO2", "between 2015 and
-   2020") and reads ranking words ("top 10", "lowest", "in each state").
-3. "High" and "low" become thresholds: the 75th or 25th percentile of that metric among the
-   unit-years that match the other filters, rounded to three significant figures.
-4. Words it could not use are listed as "Not understood". If `OPENROUTER_API_KEY` is set,
-   only those leftover words are sent to an OpenRouter model, which may add filters chosen
-   from the same vocabulary. Its output is validated before use. Without a key, the parser's
-   result is used as is.
-
-The result is applied to the normal filter controls, so it can be refined by hand, exported,
-and shared by URL like any other search.
-
----
-
-## Phase 2: analysis and prediction
-
-Two pages, **Analyze** and **Predict**, sit between Map and Retrieve in the navigation. Both
-keep every choice in the URL, so a view can be reloaded or shared.
-
-| Phase 2 specification §         | Where it is in epaData                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| :------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §4.1 Analytical dataset builder | **Analyze** (`/analyze`): the Explore filters (year range, state, facility, unit, fuel, unit type, controls, program, operating-time and load ranges) choose the unit-years. **Overview** tab: unit-years, facilities, units, and years selected; trend, state map, and ranking of one variable; a collapsed data-quality section with every variable's definition and missing count and the grouping fields. One search box with suggestions (name, operator, county, ID, or a description) on every page |
-| §4.2 Descriptive statistics     | **Distribution** tab: histogram or box plot first, then count, missing, min, max, mean, median, SD, Q1, Q3, IQR, P5/P10/P90/P95, overall and per group (state, fuel class, fuel, unit type, NOₓ or SO₂ control class, year, facility, unit); unusual observations beyond Tukey's far-out fences                                                                                                                                                                                                            |
-| §4.3 Derived indicators         | CO₂, SO₂, NOₓ intensity (lb/MWh), NOₓ rate (lb/MMBtu), heat rate, capacity factor, year-over-year change in tons and %. Missing when an input is missing or a denominator is 0; groups pool rates as Σ numerator ÷ Σ denominator                                                                                                                                                                                                                                                                           |
-| §4.4 Interactive visualization  | Plotly charts on the tab whose question they answer: trend, state map, and rankings (**Overview**); histograms and box plots (**Distribution**); scatter and correlation heat map, Pearson or Spearman (**Relationships**); bars per group (**Compare groups**). Zoom, tooltips, PNG export, and data download on every chart                                                                                                                                                                              |
-| §4.5 Comparative analysis       | **Compare groups** tab: bars for every group, then two to eight groups along any grouping field (facilities or units by search, states, fuels, with vs without SCR, 2015 vs 2024, …): pooled values, ranks, differences, 95 % CIs, Welch t, Mann–Whitney U, ANOVA, Kruskal–Wallis, and a plain-language reading                                                                                                                                                                                            |
-| §4.6 TRACI impact indicators    | **TRACI impacts** tab: global warming, acidification, particulate human health, and smog formation, each in its own unit, total or per MWh, by any grouping field; the factors and formulas are shown                                                                                                                                                                                                                                                                                                      |
-| §5 Prediction                   | **Predict** → **Models**: annual NOₓ per unit-year; median baseline, Ridge regression, decision tree; tune on 2016–21 / 2022–23, refit on 2016–23, test 2024–25; MAE, RMSE, R², MAPE with 95 % intervals; predicted vs actual; importances                                                                                                                                                                                                                                                                 |
-| §6 Sensitivity and scenarios    | **Predict** → **What-if**: a baseline unit-year with each model's prediction; Ridge, tree, or both. Sensitivity: one input varied from a minimum to a maximum (in its own unit or as % of the baseline) for a chosen unit-year, with the baseline marked and the region outside the training data shaded. Scenarios on the same page: load +10 %, heat input −5 %, add SCR, fuel switch, high efficiency, with range warnings. A unit's details on Explore link here                                       |
-| §7 Saving and exporting         | Every chart and result table downloads a ZIP: CSV, `metadata.json` (date, software commit, database snapshot, filters, definitions, TRACI factors, model and split), and the chart PNG. **Download all** on Analyze exports every selected unit-year with all variables                                                                                                                                                                                                                                    |
-
-### Prediction results (test years 2024–2025, refit on 2016–2023)
-
-| Model                                  | MAE (t) | MAE 95 % interval | RMSE (t) |    R² | MAPE    |
-| :------------------------------------- | ------: | :---------------- | -------: | ----: | :------ |
-| Baseline: median by fuel and unit type |   109.4 | 99.3–121.0        |    366.9 | 0.489 | 143.6 % |
-| Ridge regression (log target)          |    58.5 | 52.7–64.9         |    213.5 | 0.827 | 49.3 %  |
-| Decision tree (depth ≤ 20, leaf ≥ 20)  |    26.3 | 23.4–29.7         |    113.9 | 0.951 | 20.9 %  |
-| _Persistence (reference, not served)_  |    18.5 | 16.1–21.2         |     92.8 | 0.967 | 15.3 %  |
-
-Intervals come from a cluster bootstrap over test units (1,000 samples). Without same-year heat
-input, gross load, and operating time, validation R² falls to 0.70 (Ridge) and 0.84 (tree): the
-rest comes from unit attributes, controls, and the previous year's NOₓ rate.
-
-**Persistence beats both models.** Last year's NOₓ rate × this year's heat input (the median
-baseline where either is missing) has a lower test error than the tree, by 7.8 t (6.3–9.4). A
-unit's rate barely changes from year to year, and three reformulations that build this product
-into the models did not close the gap (`ml/reformulations.py`, report §Q4). The models'
-value is their response to load, controls, and fuel in the What-if tab, not a better forecast.
-Full metrics, including persistence, are in `ml/models/metrics.json`.
-
-### How prediction works without Python on the server
-
-`ml/train.py` (pandas, scikit-learn) trains the models offline and stores each one in the
-`models` table with its preprocessing (medians, log flags, scaling, categories) and
-parameters (Ridge coefficients or the tree's node arrays) as JSON. `src/lib/model.ts`
-replays them in TypeScript, so predictions, sensitivity curves, and scenarios are instant and
-also work on the read-only Vercel build. `src/lib/model.test.ts` checks that it reproduces
-scikit-learn's predictions on 200 test rows (`ml/fixtures/parity.json`) to 10⁻⁶.
-
-```bash
-npm run ml:train      # retrain and re-register the models (needs the Python venv)
-npm run test:py       # pytest for the training pipeline
-epaDataVENV/bin/python ml/reformulations.py   # the persistence comparison (writes nothing)
-npm run traci:import  # reload the TRACI factors from data/traci
-```
-
----
-
-## Where the data comes from
-
-Explore, Map, the detail dialog, comparisons, audit flags, and downloads read **only the local
-database**. Two features call the **EPA API live**: Retrieve (which then writes to the
-database) and the granular time series.
+## How it works
 
 ```mermaid
 flowchart LR
-    EPA["EPA CAM API<br/>(api.epa.gov/easey)"]
-    FILE["CSV / Excel file<br/>(CAMPD Custom Data Download layout)"]
-    PY["scripts/parse_import.py<br/>column mapping + validation"]
-    W["Shared write path<br/>src/server/ingest.ts<br/>diff · upsert · sanity audits"]
-    DB[("SQLite<br/>db.sqlite")]
-    UI["Browser<br/>pages, detail dialog, downloads"]
-    LLM["OpenRouter (optional)<br/>leftover words only"]
-
-    EPA -- "Retrieve: preview, then save" --> W
-    EPA -- "npm run sync:campd" --> W
-    FILE --> PY -- "preview, then approve" --> W
-    W --> DB
-    DB -- "tRPC queries, /api/export" --> UI
-    EPA -. "granular time series (hourly–monthly), not stored" .-> UI
-    UI -. "describe search" .-> LLM
+    EPA["EPA CAMPD API"] -- "Retrieve: preview, then save" --> W
+    FILE["CSV / Excel upload"] -- "validate, then approve" --> W
+    W["Shared write path<br/>diff · upsert · sanity checks"] --> DB[("SQLite")]
+    DB --> UI["Explore · Map · Analyze · Predict · Download"]
+    ML["Models trained offline<br/>(scikit-learn)"] -. "stored as JSON" .-> DB
 ```
 
-| View                                                          | Source                                                       |
-| :------------------------------------------------------------ | :----------------------------------------------------------- |
-| Home coverage strip and tiles, Facilities, Units, Map, Audits | Local database                                               |
-| Facility and unit detail, Compare                             | Local database                                               |
-| Granular time series: Yearly                                  | Local database (`annual_records`)                            |
-| Granular time series: Hourly, Daily, Weekly, Monthly          | EPA API, live; not stored                                    |
-| Retrieve: "Already in the database" panel                     | Local database                                               |
-| Retrieve: preview                                             | EPA API, live; nothing is written until **Approve and save** |
-| Upload: validation report                                     | The uploaded file, compared with the local database          |
-| Download (all six types)                                      | Local database                                               |
+Every write goes through one path that compares incoming rows with what's stored, so you
+see what's new, changed, or rejected before approving. Records that fail a physical-sanity
+check (for example, power generated with zero operating hours) are kept and flagged, not
+dropped. The prediction models are trained offline in Python and stored in the database, and
+the app replays them in TypeScript, so predictions are instant and need no Python on the
+server. More in [docs/data.md](docs/data.md).
 
-Each panel carries a label saying which source it shows ("Local database · last import …"
-or "Live EPA CAMPD API"). Every unit-year also records the dataset that last wrote it, shown
-as its **Origin** (CAMPD API or file upload) in the Unit-years table, the unit details, and the CSV
-exports.
+### Prediction results
 
----
+Annual NOₓ per unit-year, tested on 2024–2025 after training on 2016–2023:
 
-## Setup
+| Model                                  | Mean error (t) |   R² |
+| :------------------------------------- | -------------: | ---: |
+| Baseline: median by fuel and unit type |          109.4 | 0.49 |
+| Ridge regression                       |           58.5 | 0.83 |
+| Decision tree                          |           26.3 | 0.95 |
 
-Tested on macOS with Node.js 26 and Python 3.15. Linux works the same way. On Windows, use WSL,
-or install `openpyxl` into the `python3` on your PATH (the server only looks for a virtual
-environment at `epaDataVENV/bin/python3`).
-
-### Prerequisites
-
-- Node.js 20.9 or newer, with npm
-- Python 3.9 or newer (reads uploaded files; Phase 2 model training uses pandas and scikit-learn,
-  the committed models were trained with Python 3.15 and scikit-learn 1.9). On Python 3.9,
-  `npm run test:py` passes and `npm run ml:train` reproduces the committed results (checked
-  11/12 with 3.9.25); NumPy 2.0 may print harmless matrix-product warnings on macOS.
-- Optional: an EPA API key ([api.data.gov signup](https://www.epa.gov/airmarkets/cam-api-portal))
-  for Retrieve, `npm run sync:campd`, and the granular time series. Everything else works
-  without it.
-
-### Step by step
-
-```bash
-# 1. Get the code (or unzip the submission) and enter the folder
-git clone <repository-url> epaData && cd epaData
-
-# 2. JavaScript dependencies
-npm install
-
-# 3. Python environment for uploads (openpyxl reads .xlsx files)
-python3 -m venv epaDataVENV
-source epaDataVENV/bin/activate
-pip install -r requirements.txt
-
-# 4. Configuration
-cp .env.example .env
-#    then edit .env: DATABASE_URL can stay as is; add CAMPD_API to enable live EPA features
-
-# 5. Bring the committed database up to the latest schema (no-op if already current)
-npm run db:migrate
-
-# 6. Start the app
-npm run dev
-```
-
-Open <http://localhost:3000>. The home page should show 1,777 facilities and coverage for
-1996–98, 2006–08, and 2015–2026.
-
-To check the installation: `npm run validate` runs the format check, ESLint, the TypeScript
-compiler, the unit tests, and a production build. All five should pass.
-
-### Environment variables
-
-Defined and validated in `src/env.js`; `.env.example` lists them all. Only `DATABASE_URL` is
-required. Keys are read on the server only and never sent to the browser.
-
-| Variable                | Required | Purpose                                                                                                                 |
-| :---------------------- | :------- | :---------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | yes      | `file:./db.sqlite` (relative paths resolve from the project folder). A value already set in your shell wins over `.env` |
-| `DATABASE_AUTH_TOKEN`   | no       | Only for a remote libSQL/Turso database; leave empty                                                                    |
-| `CAMPD_API`             | no       | EPA API key, sent as the `x-api-key` header. Enables Retrieve, `sync:campd`, and the granular time series               |
-| `OPENROUTER_API_KEY`    | no       | Enables the language-model fallback in description search                                                               |
-| `OPENROUTER_MODEL`      | no       | OpenRouter model ID; default `nvidia/nemotron-3-super-120b-a12b:free`                                                   |
-| `NEXT_PUBLIC_CARTO_API` | no       | CARTO basemap key for the flat map: light or dark tiles to match the theme. Without it, public dark tiles               |
-| `READ_ONLY`             | no       | `true` on a hosted build (Vercel): Upload and Retrieve show a "run it locally" notice and refuse writes                 |
-
----
-
-## Reproducing the results
-
-With the committed `db.sqlite` and `npm run dev` running, each link opens Explore in a
-known state (the URL holds the whole search). The counts below were checked against
-hand-written SQL.
-
-| Check                                                               | Link                                                                                                                                                                                                | Expected                                                                                   |
-| :------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| Multi-criteria (spec §8.2 example): KY, coal, 2025, CO₂ ≥ 500,000 t | [`/explore?tab=units&stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000`](http://localhost:3000/explore?tab=units&stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000)         | 25 unit-years                                                                              |
-| Same search, facility level                                         | [`/explore?stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000`](http://localhost:3000/explore?stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000)                             | 8 facilities                                                                               |
-| Group-and-rank: top CO₂ facility in each state, 2024                | [`/explore?year=2024&topN=1&rankGroup=state&sort=co2&dir=desc`](http://localhost:3000/explore?year=2024&topN=1&rankGroup=state&sort=co2&dir=desc)                                                   | 51 facilities, one per state with 2024 data                                                |
-| Historical: one unit, 2015–2025                                     | [`/explore?tab=units&facilityId=3&unitId=1&yearMin=2015&yearMax=2025&sort=year&dir=asc`](http://localhost:3000/explore?tab=units&facilityId=3&unitId=1&yearMin=2015&yearMax=2025&sort=year&dir=asc) | 11 rows (Barry unit 1)                                                                     |
-| Description search                                                  | Explore → type "coal units in Kentucky with high CO2" → **Search** (or click it under **Try**)                                                                                                      | KY · Coal · CO₂ ≥ 2,730,000 (top 25 %), sorted by CO₂, 148 unit-years                      |
-| Retired units                                                       | [`/explore?tab=units&operatingStatus=Retired`](http://localhost:3000/explore?tab=units&operatingStatus=Retired)                                                                                     | 761 unit-years (any status containing "Retired", such as `Operating (Retired 06/30/2015)`) |
-| Sample upload                                                       | **Upload** → `samples/annual-emissions-sample.csv`                                                                                                                                                  | 25 rows: 21 valid (19 new, 1 changed, 1 unchanged), 3 rejected, 1 duplicate, 1 sanity flag |
-
-The **Download all** button next to the results downloads exactly the rows the table shows (all pages).
-
-Uploading the sample or approving a retrieval changes `db.sqlite`. Restore the committed copy
-with `git restore db.sqlite`, then the numbers above apply again.
-
----
-
-## Refreshing or rebuilding the data
-
-The committed database was built with these commands; you only need them to extend or rebuild
-it. They read `.env` themselves.
-
-```bash
-npm run sync:campd                           # last calendar year
-npm run sync:campd -- --year 2024            # one year
-npm run sync:campd -- --from 2015 --to 2025  # a range (one dataset per year)
-npm run db:seed -- --csv-dir "../CAMPD DATA" # facilities + units from CAMPD facility CSVs
-# Full rebuild (delete db.sqlite first): facility CSVs, then every csv/emissions-daily-*.csv rolled
-# up to unit-year totals, each imported as an upload; then the API years on top
-npm run db:rebuild -- --facility-dir ../epaData/csv --csv-dir csv
-npm run sync:campd -- --from 2015 --to 2026
-```
-
-`sync:campd` writes directly. The **Retrieve** page does the same with a preview and an
-approval step, and records the same dataset history.
-
-After editing `src/server/db/schema.ts`, generate a migration with `npm run db:generate` and
-apply it with `npm run db:migrate`.
-
----
+A simple rule, last year's NOₓ rate times this year's heat input, does better still (18.5 t),
+because a unit's rate barely changes from year to year. The models earn their place in the
+What-if tab, where they show how NOₓ responds to load, controls, and fuel. The full results are
+in [docs/features.md](docs/features.md#prediction-results-test-years-20242025-refit-on-20162023).
 
 ## Database
 
-Eight tables in SQLite (six from Phase 1, plus `traci_factors` and `models`), defined with Drizzle ORM in `src/server/db/schema.ts`, migrations in
-`drizzle/`. Facility, unit, and unit-year uniqueness is enforced by the primary key on
-`facilities.id` and unique indexes on `units(facility_id, unit_id)` and
-`annual_records(unit_internal_id, year)`. Foreign keys cascade on delete, except `annual_records.superseded_upload_id`, which is set to
-null. Column-by-column
-details: [DATABASE_BREAKDOWN.md](./DATABASE_BREAKDOWN.md).
-
-Secondary indexes cover the common searches: facilities by state, name, county, NERC region,
-and source category; units by facility, primary fuel, and operating status;
-`annual_records(year, co2_mass_tons)` for year filters and CO₂ ranking;
-`annual_records(facility_id, year)` for per-facility totals within a year;
-`annual_records` by dataset and by superseded upload; and the foreign
-keys of `data_audit_logs` and `import_issues`. The `(facility_id, year)` index matters: with
-only a `facility_id` index, SQLite answered "per-facility CO₂ in 2024" by scanning all of 2024
-once per facility, and the top-facility-per-state query took 9.5 s instead of 22 ms.
+Eight SQLite tables, defined with Drizzle ORM in
+[`src/server/db/schema.ts`](src/server/db/schema.ts) with versioned migrations in
+[`drizzle/`](drizzle). Each facility, unit, and unit-year is stored once, enforced by unique
+keys, and every unit-year records the dataset that last wrote it, so you can trace each value
+to an EPA sync or a file upload. Rejected and duplicate rows land in `import_issues`, and
+sanity-check flags in `data_audit_logs`. The repository includes `db.sqlite`, which holds
+1,777 facilities, 6,031 units, and 57,414 unit-years.
 
 ```mermaid
 erDiagram
@@ -463,84 +225,72 @@ erDiagram
     }
 ```
 
-Design assumptions to be aware of:
+Indexes, design decisions, and the row counts per table are in [docs/data.md](docs/data.md);
+every column is described in [DATABASE_BREAKDOWN.md](DATABASE_BREAKDOWN.md).
 
-- **Controls and program codes are stored per unit-year** on `annual_records`, as the
-  specification asks; `units` keeps the latest values for display. Fuel and unit type are
-  still per unit, so the latest import wins for those.
-- **Metrics are `NULL` when not reported.** Totals treat them as 0; range filters and
-  percentile thresholds skip them; CSV exports leave them blank.
-- **`annual_records.dataset_id` is the dataset that last wrote the record.** Re-importing a
-  year moves its records to the new dataset; the older dataset stays in the history as
-  "superseded". Values are overwritten, not versioned. An API sync that replaces an uploaded
-  record remembers that upload in `superseded_upload_id`.
-- **Origin is known per unit-year only.** Facility and unit rows have no dataset link.
+## Quick start
 
----
+Requires Node.js 20.9+ and Python 3.9+.
 
-## Technology
+```bash
+git clone https://github.com/raajbanga/epaData.git && cd epaData
+npm install
+python3 -m venv epaDataVENV && epaDataVENV/bin/pip install -r requirements.txt
+cp .env.example .env
+npm run db:migrate
+npm run dev
+```
 
-The specification suggests Flask, Jinja, and SQLAlchemy. epaData uses a TypeScript stack
-for the web layer and keeps SQLite and Python:
+Open <http://localhost:3000>. The database ships with the repository, so everything except the
+live EPA features works right away, with no API key.
 
-| Specification          | epaData                                                                          | Role                                                                 |
-| :--------------------- | :------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
-| Flask routes           | Next.js 16 route handlers (`/api/upload`, `/api/export`) and tRPC v11 procedures | Server endpoints; tRPC gives the browser typed calls for every query |
-| Jinja templates        | React 19 components, rendered on the server first                                | Pages and dialogs                                                    |
-| SQLAlchemy             | Drizzle ORM with drizzle-kit migrations                                          | Schema, typed queries, migrations                                    |
-| SQLite                 | SQLite through the libSQL client                                                 | Unchanged                                                            |
-| Python data processing | `scripts/parse_import.py` (csv, openpyxl)                                        | Reads and validates every upload (§6 step 3)                         |
-| Bootstrap/CSS          | Tailwind CSS v4                                                                  | Styling, light and dark themes                                       |
+Two optional keys go in `.env`:
 
-Phase 2 adds Plotly.js (charts, lazy-loaded), pandas, NumPy, scikit-learn, and joblib (offline
-model training in `ml/`), SciPy (reference values for the statistics tests), pytest, and fflate
-(export ZIPs). Statistics and TRACI calculations run in TypeScript on the server
-(`src/lib/stats.ts`, `src/lib/analysis.ts`), checked against SciPy and hand calculations.
+| Variable             | Turns on                                                                                                             |
+| :------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| `CAMPD_API`          | Retrieve and the hourly-to-monthly time series ([get an EPA API key](https://www.epa.gov/airmarkets/cam-api-portal)) |
+| `OPENROUTER_API_KEY` | A language-model fallback for description search                                                                     |
 
-Other libraries: TanStack Query (client caching), Zod (input validation on every endpoint),
-Leaflet with CARTO/OpenStreetMap tiles (2D map), D3 and TopoJSON (globe), lucide-react
-(icons), node:test with tsx (unit tests), ESLint and Prettier.
+The full list is in [docs/development.md](docs/development.md#environment-variables).
 
-## Scripts
+## Documentation
 
-| Command                       | What it does                                                                                                                                                                                   |
-| :---------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                 | Development server on port 3000                                                                                                                                                                |
-| `npm run build` / `npm start` | Production build and server                                                                                                                                                                    |
-| `npm run validate`            | Format check, lint, typecheck, tests, build                                                                                                                                                    |
-| `npm test`                    | Unit tests in `src/lib/*.test.ts` (description parser, CSV writer, upload report, record diff, domain helpers, statistics, analysis variables, model parity and What-if math, export metadata) |
-| `npm run test:py`             | pytest for the training pipeline                                                                                                                                                               |
-| `npm run check`               | ESLint and `tsc --noEmit`                                                                                                                                                                      |
-| `npm run db:migrate`          | Apply migrations in `drizzle/` to `DATABASE_URL`                                                                                                                                               |
-| `npm run db:generate`         | Create a migration after a schema change                                                                                                                                                       |
-| `npm run db:seed`             | Load facilities and units from CAMPD facility CSV files                                                                                                                                        |
-| `npm run db:rebuild`          | Rebuild the database from facility CSVs and daily-emissions files                                                                                                                              |
-| `npm run sync:campd`          | Fetch annual emissions from the EPA API and store them                                                                                                                                         |
-| `npm run traci:import`        | Reload the TRACI factors from `data/traci`                                                                                                                                                     |
-| `npm run ml:train`            | Retrain and re-register the prediction models (needs the Python venv)                                                                                                                          |
-| `npm run report`              | Build the Phase 2 report with Tectonic (`report/phase2/phase2-report.pdf`); `report:phase1` for Phase 1. Uses the bundle URL directly, since Tectonic's relay is unreliable                    |
+| Document                                       | Contents                                                                                   |
+| :--------------------------------------------- | :----------------------------------------------------------------------------------------- |
+| [Features](docs/features.md)                   | Every page, the data-quality rules, and how description search and prediction work         |
+| [Data](docs/data.md)                           | Data sources, what's in the bundled database, the schema, and how to refresh or rebuild it |
+| [Development](docs/development.md)             | Requirements, configuration, scripts, reproducing the results, and the code layout         |
+| [DATABASE_BREAKDOWN.md](DATABASE_BREAKDOWN.md) | Column-by-column schema reference and which view reads which table                         |
+| [samples/](samples/README.md)                  | A sample upload file and the validation report it should produce                           |
+| [report/](report/README.md)                    | Project reports and slides                                                                 |
 
-## Repository layout
+## Tech stack
 
-| Path                                                                            | Contents                                                                                                                                                                                                                                                     |
-| :------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/app/*/page.tsx`, `src/app/_components/`                                    | The eight pages (`/`, `/explore`, `/map`, `/analyze`, `/predict`, `/retrieve`, `/upload`, `/download`) and their views, with the Phase 2 tabs in `analyze/` and `predict/`; `app-shell.tsx` holds the navigation, the detail dialog, and the comparison dock |
-| `src/app/api/`                                                                  | Route handlers: tRPC endpoint, `upload` (preview and commit), `export` (CSV downloads)                                                                                                                                                                       |
-| `src/components/ui/`                                                            | Shared UI primitives (page layout, buttons, dialog, tables, badges, report sections)                                                                                                                                                                         |
-| `src/server/api/routers/`                                                       | tRPC routers: `facilities` (search, details, retrieval mutation), `analysis`, `prediction`                                                                                                                                                                   |
-| `src/server/db/`                                                                | Drizzle schema and database client                                                                                                                                                                                                                           |
-| `src/server/campd/client.ts`                                                    | EPA API client: retrieval, preview, granular time series                                                                                                                                                                                                     |
-| `src/server/ingest.ts`                                                          | Shared write path: diff against stored records, upserts, sanity audits                                                                                                                                                                                       |
-| `src/server/data-import.ts`, `src/server/export.ts`, `src/server/llm-search.ts` | Upload, CSV export, optional OpenRouter fallback                                                                                                                                                                                                             |
-| `src/server/analysis.ts`, `src/server/prediction.ts`                            | Phase 2 analysis queries, registered models, predictions                                                                                                                                                                                                     |
-| `src/lib/`                                                                      | Pure logic with tests: filters and URL state, description parser, emissions math, record diff, CSV writer, statistics, analysis variables and TRACI, model inference                                                                                         |
-| `scripts/`                                                                      | CLI entry points (`migrate`, `seed-facilities-from-csv`, `rebuild-db`, `sync_campd`, `import_traci`) and the Python helpers `parse_import.py` and `daily_to_annual.py`                                                                                       |
-| `ml/`                                                                           | Offline training (`train.py`), its tests, the saved models and metrics, the parity fixture, and the persistence comparison (`reformulations.py`)                                                                                                             |
-| `data/traci/`                                                                   | The TRACI 2.2 factor extract and its source                                                                                                                                                                                                                  |
-| `drizzle/`                                                                      | SQL migrations                                                                                                                                                                                                                                               |
-| `samples/`                                                                      | Sample upload files and their expected results                                                                                                                                                                                                               |
-| `report/`                                                                       | Reports and slides, one folder per phase (`phase1/`, `phase2/`), plus `shared/` LaTeX preamble and bibliography and `spec/`; see `report/README.md`                                                                                                          |
-| `uploads/`                                                                      | Archived original upload files (not committed)                                                                                                                                                                                                               |
+| Area            | Built with                                                                           |
+| :-------------- | :----------------------------------------------------------------------------------- |
+| Web app         | Next.js 16, React 19, tRPC 11, TanStack Query, Tailwind CSS 4                        |
+| Data            | SQLite (libSQL) with Drizzle ORM; Python for reading uploads                         |
+| Charts and maps | Recharts, D3, Leaflet                                                                |
+| Prediction      | scikit-learn, trained offline and replayed in TypeScript, so no Python on the server |
+| Hosting         | Vercel                                                                               |
+
+## Testing
+
+```bash
+npm run validate   # format check, lint, typecheck, unit tests, production build
+npm run test:py    # model training pipeline
+```
+
+## Team
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/raajbanga"><img src="https://github.com/raajbanga.png?size=120" width="80" alt=""><br><b>Raaj Banga</b></a><br><sub>Project Manager/Back-end Lead</sub></td>
+    <td align="center"><a href="https://github.com/TheRealAxnav"><img src="https://github.com/TheRealAxnav.png?size=120" width="80" alt=""><br><b>Arnav Bawankule</b></a><br><sub>Front-end Lead</sub></td>
+  </tr>
+</table>
+
+Built for CS396.
 
 ## Data and credits
 
