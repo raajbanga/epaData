@@ -5,7 +5,7 @@ import type { ParsedDescription, SearchVocab } from "~/lib/describe-search";
 import { UNIT_METRICS, type FacilityFilters } from "~/lib/facility-filters";
 
 /**
- * Optional fallback for description search (rubric §6): when the rule-based parser leaves words it
+ * Optional fallback for description search: when the rule-based parser leaves words it
  * couldn't interpret, an OpenRouter model may map them onto the same filters. The model only adds
  * filters the parser didn't set, every value is checked against the database vocabulary, and any
  * failure (no key, timeout, bad JSON) falls back to the parser's result. The key stays on the server.

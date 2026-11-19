@@ -6,6 +6,8 @@ import "./src/env.js";
 
 /** @type {import("next").NextConfig} */
 const config = {
+  // Don't write AGENTS.md / CLAUDE.md during `next dev`.
+  agentRules: false,
   // The committed database ships with every server route, so a hosted read-only build has data.
   outputFileTracingIncludes: { "/*": ["./db.sqlite"] },
 };

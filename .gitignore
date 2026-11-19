@@ -1,20 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# Project Requirements
-epaData_requirements.txt
-rubric.txt
-prompt.txt
-
-# Coding-agent instructions (local only)
-AGENTS.md
-CLAUDE.md
-
-# Assembled submission (built from the tracked files)
-/BangaRaajSubmission
-/BangaRaajSubmission.zip
-/BawankuleArnavSubmission.zip
-
-# dataImports Test Cases
+# Local CAMPD files for the optional import test, and uploaded files
 /dataImports
 /uploads
 
@@ -69,3 +55,4 @@ yarn-error.log*
 # Python caches
 __pycache__/
 .pytest_cache/
+/docs/todo.md

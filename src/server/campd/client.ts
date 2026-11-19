@@ -304,7 +304,7 @@ interface CampdPreviewRow {
   changes: FieldChange[];
 }
 
-/** One year of a retrieval preview: CAMPD's rows compared with the stored unit-years (§5, DB vs API). */
+/** One year of a retrieval preview: CAMPD's rows compared with the stored unit-years (DB vs API). */
 export async function previewCampdAnnual(year: number, filters: CampdFilters) {
   const fetched = await fetchCampdAnnual(year, filters);
   const stored = await storedRecords(
@@ -345,7 +345,7 @@ export async function previewCampdAnnual(year: number, filters: CampdFilters) {
   };
 }
 
-/** The year's control and program information, as stored on each annual record (§7). */
+/** The year's control and program information, as stored on each annual record. */
 const recordAttributes = (unit: Record<string, string | null>) =>
   Object.fromEntries(
     RECORD_ATTRIBUTE_KEYS.map((k) => [k, unit[k] ?? null]),

@@ -63,7 +63,7 @@ SCHEMA = {
     },
 }
 METRICS = [c for c in SCHEMA["annual_records"] if c != "year"]
-# §7 per-year control and program information: read from the unit columns, stored on each annual record.
+# Per-year control and program information: read from the unit columns, stored on each annual record.
 RECORD_ATTRIBUTES = ["so2Controls", "noxControls", "pmControls", "hgControls", "programCode"]
 # Period columns of sub-annual (daily/hourly) CAMPD files. They aren't stored, but a row's identity
 # includes them: a daily file has one row per unit per day, which isn't a duplicate.
