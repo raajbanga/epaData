@@ -4,7 +4,7 @@ export const SORT_FIELDS = ["name", "id", "capacity", "co2"] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
 export type SortDirection = "asc" | "desc";
 
-/** §8.2 range-searchable unit-year metrics; keys are `annual_records` columns. */
+/** Range-searchable unit-year metrics; keys are `annual_records` columns. */
 export const UNIT_METRICS = [
   { key: "operatingHours", label: "Operating time", unit: "hr" },
   { key: "grossGenerationMWh", label: "Gross load", unit: "MWh" },
@@ -13,7 +13,7 @@ export const UNIT_METRICS = [
   { key: "so2MassTons", label: "SO₂", unit: "tons" },
   { key: "noxMassTons", label: "NOₓ", unit: "tons" },
 ] as const;
-/** §8.2 min/max filters: the reporting year (for 2015–2025 style history), every metric, and the unit's nameplate capacity. */
+/** Min/max filters: the reporting year (for 2015–2025 style history), every metric, and the unit's nameplate capacity. */
 export const RANGE_FIELDS = [
   { key: "year", label: "Reporting year", unit: "yr" },
   ...UNIT_METRICS,
@@ -26,7 +26,7 @@ type RangeKey = `${RangeField}${"Min" | "Max"}`;
 const RANGE_KEYS = RANGE_FIELDS.flatMap(
   ({ key }) => [`${key}Min`, `${key}Max`] as const,
 );
-/** Rubric §5 greater-than/less-than: "1" makes the bound strict (> / <) instead of inclusive (≥ / ≤). */
+/** Greater-than/less-than: "1" makes the bound strict (> / <) instead of inclusive (≥ / ≤). */
 type StrictKey = `${RangeKey}Strict`;
 const STRICT_KEYS = RANGE_KEYS.map((k) => `${k}Strict` as const);
 /** A strict flag only modifies its bound; it is not a filter of its own. */
@@ -52,7 +52,7 @@ export const isUnitSortField = (v: string): v is UnitSortField =>
 export const TOP_N_OPTIONS = [5, 10, 20, 50, 100] as const;
 
 /**
- * §8.3 ranking measures (`topBy`). A unit-year ranks by its own value; a facility by its matching
+ * Ranking measures (`topBy`). A unit-year ranks by its own value; a facility by its matching
  * unit-years added up (rates: the ratio of the sums; capacity: the plant's nameplate total).
  */
 export const RANK_METRICS = [
@@ -134,7 +134,7 @@ export const DEFAULT_FILTERS = {
 };
 export type FacilityFilters = typeof DEFAULT_FILTERS;
 
-/** §8.1 basic search fields, always visible in the explorer toolbar. */
+/** Basic search fields, always visible in the explorer toolbar. */
 const BASIC_FILTER_KEYS = [
   "search",
   "stateCode",
@@ -269,7 +269,7 @@ export type FilterChangeHandler = (
   value: string,
 ) => void;
 
-/** §5 CAMPD retrieval: a year range plus the annual endpoint's filters ("ALL"/empty = no filter). */
+/** CAMPD retrieval: a year range plus the annual endpoint's filters ("ALL"/empty = no filter). */
 const campdFilterSchema = facilityFilterSchema
   .pick({ stateCode: true })
   .extend({

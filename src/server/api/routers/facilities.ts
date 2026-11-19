@@ -10,6 +10,7 @@ import {
   isNotNull,
   lt,
   lte,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -142,7 +143,7 @@ const pagingSchema = {
 };
 
 /**
- * §8.3 ranking: ROW_NUMBER() over the sort order (NULLs last, `tiebreak` for a stable order),
+ * Ranking: ROW_NUMBER() over the sort order (NULLs last, `tiebreak` for a stable order),
  * restarting per state when a Top N ranks per state. Rows are paged in rank order.
  */
 const rankOver = (
@@ -249,7 +250,7 @@ function facilityConditions(f: FilterInput): SQL[] {
   return conditions;
 }
 
-/** Conditions on the unit's attributes (§8.1); fuels and unit type match by "contains". */
+/** Conditions on the unit's attributes; fuels and unit type match by "contains". */
 function unitConditions(f: FilterInput): SQL[] {
   const conditions: SQL[] = [];
   if (f.unitId?.trim()) {
@@ -292,8 +293,8 @@ const ORIGIN_SOURCES: Record<string, string[]> = {
 };
 
 /**
- * Conditions on the unit-year record: reporting year, controls as reported that year (§7, "contains"),
- * origin, and §8.2 min/max ranges.
+ * Conditions on the unit-year record: reporting year, controls as reported that year ("contains"),
+ * origin, and min/max ranges.
  */
 function recordConditions(f: FilterInput): SQL[] {
   const conditions: SQL[] = [];
@@ -378,7 +379,7 @@ const unitRankValue = (metric: RankMetric): SQL | SQLiteColumn =>
     : UNIT_SORT_COLUMNS[metric];
 
 /**
- * §8.3 Top N as part of the selection, so Explore, Map, Analyze, and every download keep the same
+ * Top N as part of the selection, so Explore, Map, Analyze, and every download keep the same
  * rows: the first N facilities (their unit-years added up) or unit-years by `topBy`, highest or
  * lowest first, overall or per state, among the rows matching the other filters. Returns the kept
  * IDs as a subquery with columns "id" (facility or unit-year) and "facility_id"; undefined
@@ -461,7 +462,7 @@ function filterConditions(f: FilterInput = {}): SQL[] {
 }
 
 /**
- * Facilities matching the filters, ranked by the sort (§8.3). Shared by the Facilities view (paged)
+ * Facilities matching the filters, ranked by the sort. Shared by the Facilities view (paged)
  * and the CSV export (every row).
  */
 export function rankedFacilities(
@@ -514,7 +515,7 @@ export function rankedFacilities(
 
 /**
  * Unit-years (annual_records ⨝ units ⨝ facilities) matching the filters and `scope`, ranked by the
- * sort (§8.3). Shared by the Units view (paged) and the CSV exports (every row).
+ * sort. Shared by the Units view (paged) and the CSV exports (every row).
  */
 export function rankedUnitYears(
   database: typeof Database,
@@ -534,7 +535,7 @@ export function rankedUnitYears(
       unitType: units.unitType,
       primaryFuel: units.primaryFuel,
       secondaryFuel: units.secondaryFuel,
-      // Controls and programs as reported for this year (§7); the unit holds the latest values.
+      // Controls and programs as reported for this year; the unit holds the latest values.
       so2Controls: annualRecords.so2Controls,
       noxControls: annualRecords.noxControls,
       pmControls: annualRecords.pmControls,
@@ -576,7 +577,7 @@ export function rankedUnitYears(
   return rankedView(database, ranked, input);
 }
 
-/** Datasets newest first with their parameters, counts, and superseded status (§5 history, §10 provenance). */
+/** Datasets newest first with their parameters, counts, and superseded status (history and provenance). */
 export const datasetHistory = (database: typeof Database) =>
   database
     .select({
@@ -712,7 +713,13 @@ export const facilitiesRouter = createTRPCRouter({
       })
       .from(facilities);
     const coverage = await ctx.db
-      .select({ year: annualRecords.year, records: count() })
+      .select({
+        year: annualRecords.year,
+        records: count(),
+        co2: sql<number>`COALESCE(SUM(${annualRecords.co2MassTons}), 0)`,
+        so2: sql<number>`COALESCE(SUM(${annualRecords.so2MassTons}), 0)`,
+        nox: sql<number>`COALESCE(SUM(${annualRecords.noxMassTons}), 0)`,
+      })
       .from(annualRecords)
       .groupBy(annualRecords.year)
       .orderBy(annualRecords.year);
@@ -734,7 +741,7 @@ export const facilitiesRouter = createTRPCRouter({
   getFilterOptions: publicProcedure.query(({ ctx }) => filterOptions(ctx.db)),
 
   /**
-   * Rubric §6 description search: the rule-based parser, an optional LLM pass for leftover words,
+   * Description search: the rule-based parser, an optional LLM pass for leftover words,
    * then "high"/"low" resolved to the 75th / 25th percentile of the metric within the other filters.
    */
   describeSearch: publicProcedure
@@ -822,6 +829,56 @@ export const facilitiesRouter = createTRPCRouter({
         .limit(input.limit);
     }),
 
+  /**
+   * Unit suggestions for pages that work on one unit (Predict, the Explore units view, unit
+   * groups): the facility match of `suggest`, or "facility unit" ("Ghent 2", "1356 CT1") to name
+   * the unit. Named units first, then operating units, larger units first.
+   */
+  suggestUnits: publicProcedure
+    .input(
+      z.object({
+        q: z.string().trim().min(1).max(100),
+        limit: z.number().int().min(1).max(20).default(8),
+      }),
+    )
+    .query(({ ctx, input }) => {
+      const words = input.q.split(/\s+/);
+      const last = words.at(-1)!.toLowerCase();
+      const rest = words.slice(0, -1).join(" ");
+      const byFacility = and(...facilityConditions({ search: input.q }));
+      const named = rest
+        ? and(
+            ...facilityConditions({ search: rest }),
+            sql`lower(${units.unitId}) = ${last}`,
+          )
+        : undefined;
+      const q = input.q.toLowerCase();
+      return ctx.db
+        .select({
+          facilityId: facilities.id,
+          facilityName: facilities.name,
+          stateCode: facilities.stateCode,
+          county: facilities.county,
+          unitId: units.unitId,
+          primaryFuel: units.primaryFuel,
+          unitType: units.unitType,
+          operatingStatus: units.operatingStatus,
+          capacityMW: units.nameplateCapacityMW,
+        })
+        .from(units)
+        .innerJoin(facilities, eq(units.facilityId, facilities.id))
+        .where(named ? or(byFacility, named) : byFacility)
+        .orderBy(
+          ...(named ? [sql`CASE WHEN ${named} THEN 0 ELSE 1 END`] : []),
+          sql`CASE WHEN lower(${facilities.name}) LIKE ${`${q}%`} THEN 0 ELSE 1 END`,
+          sql`CASE WHEN ${units.operatingStatus} LIKE 'Operating%' THEN 0 ELSE 1 END`,
+          desc(units.nameplateCapacityMW),
+          asc(facilities.name),
+          asc(units.unitId),
+        )
+        .limit(input.limit);
+    }),
+
   getFacilities: publicProcedure
     .input(
       facilityFilterSchema.extend({
@@ -841,7 +898,7 @@ export const facilitiesRouter = createTRPCRouter({
       };
     }),
 
-  /** §8 Units view: one row per facility-unit-year (annual_records ⨝ units ⨝ facilities), filtered, ranked, paged. */
+  /** Units view: one row per facility-unit-year (annual_records ⨝ units ⨝ facilities), filtered, ranked, paged. */
   getUnitYears: publicProcedure
     .input(
       facilityFilterSchema.extend({
@@ -919,7 +976,7 @@ export const facilitiesRouter = createTRPCRouter({
         .then((row) => row ?? null),
     ),
 
-  /** Unit detail (§8.4): identification, fuels + controls, and every reporting year with its source dataset. */
+  /** Unit detail: identification, fuels + controls, and every reporting year with its source dataset. */
   getUnit: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(({ ctx, input }) =>
@@ -944,7 +1001,7 @@ export const facilitiesRouter = createTRPCRouter({
         .then((row) => row ?? null),
     ),
 
-  /** Compare dock: 2–4 entries, each a whole facility (`ids`) or a single unit (`unitIds`, §8.3 unit compare). */
+  /** Compare dock: 2–4 entries, each a whole facility (`ids`) or a single unit (`unitIds`). */
   compareFacilities: publicProcedure
     .input(
       z
@@ -1145,7 +1202,7 @@ export const facilitiesRouter = createTRPCRouter({
       return { ...page, summary };
     }),
 
-  /** Retrieval history (§5): every dataset, newest first, with its parameters and counts. */
+  /** Retrieval history: every dataset, newest first, with its parameters and counts. */
   getDatasets: publicProcedure
     .input(z.object({ limit: z.number().min(1).max(200).default(50) }))
     .query(({ ctx, input }) => datasetHistory(ctx.db).limit(input.limit)),
@@ -1153,7 +1210,7 @@ export const facilitiesRouter = createTRPCRouter({
   getRetrievalOptions: publicProcedure.query(() => getCampdRetrievalOptions()),
 
   /**
-   * §5 DB vs API, before anything is saved: CAMPD's rows for each year compared with the stored
+   * DB vs API, before anything is saved: CAMPD's rows for each year compared with the stored
    * unit-years (new / changed / unchanged / dropped). Writes nothing; stops at the first error.
    */
   previewCampd: publicProcedure

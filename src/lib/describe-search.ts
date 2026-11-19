@@ -7,7 +7,7 @@ import type {
 } from "./facility-filters";
 
 /**
- * Rubric §6 description-based search: turns a sentence such as "coal units in Kentucky with high CO2
+ * Description-based search: turns a sentence such as "coal units in Kentucky with high CO2
  * in 2025" into explorer filters. Entity extraction, not sentence templates: known phrases (states,
  * fuels, unit types, controls, metrics, comparators, ranking words) are found anywhere and in any
  * order, numbers bind to the nearest metric, and anything left over is reported as unrecognized.

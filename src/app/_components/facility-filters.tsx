@@ -25,7 +25,11 @@ import {
 import { AUDIT_RULES, AUDIT_SEVERITIES } from "~/lib/emissions-metrics";
 import { cn, formatNumber, shortNumber } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
-import { FacilitySearch, type FacilitySuggestion } from "./facility-search";
+import {
+  FacilitySearch,
+  type FacilitySuggestion,
+  type UnitSuggestion,
+} from "./facility-search";
 
 type FilterOptions = RouterOutputs["facilities"]["getFilterOptions"];
 type DescribeResult = Pick<
@@ -34,7 +38,7 @@ type DescribeResult = Pick<
 >;
 
 /**
- * Description search (rubric §6) wiring for the search box: the text is interpreted into filters
+ * Description search wiring for the search box: the text is interpreted into filters
  * on submit, falling back to a name search when nothing in it is recognized. Omitted where only
  * name search applies (the box then filters by name as you type).
  */
@@ -55,7 +59,7 @@ const setsFilters = (filters: FacilityFilters) =>
   );
 
 /**
- * Rubric §6 description search for any filter bar: the text is parsed into filters on submit.
+ * Description search for any filter bar: the text is parsed into filters on submit.
  * Text the parser recognizes nothing in (a plant name) becomes a name search instead
  * (`onNameSearch`); otherwise `onApply` gets the parsed filters, sort, and view.
  */
@@ -207,7 +211,7 @@ const ID_INPUTS = [
 
 /**
  * The filters, grouped as the "+ Filter" menu lists them. Every chip opens its group's editor, so
- * all of §8.1–8.3 stays one or two clicks away without a wall of fields on the page.
+ * every filter, range, and ranking stays one or two clicks away without a wall of fields on the page.
  */
 const GROUPS = [
   { id: "place", label: "Place", hint: "State, county, grid region" },
@@ -296,7 +300,7 @@ function Selects({
   );
 }
 
-/** One §8.2 min–max pair; ≥ / ≤ toggle to strict > / <. */
+/** One min–max pair; ≥ / ≤ toggle to strict > / <. */
 function RangeRow({
   field: { key, label, unit },
   filters,
@@ -350,7 +354,7 @@ function RangeRow({
   );
 }
 
-/** The §8.3 Top-N settings. */
+/** The Top-N settings. */
 function TopN({
   filters,
   onFilterChange,
@@ -414,7 +418,7 @@ function TopN({
           ]}
         />
       )}
-      <p className="text-fg-muted text-xs">
+      <p className="text-fg-muted text-sm">
         Applies after the other filters, on every page and in downloads.
         {view === "unit-years" && !analysis
           ? " Sorting the table only changes the order."
@@ -519,7 +523,7 @@ function GroupEditor({ group, ...props }: EditorProps & { group: GroupId }) {
     case "amounts":
       return (
         <>
-          <p className="text-fg-muted text-xs">
+          <p className="text-fg-muted text-sm">
             Per unit-year. Click ≥ or ≤ to make a bound strict.
           </p>
           {RANGE_FIELDS.filter((f) => f.key !== "year").map((field) => (
@@ -566,7 +570,7 @@ function GroupEditor({ group, ...props }: EditorProps & { group: GroupId }) {
                 "Record origin",
                 [
                   { value: "ALL", label: "Any" },
-                  { value: "API", label: "EPA CAMPD API" },
+                  { value: "API", label: "Pulled from the EPA" },
                   { value: "UPLOAD", label: "File upload" },
                 ],
               ],
@@ -682,7 +686,7 @@ function FilterChip({
 /** What the description search made of the text: anything it didn't understand, and how. */
 function DescribeNote({ result }: { result: DescribeResult }) {
   return (
-    <p className="text-fg-muted text-xs" title={result.notes.join("\n")}>
+    <p className="text-fg-muted text-sm" title={result.notes.join("\n")}>
       {result.unrecognized.length > 0 && (
         <span className="text-warn">
           Not understood: {result.unrecognized.join(", ")}.{" "}
@@ -749,6 +753,20 @@ export function FacilityFilterBar({
     onFilterChange("search", "");
     onFilterChange("facilityId", String(f.id));
   };
+  // Pages that list unit-years (Explore's units and audit views, Download's units) suggest units;
+  // Analyze summarizes groups, so it suggests filters first, then facilities.
+  const findUnits = !analysis && !onPickFacility && itemLabel !== "facilities";
+  const pickUnit = (u: UnitSuggestion) => {
+    setNames((n) => ({
+      ...n,
+      [u.facilityId]: `${u.facilityName} (${u.facilityId})`,
+    }));
+    setText("");
+    onFilterChange("search", "");
+    onFilterChange("facilityId", String(u.facilityId));
+    onFilterChange("unitId", u.unitId);
+  };
+  const what = findUnits ? "a unit (“Ghent 2”)" : "a plant";
   const editor: EditorProps = {
     filters,
     filterOptions,
@@ -772,23 +790,37 @@ export function FacilityFilterBar({
           className="flex-1"
           value={text}
           onValueChange={setText}
-          onPick={pickFacility}
+          onPick={findUnits ? undefined : pickFacility}
+          onPickUnit={findUnits ? pickUnit : undefined}
+          filters={{
+            vocab: filterOptions,
+            active: filters,
+            yearRange: analysis,
+            first: analysis,
+            onPick: ({ patch }) => {
+              setText("");
+              for (const [key, value] of Object.entries(patch))
+                onFilterChange(key as keyof FacilityFilters, value);
+            },
+          }}
           onSubmit={describe?.onSubmit}
           onClear={onResetFilters}
           isLoading={describe?.isLoading}
           placeholder={
-            describe
-              ? `Search a plant, or describe what you want: “${DESCRIBE_EXAMPLES[0]}”`
-              : "Search plant, operator, county, or ID"
+            analysis
+              ? `Add a state, fuel, control, or plant, or describe: “${DESCRIBE_EXAMPLES[0]}”`
+              : describe
+                ? `Search ${what} or a filter, or describe: “${DESCRIBE_EXAMPLES[0]}”`
+                : `Search ${what}, state, fuel, or control`
           }
           aria-label={
             describe
-              ? "Describe what you want to find, or search by name"
-              : "Search by plant, operator, county, or ID"
+              ? "Describe what you want to find, or search for a filter or name"
+              : `Search for ${findUnits ? "a unit" : "a plant"} or a filter`
           }
           hint={
             describe
-              ? "Pick a facility, or press Enter to search by description."
+              ? "Pick a suggestion, or press Enter to search by description."
               : undefined
           }
         />

@@ -90,7 +90,7 @@ const KY_COAL_2025_CO2 = {
   co2MassTonsMinStrict: "1",
 };
 
-void test("rubric example: coal units in Kentucky with high CO2", () => {
+void test("example: coal units in Kentucky with high CO2", () => {
   expect(
     "Find coal units in Kentucky with high CO2 emissions.",
     { stateCode: "KY", primaryFuel: "Coal" },
@@ -153,7 +153,7 @@ void test("ranges: less-than, between, units of measure pick the metric", () => 
   });
 });
 
-void test("rubric §5 operators: at least / at most stay inclusive, strict years shift by one", () => {
+void test("operators: at least / at most stay inclusive, strict years shift by one", () => {
   expect("CO2 at least 1 million tons", { co2MassTonsMin: "1000000" });
   expect("NOx ≤ 200 tons", { noxMassTonsMax: "200" });
   expect("no more than 50 tons SO2", { so2MassTonsMax: "50" });

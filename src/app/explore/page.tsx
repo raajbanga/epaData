@@ -10,7 +10,7 @@ export default async function ExplorePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  // §8.4: the tab, filters, sort, and page come from the URL (see explorerSearchParams).
+  // The tab, filters, sort, and page come from the URL (see explorerSearchParams).
   const initialState = parseExplorerParams(await searchParams);
   const { tab, filters, table, unitTable, auditTable } = initialState;
 
