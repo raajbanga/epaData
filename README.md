@@ -11,7 +11,7 @@ a fuel switch.
 **[Live demo →](https://epadata.vercel.app)** The hosted copy is read-only, so Retrieve and Upload
 only work when you run it yourself.
 
-![epaData home page: coverage by year, data sources, and what you can do](docs/screenshots/home.jpg)
+![epaData home page: how SO₂, NOₓ, and CO₂ changed since 2015, what each pollutant is, and questions to start from](docs/screenshots/home.jpg)
 
 ## Features
 
@@ -45,7 +45,7 @@ the [feature reference](docs/features.md) for the details.
     <td><img src="docs/screenshots/models.jpg" alt="Predict: test error and R² for each NOx model"><br><sub><b>Predict</b>: each model's test error and R², with 95% intervals</sub></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/whatif.jpg" alt="What-if: predicted NOx as heat input changes, for Ridge and the decision tree"><br><sub><b>What-if</b>: change one input and watch both models respond; shading marks inputs outside the training data</sub></td>
+    <td colspan="2"><img src="docs/screenshots/whatif.jpg" alt="What-if: what Ghent unit 2 would emit if it added SCR, by each model"><br><sub><b>What-if</b>: ask what happens if a plant changes; each model shows its prediction before and after</sub></td>
   </tr>
 </table>
 
