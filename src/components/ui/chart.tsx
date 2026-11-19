@@ -1,12 +1,13 @@
 "use client";
 
-import { GlossedText } from "~/components/ui/glossed-text";
+import { GlossedText, renderRich } from "~/components/ui/glossed-text";
 import { useRef, type ReactNode } from "react";
 import { ResponsiveContainer } from "recharts";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportButton } from "~/components/ui/export-button";
 import type { ExportMetadata, ExportTable } from "~/lib/export-bundle";
 import { cn } from "~/lib/utils";
+import { Swatch } from "~/components/ui/swatch";
 
 /**
  * The chart system (shadcn/ui charts on Recharts): one palette, one axis style, one tooltip, and
@@ -16,6 +17,29 @@ import { cn } from "~/lib/utils";
  */
 
 /** Earthy categorical palette (globals.css), in the order series take it. */
+/**
+ * Charts side by side: two columns on wide screens, one below. Every pair of charts on the site
+ * uses it, so pairs line up the same way on every page.
+ */
+export function ChartGrid({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-1 gap-x-8 gap-y-6 xl:grid-cols-2",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export const PALETTE = [
   "var(--chart-slate)",
   "var(--chart-ochre)",
@@ -128,12 +152,7 @@ export function TooltipCard({
       <div className="space-y-0.5">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-2">
-            {r.color && (
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                style={{ backgroundColor: r.color }}
-              />
-            )}
+            {r.color && <Swatch color={r.color} square />}
             <span className="text-fg-muted flex-1">{r.label}</span>
             <span className="font-medium tabular-nums">{r.value}</span>
           </div>
@@ -151,10 +170,7 @@ export function SeriesLegend({ series }: { series: Series[] }) {
     <ul className="text-fg-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
       {series.map((s) => (
         <li key={s.key} className="flex items-center gap-1.5">
-          <span
-            className="h-2.5 w-2.5 rounded-[2px]"
-            style={{ backgroundColor: s.color }}
-          />
+          <Swatch color={s.color} square />
           {s.label}
         </li>
       ))}
@@ -237,13 +253,14 @@ export const queryStatus = (q: {
 });
 
 /**
- * Every chart's frame (Phase 2 §4.4): title and one-line subtitle, the chart's own controls, a
- * download (CSV + PNG + metadata in a ZIP, §7), an optional legend, and "About this chart" for the
+ * Every chart's frame: title and one-line subtitle, the chart's own controls, a
+ * download (CSV + PNG + metadata in a ZIP), an optional legend, and "About this chart" for the
  * method and caveats. No box: a hairline above separates charts.
  */
 export function ChartFrame({
   title,
   subtitle,
+  reading,
   note,
   actions,
   legend,
@@ -259,6 +276,11 @@ export function ChartFrame({
 }: {
   title: string;
   subtitle?: ReactNode;
+  /**
+   * What the chart says, in a sentence or two ("**Switch to gas** cuts the most …"), set in body
+   * text under the title so the numbers come with their meaning. `**…**` is bold.
+   */
+  reading?: string | (string | null | false | undefined)[];
   /** Method, definitions, and caveats, under "About this chart". */
   note?: ReactNode;
   actions?: ReactNode;
@@ -281,32 +303,42 @@ export function ChartFrame({
     <figure
       className={cn("border-edge min-w-0 space-y-3 border-t pt-4", className)}
     >
-      <header className="flex flex-wrap items-start gap-x-4 gap-y-2">
-        <div className="min-w-0 flex-[1_1_16rem] space-y-0.5">
-          <h3 className="text-fg text-[15px] font-semibold text-balance">
+      {/* The buttons share the title's line; the subtitle runs the full width under both. */}
+      <header className="space-y-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <h3 className="text-fg min-w-0 flex-[1_1_14rem] text-base font-semibold text-balance">
             {title}
           </h3>
-          {subtitle && (
-            <p className="text-fg-muted max-w-[80ch] text-xs text-pretty">
-              <GlossedText>{subtitle}</GlossedText>
-            </p>
-          )}
+          <div className="flex max-w-full flex-wrap items-center gap-2">
+            {actions}
+            {table && (
+              <ExportButton
+                variant="ghost"
+                label="Download"
+                name={filename}
+                title={title}
+                table={table}
+                meta={meta}
+                png={() => chartPng(ref.current)}
+              />
+            )}
+          </div>
         </div>
-        <div className="flex max-w-full flex-wrap items-center gap-2">
-          {actions}
-          {table && (
-            <ExportButton
-              variant="ghost"
-              label="Download"
-              name={filename}
-              title={title}
-              table={table}
-              meta={meta}
-              png={() => chartPng(ref.current)}
-            />
-          )}
-        </div>
+        {subtitle && (
+          <p className="text-fg-muted text-[15px] text-pretty">
+            <GlossedText>{subtitle}</GlossedText>
+          </p>
+        )}
       </header>
+      {reading &&
+        [reading]
+          .flat()
+          .filter(Boolean)
+          .map((r, i) => (
+            <p key={i} className="text-fg text-[15px] text-pretty">
+              {renderRich(r as string)}
+            </p>
+          ))}
       {legend && <SeriesLegend series={legend} />}
       {/* The height is held only while there's no chart yet; charts size themselves. */}
       <div
@@ -326,7 +358,7 @@ export function ChartFrame({
           <summary className="hover:text-fg-2 w-fit cursor-pointer">
             About this chart
           </summary>
-          <div className="mt-1 max-w-[80ch] space-y-1 text-pretty">
+          <div className="mt-1 space-y-1 text-sm text-pretty">
             <GlossedText>{note}</GlossedText>
           </div>
         </details>

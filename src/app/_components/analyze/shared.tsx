@@ -2,6 +2,7 @@
 
 import { Field } from "~/components/ui/report";
 import { SegmentedControl } from "~/components/ui/segmented-control";
+import { BLANK } from "~/components/ui/question-sentence";
 import { Select } from "~/components/ui/select";
 import {
   AGGREGATION_LABELS,
@@ -11,6 +12,9 @@ import {
 import type { AnalysisView } from "~/lib/analysis-state";
 import type { FacilityFilters } from "~/lib/facility-filters";
 import type { RouterOutputs } from "~/trpc/react";
+import { inSentence } from "~/lib/utils";
+
+export { inSentence };
 
 export type Catalog = RouterOutputs["analysis"]["catalog"];
 
@@ -55,12 +59,6 @@ export const findInfo = (catalog: Catalog, key: string) =>
 export const dimensionLabel = (catalog: Catalog, key: string) =>
   catalog.dimensions.find((d) => d.key === key)?.label ?? key;
 
-/** A label inside a sentence: "fuel class", but "NOₓ control" and "SO₂ control" keep their case. */
-export const inSentence = (label: string) =>
-  /^[A-Z][A-Z]/.test(label)
-    ? label
-    : label.charAt(0).toLowerCase() + label.slice(1);
-
 /** A variable picker over the catalog, optionally limited to some groups. */
 export function VariableField({
   label = "Variable",
@@ -69,6 +67,7 @@ export function VariableField({
   catalog,
   groups,
   className = "w-80",
+  inline,
 }: {
   label?: string;
   value: string;
@@ -76,23 +75,25 @@ export function VariableField({
   catalog: Catalog;
   groups?: VariableInfo["group"][];
   className?: string;
+  /** A blank in a QuestionSentence: no caption, as wide as its text, labels in sentence case. */
+  inline?: boolean;
 }) {
-  return (
-    <Field label={label}>
-      <Select
-        value={value}
-        onValueChange={onChange}
-        className={className}
-        options={catalog.variables
-          .filter((v) => !groups || groups.includes(v.group))
-          .map((v) => ({
-            value: v.key,
-            label: variableLabel(v),
-            group: v.group,
-          }))}
-      />
-    </Field>
+  const select = (
+    <Select
+      value={value}
+      onValueChange={onChange}
+      aria-label={inline ? label : undefined}
+      className={inline ? BLANK : className}
+      options={catalog.variables
+        .filter((v) => !groups || groups.includes(v.group))
+        .map((v) => ({
+          value: v.key,
+          label: inline ? inSentence(variableLabel(v)) : variableLabel(v),
+          group: v.group,
+        }))}
+    />
   );
+  return inline ? select : <Field label={label}>{select}</Field>;
 }
 
 /** A dimension picker; `none` adds a "None" choice stored as "". */
@@ -104,6 +105,8 @@ export function DimensionField({
   none,
   exclude = [],
   className = "w-44",
+  inline,
+  prefix = "",
 }: {
   label?: string;
   value: string;
@@ -112,22 +115,29 @@ export function DimensionField({
   none?: string;
   exclude?: string[];
   className?: string;
+  /** A blank in a QuestionSentence: no caption, as wide as its text, labels in sentence case. */
+  inline?: boolean;
+  /** Words before each option inside the sentence: "by " gives "by fuel class". */
+  prefix?: string;
 }) {
-  return (
-    <Field label={label}>
-      <Select
-        value={value || "NONE"}
-        onValueChange={(v) => onChange(v === "NONE" ? "" : v)}
-        className={className}
-        options={[
-          ...(none ? [{ value: "NONE", label: none }] : []),
-          ...catalog.dimensions
-            .filter((d) => !exclude.includes(d.key))
-            .map((d) => ({ value: d.key, label: d.label })),
-        ]}
-      />
-    </Field>
+  const select = (
+    <Select
+      value={value || "NONE"}
+      onValueChange={(v) => onChange(v === "NONE" ? "" : v)}
+      aria-label={inline ? label : undefined}
+      className={inline ? BLANK : className}
+      options={[
+        ...(none ? [{ value: "NONE", label: none }] : []),
+        ...catalog.dimensions
+          .filter((d) => !exclude.includes(d.key))
+          .map((d) => ({
+            value: d.key,
+            label: inline ? `${prefix}${inSentence(d.label)}` : d.label,
+          })),
+      ]}
+    />
   );
+  return inline ? select : <Field label={label}>{select}</Field>;
 }
 
 /** A row of tab controls. */

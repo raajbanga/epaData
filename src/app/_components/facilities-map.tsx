@@ -28,6 +28,7 @@ import { api } from "~/trpc/react";
 import { D3Globe, MapSpinner } from "./d3-globe";
 import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
+import { Swatch } from "~/components/ui/swatch";
 
 // Leaflet touches `window` on import, so it can only load client-side.
 const LeafletMap = dynamic(
@@ -117,7 +118,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
 
   return (
     <div className="space-y-5">
-      <PageTitle lead="Every facility with coordinates, colored by primary fuel and sized by capacity or CO₂. Search to fly to a facility; hover a dot for a summary, click it for details.">
+      <PageTitle lead="**Every power plant on a map.** The color is the **fuel it burns**; the size is how big it is or how much CO₂ it puts out. Search to jump to a plant, hover a dot for a summary, click it for details.">
         Map
       </PageTitle>
 
@@ -161,47 +162,44 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
             />
           </div>
         </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <button
-          type="button"
-          onClick={() => setFuelClass(null)}
-          className={cn(
-            CHIP,
-            fuelClass === null ? "border-edge bg-surface text-fg" : CHIP_IDLE,
-          )}
-          aria-pressed={fuelClass === null}
-        >
-          All fuels
-          <span className="text-fg-muted tabular-nums">
-            {mapQuery.isLoading ? "…" : allFacilities.length.toLocaleString()}
-          </span>
-        </button>
-        {FUEL_CATEGORIES.map((cat) => {
-          const isSelected = fuelClass === cat.name;
-          return (
-            <button
-              key={cat.name}
-              type="button"
-              onClick={() => setFuelClass(isSelected ? null : cat.name)}
-              className={cn(
-                CHIP,
-                isSelected ? "border-edge bg-surface text-fg" : CHIP_IDLE,
-              )}
-              aria-pressed={isSelected}
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: cat.color }}
-              />
-              {cat.name}
-              <span className="text-fg-muted tabular-nums">
-                {(fuelCounts[cat.name] ?? 0).toLocaleString()}
-              </span>
-            </button>
-          );
-        })}
+        {/* Fuel chips share the row with the view controls. */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <button
+            type="button"
+            onClick={() => setFuelClass(null)}
+            className={cn(
+              CHIP,
+              fuelClass === null ? "border-edge bg-surface text-fg" : CHIP_IDLE,
+            )}
+            aria-pressed={fuelClass === null}
+          >
+            All fuels
+            <span className="text-fg-muted tabular-nums">
+              {mapQuery.isLoading ? "…" : allFacilities.length.toLocaleString()}
+            </span>
+          </button>
+          {FUEL_CATEGORIES.map((cat) => {
+            const isSelected = fuelClass === cat.name;
+            return (
+              <button
+                key={cat.name}
+                type="button"
+                onClick={() => setFuelClass(isSelected ? null : cat.name)}
+                className={cn(
+                  CHIP,
+                  isSelected ? "border-edge bg-surface text-fg" : CHIP_IDLE,
+                )}
+                aria-pressed={isSelected}
+              >
+                <Swatch color={cat.color} />
+                {cat.name}
+                <span className="text-fg-muted tabular-nums">
+                  {(fuelCounts[cat.name] ?? 0).toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <MapView
@@ -265,8 +263,8 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
               "matching facility",
               "matching facilities",
             )}{" "}
-            without coordinates in CAMPD {unlocated.length === 1 ? "is" : "are"}{" "}
-            not drawn. Open one:
+            without a location in the EPA data{" "}
+            {unlocated.length === 1 ? "is" : "are"} not drawn. Open one:
           </summary>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
             {unlocated.map((f) => (

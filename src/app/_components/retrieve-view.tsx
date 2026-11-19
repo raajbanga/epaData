@@ -92,7 +92,7 @@ const sum = <T,>(rows: T[], key: keyof T) =>
   rows.reduce((n, row) => n + Number(row[key]), 0);
 
 /**
- * §5 retrieval: CAMPD annual emissions by year range and filters. Shows what the database already
+ * Retrieval: CAMPD annual emissions by year range and filters. Shows what the database already
  * holds, previews what the API returns against it (new / changed / unchanged / dropped), and saves
  * only after approval. Also lists the dataset history.
  */
@@ -109,9 +109,9 @@ export function RetrieveView() {
   const yearCount = years.to - years.from + 1;
   const invalid =
     facilityIds === null
-      ? "Facility IDs must be whole numbers separated by commas."
+      ? "Plant IDs must be whole numbers separated by commas, like 3, 26."
       : yearCount < 1
-        ? "From year must not be after To year."
+        ? "The first year must not be after the last year."
         : null;
   const input: RetrievalInput | null =
     invalid || !facilityIds
@@ -195,13 +195,14 @@ export function RetrieveView() {
         <PageTitle
           lead={
             <>
-              Retrieval method: the EPA Clean Air Markets (CAM) API, apportioned
-              annual emissions endpoint (
-              <code className="text-xs">/annual</code>
-              ). Choose years and filters, preview what the API returns next to
-              what the database already holds, then approve to save. Nothing is
-              stored before you approve, and each year becomes its own dataset.
-              Files from CAMPD Custom Data Download go through{" "}
+              <strong className="text-fg font-semibold">
+                Get newer records straight from the EPA.
+              </strong>{" "}
+              Pick years and filters, see what the EPA would send next to what
+              is already stored, then{" "}
+              <strong className="text-fg font-semibold">approve to save</strong>
+              . Nothing is saved before you approve, and each year becomes its
+              own dataset. Files downloaded from the EPA website go through{" "}
               <Link href="/upload" className="text-primary hover:underline">
                 Upload
               </Link>{" "}
@@ -279,8 +280,8 @@ export function RetrieveView() {
       </Section>
 
       <Section
-        title="Already in the local database"
-        note="Stored unit-years for these years and filters, by the dataset that last wrote them. Fuel, unit type, and control match by name, so this approximates what CAMPD will return."
+        title="Already stored here"
+        note="What is **already stored** for these years and filters, by where it came from. This is an estimate of what the EPA will send."
       >
         {coverageQuery.isLoading && deferredInput ? (
           <InlineLoading className="py-6" title="Checking the database…" />
@@ -313,13 +314,13 @@ export function RetrieveView() {
 
       {previewIsCurrent && (
         <Section
-          title="Preview from the live EPA API"
-          note="Compared with the stored values for each facility-unit-year. Approving writes new and changed records; unchanged ones are rewritten with the same values, and dropped rows are listed in the invalid-records report."
+          title="What the EPA sent"
+          note="Each record from the EPA **compared with what is stored**. Approving saves the new and changed ones; rows that fail the checks are listed in the invalid-records report."
         >
           {previewing && !preview ? (
             <InlineLoading
               className="py-6"
-              title="Fetching from the EPA CAMPD API…"
+              title="Asking the EPA for the records…"
             />
           ) : previewYears.length > 0 ? (
             <>
@@ -327,7 +328,7 @@ export function RetrieveView() {
                 <StatTile
                   label="Received"
                   value={formatNumber(sum(previewYears, "received"))}
-                  subtext="Rows from CAMPD"
+                  subtext="Records the EPA sent"
                 />
               </DiffTiles>
               {previewYears.length > 1 && (
@@ -366,7 +367,7 @@ export function RetrieveView() {
                 droppedRows.length === 0 ? (
                   <EmptyState
                     variant="success"
-                    title="Every CAMPD row passed validation"
+                    title="Every EPA record passed the checks"
                   />
                 ) : (
                   <ReportTable
@@ -423,7 +424,7 @@ export function RetrieveView() {
                   ])}
                 />
               )}
-              <p className="text-fg-muted text-xs">
+              <p className="text-fg-muted text-sm">
                 Up to 50 rows per category and year are listed; the counts above
                 cover every row.
               </p>
@@ -481,7 +482,7 @@ export function RetrieveView() {
       <DatasetHistory
         title="Past retrievals"
         uploads={false}
-        note="New / Updated / Unchanged compare each retrieval with what the database held before it (— = imported before this was tracked). Superseded datasets had all their records taken over by a later retrieval; they are kept as history."
+        note="**New / Updated / Unchanged** compare each retrieval with what was stored before it (— means it was imported before this was tracked). A **superseded** retrieval had all its records replaced by a later one; it is kept as history."
       />
     </PageView>
   );
@@ -510,7 +511,7 @@ function DiffTiles({
         label="New"
         value={formatNumber(sum(rows, "inserted"))}
         valueClassName="text-primary"
-        subtext={saved ? "Inserted" : "Not in the database"}
+        subtext={saved ? "Saved" : "Not saved yet"}
       />
       <StatTile
         label="Changed"
@@ -527,7 +528,11 @@ function DiffTiles({
         label="Dropped"
         value={formatNumber(dropped)}
         valueClassName={dropped ? "text-danger" : undefined}
-        subtext={saved ? "See invalid-records CSV" : "Invalid or duplicate"}
+        subtext={
+          saved
+            ? "Listed in the invalid-records file on Download"
+            : "Failed a check or repeated"
+        }
         className="col-span-2 sm:col-span-1"
       />
     </KpiStrip>

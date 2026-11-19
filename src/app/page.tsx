@@ -1,48 +1,67 @@
-import Link from "next/link";
 import { connection } from "next/server";
-import { ChevronRight } from "lucide-react";
 import { DataCoverage, DataSources } from "~/app/_components/data-coverage";
 import { EpaPrimer } from "~/app/_components/epa-primer";
+import { HomeTrend, PollutantList } from "~/app/_components/home-story";
+import { emissionsStory } from "~/lib/emissions-story";
+import { renderRich } from "~/components/ui/glossed-text";
+import { LinkList } from "~/components/ui/link-list";
 import { Section } from "~/components/ui/report";
 import { formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/server";
 
-/** The §9 functions, in the order data moves through the app. */
-const FUNCTIONS = [
+/**
+ * Where to start, asked as the questions a newcomer has. Each link opens a page already set up
+ * to answer it.
+ */
+const QUESTIONS = [
+  {
+    href: "/map",
+    label: "Where are the power plants?",
+    body: "A map of every plant, colored by the fuel it burns.",
+  },
+  {
+    href: "/explore?topN=10&topBy=co2MassTons&year=2025",
+    label: "Which plants pollute the most?",
+    body: "The 10 plants that put out the most CO₂ in 2025.",
+  },
+  {
+    href: "/analyze",
+    label: "Is pollution going up or down?",
+    body: "Year-by-year totals, by state and by plant.",
+  },
+  {
+    href: "/analyze?yearMin=2015&yearMax=2025&operatingHoursMin=0&operatingHoursMinStrict=1&tab=compare&variable=noxRate",
+    label: "Do pollution controls work?",
+    body: "Units with and without NOₓ-cleaning equipment, side by side.",
+  },
+  {
+    href: "/predict?tab=whatif&scope=state&st=TX&burns=Coal",
+    label: "What if a plant cleaned up?",
+    body: "Predicted NOₓ if Texas coal plants added a NOₓ scrubber.",
+  },
+  {
+    href: "/analyze?tab=impacts",
+    label: "What harm does it do?",
+    body: "Emissions turned into climate, acid-rain, smog, and health effects.",
+  },
+];
+
+/** The pages that bring data in or take it out. */
+const DATA_PAGES = [
   {
     href: "/retrieve",
     label: "Retrieve from the EPA",
-    body: "Pull annual emissions from the CAMPD API by year, state, facility, fuel, unit type, or control technology. Preview against the database, then approve.",
+    body: "Pull newer years straight from the EPA.",
   },
   {
     href: "/upload",
     label: "Upload a file",
-    body: "Import a CSV or Excel file. Every row is validated, and you approve the import after reading the report.",
-  },
-  {
-    href: "/explore",
-    label: "Explore and search",
-    body: "Search by description, name, or any field, with ranges and Top-N rankings. Click any result for its full details.",
-  },
-  {
-    href: "/map",
-    label: "Map",
-    body: "The same facilities on a globe or a flat map, colored by fuel.",
-  },
-  {
-    href: "/analyze",
-    label: "Analyze",
-    body: "Summary statistics, intensities, and year-over-year change; interactive charts; group comparisons with tests; and TRACI 2.2 impact indicators.",
-  },
-  {
-    href: "/predict",
-    label: "Predict",
-    body: "Annual NOₓ per unit predicted by Ridge regression and a decision tree, compared with a baseline, with sensitivity curves and what-if scenarios.",
+    body: "Add a CSV or Excel file; every row is checked first.",
   },
   {
     href: "/download",
     label: "Download",
-    body: "Export datasets, search results, a selection, data-quality reports, or provenance as CSV.",
+    body: "Take any of this data away as a CSV file.",
   },
 ];
 
@@ -54,71 +73,95 @@ export default async function Home() {
   ]);
   const unitYears = stats.coverage.reduce((n, c) => n + c.records, 0);
   const years = stats.coverage.map((c) => c.year);
+  const story = emissionsStory(stats.coverage);
   const figures = [
-    [formatNumber(stats.totalFacilities), "facilities"],
+    [formatNumber(stats.totalFacilities), "power plants"],
     [formatNumber(stats.totalUnits), "generating units"],
     [formatNumber(unitYears), "unit-years"],
     [`${formatNumber(stats.totalCapacityMW / 1000, 1)} GW`, "capacity"],
     [formatNumber(stats.totalAnomalies), "data-quality flags"],
   ];
+  const change = (p: NonNullable<typeof story>["pollutants"][number]) =>
+    `${p.label} by ${Math.round(Math.abs(p.pct))} %`;
 
   return (
-    <div className="space-y-14">
-      <header className="max-w-4xl space-y-4">
-        <h1 className="text-fg text-3xl font-semibold tracking-tight text-balance sm:text-[2.75rem] sm:leading-[1.1]">
-          EPA power-sector emissions data
+    <div className="space-y-16">
+      <header className="space-y-4">
+        <h1 className="text-fg text-3xl font-semibold tracking-tight sm:text-[2.6rem] sm:leading-[1.12]">
+          U.S. power plant emissions
         </h1>
-        <p className="text-fg-2 max-w-[68ch] text-base">
-          epaData collects annual operating and emissions data for U.S.
-          power-plant units from the EPA Clean Air Markets Program (CAMPD) and
-          from validated CSV and Excel uploads, stores it in a local SQLite
-          database, and lets you search, compare, analyze, and download it. It
-          converts emissions into EPA TRACI impact indicators and predicts NOₓ
-          emissions under what-if scenarios.
+        {story?.pollutants.every((p) => p.pct < 0) && (
+          <p className="text-fg text-xl text-pretty sm:text-2xl">
+            {renderRich(
+              `From ${story.from} to ${story.to}, the plants here cut ${story.pollutants
+                .map((p) => `**${change(p)}**`)
+                .join(", ")
+                .replace(/, ([^,]*)$/, ", and $1")}.`,
+            )}
+          </p>
+        )}
+        <p className="text-fg-2 text-lg text-pretty">
+          This site holds the EPA&apos;s yearly records for{" "}
+          {formatNumber(stats.totalUnits)} generating units at{" "}
+          {formatNumber(stats.totalFacilities)} U.S. power plants: how much fuel
+          each burned, how much power it made, and how much of each pollutant
+          came out. Look up a plant, see where the pollution comes from, and
+          test what would happen if a plant changed.
         </p>
-        <dl className="flex flex-wrap gap-x-8 gap-y-3 pt-2">
-          {figures.map(([value, label]) => (
-            <div key={label}>
-              <dt className="sr-only">{label}</dt>
-              <dd className="text-fg text-xl font-semibold tabular-nums">
-                {value}
-              </dd>
-              <dd aria-hidden className="text-fg-muted text-xs">
-                {label}
-              </dd>
-            </div>
-          ))}
-        </dl>
       </header>
 
-      <div className="grid grid-cols-1 gap-x-16 gap-y-12 lg:grid-cols-2">
-        <Section title="What you can do">
-          <ul className="divide-edge/70 border-edge divide-y border-y">
-            {FUNCTIONS.map(({ href, label, body }) => (
-              <li key={href}>
-                <Link
-                  href={href}
-                  className="group hover:bg-surface -mx-2 flex items-center gap-4 rounded-sm px-2 py-3"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="text-fg group-hover:text-primary block font-medium">
-                      {label}
-                    </span>
-                    <span className="text-fg-muted block text-sm">{body}</span>
-                  </span>
-                  <ChevronRight className="text-fg-muted h-4 w-4 shrink-0" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Section>
+      {story && (
+        <div className="grid grid-cols-1 gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <HomeTrend story={story} />
+          <Section title="What the three pollutants are">
+            <PollutantList story={story} />
+          </Section>
+        </div>
+      )}
 
-        <div className="space-y-12">
+      <Section title="What do you want to find out?">
+        <LinkList
+          items={QUESTIONS}
+          large
+          className="grid grid-cols-1 gap-x-10 sm:grid-cols-2 lg:grid-cols-3"
+        />
+      </Section>
+
+      <section
+        aria-labelledby="about-data"
+        className="border-edge space-y-8 border-t pt-10"
+      >
+        <div className="space-y-2">
+          <h2 id="about-data" className="text-fg text-lg font-semibold">
+            About the data
+          </h2>
+          <p className="text-fg-2 text-[15px]">
+            A <strong className="text-fg font-medium">unit-year</strong> is one
+            generating unit&apos;s record for one year; most of this site counts
+            and compares them. A plant can have several units (boilers or
+            turbines).
+          </p>
+          <dl className="flex flex-wrap gap-x-10 gap-y-3 pt-2">
+            {figures.map(([value, label]) => (
+              <div key={label}>
+                <dt className="sr-only">{label}</dt>
+                <dd className="text-fg text-xl font-semibold tabular-nums">
+                  {value}
+                </dd>
+                <dd aria-hidden className="text-fg-muted text-xs">
+                  {label}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-10 lg:grid-cols-3">
           <Section
-            title="Current coverage"
+            title="Years stored"
             note={
               years.length
-                ? `Unit-year records stored for each reporting year, ${years[0]}–${years.at(-1)}. Hover a column for its count.`
+                ? `Unit-years per reporting year, ${years[0]}–${years.at(-1)}. Hover a column for its count.`
                 : undefined
             }
           >
@@ -126,8 +169,8 @@ export default async function Home() {
           </Section>
 
           <Section
-            title="Data sources"
-            note="Explore, Map, the facility and unit details, and downloads read only the local database. Retrieve and the hourly and daily view call the EPA API live."
+            title="Where it comes from"
+            note="Most pages read the local database. Retrieve and the hourly and daily view ask the EPA directly."
           >
             <DataSources
               sources={stats.sources}
@@ -137,10 +180,14 @@ export default async function Home() {
               }}
             />
           </Section>
-        </div>
-      </div>
 
-      <EpaPrimer />
+          <Section title="Add or take out data">
+            <LinkList items={DATA_PAGES} />
+          </Section>
+        </div>
+
+        <EpaPrimer />
+      </section>
     </div>
   );
 }

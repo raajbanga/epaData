@@ -78,7 +78,7 @@ function FleetPanel({ units }: { units: FacilityDetail["units"] }) {
   const head = localSortProps(sort, setSort, (f) => f === "capacity");
   if (units.length === 0) {
     return (
-      <EmptyState title="No generation units recorded for this facility." />
+      <EmptyState title="No generating units are stored for this plant." />
     );
   }
   return (
@@ -147,7 +147,7 @@ function FleetPanel({ units }: { units: FacilityDetail["units"] }) {
                       digits: 2,
                     })}
                   </TableCell>
-                  <TableCell className="max-w-xs space-y-0.5 text-xs">
+                  <TableCell className="max-w-xs space-y-0.5 text-sm">
                     {controls.length === 0 ? (
                       <span className="text-fg-muted">None listed</span>
                     ) : (
@@ -247,7 +247,9 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
   const [yearKey, recordKey] = EMISSIONS_KEYS[sort.sortBy];
 
   if (rollups.length === 0) {
-    return <EmptyState title="No annual emissions records available." />;
+    return (
+      <EmptyState title="No yearly records are stored for this plant yet." />
+    );
   }
 
   const toggleYear = (year: number) =>
@@ -366,7 +368,7 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
   );
 }
 
-/** §9 facility detail (in the detail dialog): identification, latest operating data and emissions, units, and flags. */
+/** Facility detail (in the detail dialog): identification, latest operating data and emissions, units, and flags. */
 export function FacilityDetail({ facilityId }: { facilityId: number }) {
   const [activeTab, setActiveTab] = useState<DetailTab>("emissions");
   const { compareIds, toggleCompare } = use(SelectionContext);
@@ -406,8 +408,8 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
   if (!facility || !story) {
     return (
       <EmptyState
-        title={`No facility with ORISPL ID ${facilityId} in the database`}
-        description="It may not have been retrieved or uploaded yet."
+        title={`No plant with ID ${facilityId} is stored here`}
+        description="It may not have been pulled from the EPA or uploaded yet."
       />
     );
   }
@@ -486,7 +488,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
 
       <Section
         title={`Operating data and emissions, ${latest?.year ?? "no years"}`}
-        note="Latest reporting year, summed over the facility's units. Every year is in the table below."
+        note="**The latest year**, added up over the plant's units. Every year is in the table below."
       >
         <KpiStrip>
           <StatTile
@@ -542,7 +544,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
               label: `Annual records (${plural(rollups.length, "year")})`,
             },
             { value: "fleet", label: `Units (${units.length})` },
-            { value: "granular", label: "Hourly and daily (live API)" },
+            { value: "granular", label: "Hourly and daily (from the EPA)" },
             {
               value: "audit",
               label: (
@@ -558,7 +560,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
         />
         {activeTab === "emissions" ? (
           <>
-            <p className="text-fg-muted text-xs">
+            <p className="text-fg-muted text-sm">
               One row per reporting year; open a year for its units and the
               dataset each record came from.
             </p>

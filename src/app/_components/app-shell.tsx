@@ -18,7 +18,7 @@ import { UnitDetail } from "./unit-detail";
 
 const MAX_COMPARE = 4;
 
-/** The open facility or unit as URL params, so a link or reload reopens it (§8.4). */
+/** The open facility or unit as URL params, so a link or reload reopens it. */
 function writeDetailParam(view: DetailView | null) {
   const url = new URL(window.location.href);
   for (const key of DETAIL_PARAMS) url.searchParams.delete(key);
@@ -146,7 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6">
+        <main className="mx-auto w-full max-w-7xl flex-1 overflow-x-clip px-4 py-8 sm:px-6">
           {children}
         </main>
       </div>

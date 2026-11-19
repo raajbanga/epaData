@@ -7,7 +7,7 @@ import {
 /** How an incoming unit-year compares with what the database already holds. */
 export type DiffStatus = "new" | "changed" | "unchanged";
 
-/** §7 per-year control and program information stored on each annual record. */
+/** Per-year control and program information stored on each annual record. */
 export const RECORD_ATTRIBUTE_KEYS = [
   "so2Controls",
   "noxControls",

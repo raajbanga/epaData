@@ -3,7 +3,7 @@ import { SHORT_TON_KG, type TraciFactor } from "~/lib/traci";
 import { shortNumber } from "~/lib/utils";
 
 /**
- * The Analyze page's vocabulary (Phase 2 §4.1–§4.3, §4.6): the unit-year row every analysis reads,
+ * The Analyze page's vocabulary: the unit-year row every analysis reads,
  * the dimensions it can be grouped by, and the variables it can measure. Derived indicators and
  * TRACI impacts are ordinary variables, so statistics, charts, comparisons, and exports treat
  * them like measured values. A value the inputs cannot define is null (missing), never 0.
@@ -83,6 +83,37 @@ export function so2ControlClass(controls: string | null) {
   }
   return /sorbent|fluidized/i.test(c) ? "Sorbent injection" : "Other";
 }
+
+/**
+ * What a group means, for someone who doesn't know the terms: shown beside the groups picked
+ * for a comparison.
+ */
+export const GROUP_EXPLAIN: Record<string, Record<string, string>> = {
+  noxControl: {
+    SCR: "Selective catalytic reduction: a catalyst in the exhaust that removes most NOₓ, often 80–90 %.",
+    SNCR: "Selective non-catalytic reduction: a chemical sprayed into the hot gas that removes some NOₓ, often 30–50 %.",
+    "Combustion controls only":
+      "Burner or air changes that make less NOₓ in the flame; nothing cleans the exhaust.",
+    None: "No NOₓ control reported.",
+  },
+  so2Control: {
+    "Scrubber (FGD)":
+      "A scrubber washes the exhaust with lime or limestone and removes most SO₂.",
+    "Sorbent injection":
+      "A powder blown into the boiler or exhaust that captures some SO₂.",
+    Other: "Another reported SO₂ control.",
+    None: "No SO₂ control reported.",
+  },
+  fuelClass: {
+    Coal: "The dirtiest common fuel: the most CO₂, SO₂, and NOₓ for each unit of power.",
+    "Natural Gas":
+      "Burns cleaner than coal: almost no SO₂ and about half the CO₂ for the same power.",
+    "Oil / Petroleum":
+      "Mostly used in small units that run only when demand peaks.",
+    Wood: "Wood and other plant material.",
+    "Other Solid Fuel": "Fuels such as tires, waste, or petroleum coke.",
+  },
+};
 
 export const DIMENSIONS = [
   { key: "year", label: "Year", value: (r: AnalysisRow) => String(r.year) },
@@ -210,7 +241,7 @@ const MEASURED: Variable[] = [
     "Gross load",
     "MWh",
     "sum",
-    "Electricity generated, as reported to CAMPD.",
+    "Electricity generated, as reported to the EPA.",
   ),
   measured(
     "heatInputMMBtu",

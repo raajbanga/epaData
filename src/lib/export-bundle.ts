@@ -6,7 +6,7 @@ import { fitYears } from "~/lib/model";
 import type { TraciFactor } from "~/lib/traci";
 
 /**
- * Phase 2 §7 exports: every analysis download is a ZIP of the data as CSV, a metadata.json that
+ * Exports: every analysis download is a ZIP of the data as CSV, a metadata.json that
  * makes it reproducible (when, from which data, with which filters, definitions, factors, and
  * model), and the chart image when there is one.
  */
@@ -122,7 +122,7 @@ const list = (x: unknown) => (Array.isArray(x) ? (x as unknown[]) : []);
 const text = (x: unknown) => typeof x === "string" && x.trim() !== "";
 
 /**
- * The §7 reproducibility items an export's metadata leaves out (empty when it is complete).
+ * The reproducibility items an export's metadata leaves out (empty when it is complete).
  * Analyze exports need filters and defined variables; Predict exports need each model's name,
  * features, settings, periods, and pipeline.
  */

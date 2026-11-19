@@ -1,56 +1,73 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportContext } from "~/components/ui/export-button";
 import { predictMetadata } from "~/lib/export-bundle";
 import { PageTitle } from "~/components/ui/page";
-import { DetailList, Field } from "~/components/ui/report";
 import { SegmentedControl } from "~/components/ui/segmented-control";
-import { Select, toOptions } from "~/components/ui/select";
-import { formatStat } from "~/lib/analysis";
 import {
-  DEFAULT_PREDICT_VIEW,
-  writeView,
+  predictSearchParams,
+  type parsePredictParams,
   type PredictView as View,
 } from "~/lib/analysis-state";
+import { DEFAULT_FILTERS } from "~/lib/facility-filters";
 import {
-  featureLabel,
+  describeScenario,
   MODEL_COLORS,
-  predict,
-  type ModelInputs,
+  sameScenario,
+  WHAT_IF_CHANGES,
+  type ScenarioSpec,
+  shortName,
 } from "~/lib/model";
+import { stateName } from "~/lib/search-suggestions";
 import { replaceUrlQuery } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
-import { Controls } from "../analyze/shared";
-import { FacilitySearch } from "../facility-search";
 import { ModelsTab } from "./models-tab";
-import { ScenariosSection } from "./scenarios";
-import { SensitivitySection } from "./sensitivity";
+import { Question } from "./question";
+import { WhatIfResults } from "./whatif-results";
 
 export type Model = RouterOutputs["prediction"]["models"][number];
-export type Baseline = NonNullable<RouterOutputs["prediction"]["baseline"]>;
+export type Scope = RouterOutputs["prediction"]["scope"];
 
-/** What the What-if sections receive: the chosen models (one, or Ridge and the tree). */
-export interface PredictTabProps {
+/** What the What-if sections receive: both models, the scope's unit-years, and the scenario. */
+export interface WhatIfProps {
   view: View;
   setView: (patch: Partial<View>) => void;
+  /** Ridge and the tree: two estimates, so their spread shows how sure the answer is. */
   chosen: Model[];
-  baseline: Baseline;
+  scope: Scope;
+  spec: ScenarioSpec;
+  /** One unit-year, not a group. */
+  unit: boolean;
+  /** What the scope covers, in a sentence: "Ghent unit 2", "every unit in Texas burning coal". */
+  place: string;
+  /** The change in a few words: "Add SCR". */
+  changeLabel: string;
 }
+
+/** A model in a sentence: "Ridge", "the tree". */
+export const modelName = (m: Model) =>
+  m.kind === "tree" ? "the tree" : m.kind === "ridge" ? "Ridge" : m.name;
+
+/** The chosen models as chart series. */
+export const modelSeries = (chosen: Model[]) =>
+  chosen.map((m) => ({
+    key: m.kind,
+    label: `${shortName(m)} model`,
+    color: MODEL_COLORS[m.kind]!,
+  }));
 
 const TABS = { models: "Models", whatif: "What-if" } as const;
 
-/** The warning shown when inputs leave the training data's range. */
-export const rangeWarning = (names: string[]) =>
-  names.length
-    ? `Outside the training data: ${names.map(featureLabel).join(", ")}. The prediction is an extrapolation.`
-    : "";
-
-/** Phase 2 §5–§6: how good the models are, then how one unit's prediction responds to changes. */
-export function PredictView({ initial }: { initial: View }) {
+/** How good the models are, then what they predict when a unit, a plant, a state, or the nation changes. */
+export function PredictView({
+  initial,
+}: {
+  initial: ReturnType<typeof parsePredictParams>;
+}) {
   const [view, setViewState] = useState(initial);
-  const query = writeView(DEFAULT_PREDICT_VIEW, view).toString();
+  const query = predictSearchParams(view);
   useEffect(() => replaceUrlQuery(query), [query]);
   const setView = (patch: Partial<View>) =>
     setViewState((v) => ({ ...v, ...patch }));
@@ -66,7 +83,7 @@ export function PredictView({ initial }: { initial: View }) {
   return (
     <ExportContext value={predictMetadata(source, view, chosen)}>
       <div className="space-y-6">
-        <PageTitle lead="Annual NOₓ per unit-year, predicted from operating data, unit attributes, controls, and the previous year. Check the models, then change one unit's inputs.">
+        <PageTitle lead="**Computer models** that predict how much **NOₓ** (smog-forming pollution) a unit puts out in a year, from how much fuel it burned, what kind of unit it is, its pollution controls, and last year's rate. **Models** shows how accurate they are; **What-if** asks what would happen if something changed.">
           Predict
         </PageTitle>
         <SegmentedControl
@@ -86,183 +103,131 @@ export function PredictView({ initial }: { initial: View }) {
         ) : view.tab === "models" ? (
           <ModelsTab models={models} view={view} setView={setView} />
         ) : (
-          <WhatIf view={view} setView={setView} chosen={chosen} />
+          <WhatIf view={view} setView={setView} chosen={trained} />
         )}
       </div>
     </ExportContext>
   );
 }
 
-/** §6: pick a baseline unit-year, then the sensitivity curve and the scenarios, both from it. */
-function WhatIf({ view, setView, chosen }: Omit<PredictTabProps, "baseline">) {
-  const [search, setSearch] = useState("");
-  const exportMeta = use(ExportContext);
+/** A fuel narrowing in the sentence: "burning coal". */
+const burning = (burns: string) =>
+  burns ? ` burning ${burns.toLowerCase()}` : "";
+
+/**
+ * The question (who, which units, what change, which year), then the answer and the detail.
+ * Both models always answer: where they differ, that's the uncertainty.
+ */
+function WhatIf({
+  view,
+  setView,
+  chosen,
+}: Pick<WhatIfProps, "view" | "setView" | "chosen">) {
   const year = Number(view.year);
   const { data: filterOptions } = api.facilities.getFilterOptions.useQuery();
-  // A baseline needs the previous year as an input, so the first stored year can't be one.
+  // A prediction needs the previous year as an input, so the first stored year can't be one.
   const years = (filterOptions?.years ?? []).slice(0, -1);
+
+  // The current plant's units: its name and state for the sentence, and a unit to fall back on.
   const units = api.prediction.baselineUnits.useQuery(
     { facilityId: Number(view.fid), year },
     { placeholderData: (prev) => prev },
   );
-  const baseline = api.prediction.baseline.useQuery({
-    facilityId: Number(view.fid),
-    unitId: view.uid,
-    year,
-  });
   const unitList = units.data ?? [];
-  // The previous facility's units stay shown while the new ones load; don't pair its name with the new ID.
-  const facilityName = units.isPlaceholderData
-    ? undefined
-    : unitList[0]?.facilityName;
-  // A new facility or year keeps the unit when it exists there, else takes the largest emitter.
   const firstUnit = unitList[0]?.unitId;
   const hasUnit = unitList.some((u) => u.unitId === view.uid);
+  // A new plant or year keeps the unit when it exists there, else takes the largest emitter.
   useEffect(() => {
     if (!units.isPlaceholderData && firstUnit && !hasUnit)
       setView({ uid: firstUnit });
   }, [units.isPlaceholderData, firstUnit, hasUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const plant =
+    !units.isPlaceholderData && unitList[0]
+      ? { name: unitList[0].facilityName, stateCode: unitList[0].stateCode }
+      : undefined;
+
+  const burns = view.scope === "unit" ? "" : view.burns;
+  const filters = {
+    ...DEFAULT_FILTERS,
+    primaryFuel: burns || "ALL",
+    ...(view.scope === "unit"
+      ? { facilityId: view.fid, unitId: view.uid }
+      : view.scope === "plant"
+        ? { facilityId: view.fid }
+        : view.scope === "state"
+          ? { stateCode: view.st }
+          : {}),
+  };
+  const scope = api.prediction.scope.useQuery(
+    { filters, year },
+    { placeholderData: (prev) => prev },
+  );
+  const rows = scope.data?.rows ?? [];
+
+  const plantName = plant?.name ?? "this plant";
+  const place =
+    view.scope === "unit"
+      ? `${plantName} unit ${view.uid}`
+      : view.scope === "plant"
+        ? `every unit at ${plantName}`
+        : view.scope === "state"
+          ? `every unit in ${stateName(view.st)}`
+          : "every unit in the US";
+
+  const spec = useMemo<ScenarioSpec>(
+    () => ({
+      load: Number(view.load) || 0,
+      heat: Number(view.heat) || 0,
+      scr: view.scr === "add" || view.scr === "remove" ? view.scr : "",
+      fuel: view.fuel,
+    }),
+    [view.load, view.heat, view.scr, view.fuel],
+  );
+  const changeLabel =
+    WHAT_IF_CHANGES.find((c) => sameScenario(c.spec, spec))?.label ??
+    describeScenario(spec);
 
   return (
-    <div className="space-y-8">
-      <Controls>
-        <Field group label="Model">
-          <SegmentedControl
-            value={chosen.length > 1 ? "both" : chosen[0]!.kind}
-            onChange={(model) => setView({ model })}
-            options={[
-              { value: "ridge", label: "Ridge" },
-              { value: "tree", label: "Tree" },
-              { value: "both", label: "Both" },
-            ]}
-          />
-        </Field>
-        <Field label="Facility" className="w-full sm:w-80">
-          <FacilitySearch
-            value={search}
-            onValueChange={setSearch}
-            onPick={(f) => {
-              setSearch("");
-              setView({ fid: String(f.id) });
-            }}
-            placeholder={
-              facilityName
-                ? `${facilityName} (${view.fid}) · search another`
-                : "Search plant, operator, county, or ID"
-            }
-            inputClassName="h-9 text-sm"
-          />
-        </Field>
-        <Field label="Year">
-          <Select
-            value={view.year}
-            onValueChange={(y) => setView({ year: y })}
-            options={toOptions(years.length ? years : [year])}
-            className="w-24"
-          />
-        </Field>
-        <Field label="Unit">
-          <Select
-            value={view.uid}
-            onValueChange={(uid) => setView({ uid })}
-            options={
-              unitList.length
-                ? unitList.map((u) => ({
-                    value: u.unitId,
-                    label: `Unit ${u.unitId} · ${u.fuel} · ${formatStat(u.noxMassTons)} t NOₓ`,
-                  }))
-                : [{ value: view.uid, label: `Unit ${view.uid}` }]
-            }
-            className="w-full sm:w-72"
-          />
-        </Field>
-      </Controls>
+    <div className="space-y-10">
+      <Question
+        view={view}
+        setView={setView}
+        current={spec}
+        place={place}
+        plant={plant}
+        years={years}
+        filterOptions={filterOptions}
+        fuels={chosen[0]!.artifact.ranges.categorical.primary_fuel}
+      />
 
-      {baseline.error ? (
-        <QueryError
-          error={baseline.error}
-          onRetry={() => void baseline.refetch()}
-        />
-      ) : baseline.isLoading ? (
-        <InlineLoading title="Loading the baseline…" />
-      ) : !baseline.data ? (
+      {scope.error ? (
+        <QueryError error={scope.error} onRetry={() => void scope.refetch()} />
+      ) : !scope.data ? (
+        <InlineLoading title="Loading the units…" />
+      ) : !rows.length ? (
         <p className="text-fg-muted text-sm">
-          This unit has no record for {view.year}; pick another unit-year.
+          {view.scope === "unit"
+            ? `This unit has no NOₓ record for ${view.year}; pick another unit or year.`
+            : `No unit${burning(burns)} reported NOₓ here in ${view.year}; try another fuel or place.`}
         </p>
       ) : (
-        <ExportContext value={{ ...exportMeta, baseline: baseline.data }}>
-          <BaselineCard baseline={baseline.data} chosen={chosen} />
-          <SensitivitySection
+        <div
+          className={
+            scope.isPlaceholderData ? "space-y-10 opacity-60" : "space-y-10"
+          }
+        >
+          <WhatIfResults
             view={view}
             setView={setView}
             chosen={chosen}
-            baseline={baseline.data}
+            scope={scope.data}
+            spec={spec}
+            unit={view.scope === "unit"}
+            place={`${place}${burning(burns)}`}
+            changeLabel={changeLabel}
           />
-          <ScenariosSection
-            view={view}
-            setView={setView}
-            chosen={chosen}
-            baseline={baseline.data}
-          />
-        </ExportContext>
+        </div>
       )}
     </div>
-  );
-}
-
-/** The baseline's inputs as label–value pairs, with each model's prediction next to the actual. */
-function BaselineCard({
-  baseline,
-  chosen,
-}: {
-  baseline: Baseline;
-  chosen: Model[];
-}) {
-  const x: ModelInputs = baseline.inputs;
-  const controls = [
-    x.scr && "SCR",
-    x.sncr && "SNCR",
-    x.low_nox_burner && "low-NOₓ burners",
-    x.injection && "injection",
-    x.overfire_air && "overfire air",
-  ].filter(Boolean);
-  return (
-    <section className="border-edge bg-surface rounded-md border p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-        <h2 className="text-fg font-semibold">{baseline.label}</h2>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-          <span>
-            <span className="text-fg-muted">Actual NOₓ </span>
-            <span className="text-fg font-semibold tabular-nums">
-              {formatStat(baseline.actual)} t
-            </span>
-          </span>
-          {chosen.map((m) => (
-            <span key={m.id}>
-              <span
-                className="mr-1.5 inline-block size-2 rounded-full"
-                style={{ background: MODEL_COLORS[m.kind] }}
-              />
-              <span className="text-fg-muted">{m.name} </span>
-              <span className="text-fg font-semibold tabular-nums">
-                {formatStat(predict(m.artifact, x))} t
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
-      <DetailList
-        className="lg:grid-cols-3"
-        items={[
-          ["Fuel", x.primary_fuel],
-          ["Unit type", x.unit_type],
-          ["NOₓ controls", controls.length ? controls.join(", ") : "none"],
-          ["Heat input", `${formatStat(x.heat_input_mmbtu)} MMBtu`],
-          ["Gross load", `${formatStat(x.gross_load_mwh)} MWh`],
-          ["Operating time", `${formatStat(x.operating_hours)} h`],
-          ["Prior-year NOₓ rate", `${formatStat(x.prior_nox_rate)} lb/MMBtu`],
-        ]}
-      />
-    </section>
   );
 }

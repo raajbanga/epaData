@@ -1,3 +1,4 @@
+import { GlossedText } from "~/components/ui/glossed-text";
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -34,7 +35,9 @@ export function EmptyState({
         {title}
       </p>
       {description && (
-        <p className="text-fg-muted mt-1 text-sm">{description}</p>
+        <p className="text-fg-muted mt-1 text-sm">
+          <GlossedText>{description}</GlossedText>
+        </p>
       )}
       {action && <div className="mt-3">{action}</div>}
     </div>
@@ -54,7 +57,7 @@ export function InlineLoading({
     <div className={cn("text-fg-muted py-10 text-center", className)}>
       <RefreshCw className="text-fg-muted mx-auto mb-2 h-4 w-4 animate-spin" />
       <p className="text-fg-2 text-sm">{title}</p>
-      {subtitle && <p className="text-fg-muted mt-1 text-xs">{subtitle}</p>}
+      {subtitle && <p className="text-fg-muted mt-1 text-sm">{subtitle}</p>}
     </div>
   );
 }
@@ -75,9 +78,7 @@ export function QueryError({
       <p className="text-fg text-sm font-medium">
         Couldn&apos;t load this view
       </p>
-      <p className="text-fg-muted mx-auto mt-1 max-w-md text-xs">
-        {error.message}
-      </p>
+      <p className="text-fg-muted mt-1 text-sm">{error.message}</p>
       {onRetry && (
         <button
           type="button"

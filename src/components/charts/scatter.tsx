@@ -1,14 +1,18 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { quadtree } from "d3";
+import { useTheme } from "next-themes";
 import {
   CartesianGrid,
   ReferenceLine,
   Scatter,
   ScatterChart,
-  Tooltip,
+  usePlotArea,
+  useXAxisScale,
+  useYAxisScale,
   XAxis,
   YAxis,
-  ZAxis,
 } from "recharts";
 import {
   axisProps,
@@ -18,7 +22,7 @@ import {
   still,
   TooltipCard,
 } from "~/components/ui/chart";
-import { powersOfTen } from "./svg";
+import { HoverCard, powersOfTen } from "./svg";
 import { useZoom, ZoomHint, type Zoom } from "./zoom";
 
 export interface PointGroup {
@@ -55,7 +59,7 @@ export function ScatterPlot({
 }) {
   const scale = log ? ("log" as const) : ("auto" as const);
   // Log axes span whole powers of ten, ticked at each one (Recharts' own log ticks are arbitrary).
-  const all = groups.flatMap((g) => g.points);
+  const all = useMemo(() => groups.flatMap((g) => g.points), [groups]);
   const decades = (vs: number[]) => {
     const pos = vs.filter((v) => v > 0);
     const lo = 10 ** Math.floor(Math.log10(Math.min(...pos)));
@@ -66,6 +70,19 @@ export function ScatterPlot({
   const xs = log && all.length ? decades(all.map((p) => p.x)) : undefined;
   const ys = log && all.length ? decades(all.map((p) => p.y)) : undefined;
   const { zoom, reset, handlers, layer } = useZoom("xy");
+  const find = useRef<Finder | null>(null);
+  const [hover, setHover] = useState<Hit | null>(null);
+  // Recharts only needs the data's extent to lay out "auto" axes: two corner points stand in for
+  // the thousands drawn on the canvas.
+  const extent = useMemo(() => {
+    if (!all.length) return [];
+    const xsAll = all.map((p) => p.x);
+    const ysAll = all.map((p) => p.y);
+    return [
+      { x: Math.min(...xsAll), y: Math.min(...ysAll) },
+      { x: Math.max(...xsAll), y: Math.max(...ysAll) },
+    ];
+  }, [all]);
   // Zoomed: the dragged box, keeping the power-of-ten ticks inside it (or Recharts' own when
   // fewer than two fit).
   const axis = (
@@ -87,7 +104,21 @@ export function ScatterPlot({
         <p className="text-fg-muted text-xs">↑ {y.title}</p>
         <ZoomHint zoomed={zoom !== null} reset={reset} />
       </div>
-      <div {...handlers} className="select-none">
+      <div
+        {...handlers}
+        onPointerMove={(e) => {
+          handlers.onPointerMove(e);
+          const r = e.currentTarget.getBoundingClientRect();
+          setHover(
+            find.current?.(e.clientX - r.left, e.clientY - r.top) ?? null,
+          );
+        }}
+        onPointerLeave={() => {
+          handlers.onPointerLeave();
+          setHover(null);
+        }}
+        className="relative select-none"
+      >
         <ChartContainer height={height - 20}>
           <ScatterChart margin={{ top: 8, right: 16, bottom: 20, left: 0 }}>
             <CartesianGrid vertical={false} {...gridProps} />
@@ -107,7 +138,6 @@ export function ScatterPlot({
               width={56}
               {...axisProps}
             />
-            <ZAxis range={[14, 14]} />
             {diagonal && (
               <ReferenceLine
                 segment={[
@@ -119,51 +149,145 @@ export function ScatterPlot({
                 ifOverflow="hidden"
               />
             )}
-            <Tooltip
-              cursor={{ stroke: "var(--edge)", strokeDasharray: "3 3" }}
-              content={({ active, payload }) => {
-                const p = payload?.[0]?.payload as
-                  | (PointGroup["points"][number] & {
-                      group: string;
-                      color: string;
-                    })
-                  | undefined;
-                return active && p ? (
-                  <TooltipCard
-                    title={p.label}
-                    rows={[
-                      {
-                        label: x.title,
-                        value: `${formatValue(p.x)} ${x.unit}`,
-                      },
-                      {
-                        label: y.title,
-                        value: `${formatValue(p.y)} ${y.unit}`,
-                      },
-                    ]}
-                    footer={p.group}
-                  />
-                ) : null;
-              }}
-            />
-            {groups.map((g) => (
-              <Scatter
-                key={g.label}
-                name={g.label}
-                data={g.points.map((p) => ({
-                  ...p,
-                  group: g.label,
-                  color: g.color,
-                }))}
-                fill={g.color}
-                fillOpacity={0.55}
-                {...still}
-              />
-            ))}
+            <Scatter data={extent} shape={() => <g />} {...still} />
+            <PointsLayer groups={groups} find={find} hover={hover} />
             {layer}
           </ScatterChart>
         </ChartContainer>
+        <HoverCard at={hover} width={Infinity}>
+          {hover && (
+            <TooltipCard
+              title={hover.point.label}
+              rows={[
+                {
+                  label: x.title,
+                  value: `${formatValue(hover.point.x)} ${x.unit}`,
+                },
+                {
+                  label: y.title,
+                  value: `${formatValue(hover.point.y)} ${y.unit}`,
+                },
+              ]}
+              footer={hover.group}
+            />
+          )}
+        </HoverCard>
       </div>
     </div>
+  );
+}
+
+type Hit = {
+  point: PointGroup["points"][number];
+  group: string;
+  color: string;
+  x: number;
+  y: number;
+};
+type Finder = (px: number, py: number) => Hit | null;
+
+/** "var(--chart-teal)" → its color, since a canvas can't read CSS variables. */
+function resolveColor(color: string) {
+  const m = /^var\((--[^)]+)\)$/.exec(color);
+  return m
+    ? getComputedStyle(document.documentElement).getPropertyValue(m[1]!).trim()
+    : color;
+}
+
+/**
+ * The points, drawn on one canvas over the plot area instead of thousands of SVG elements (which
+ * took over half a second to build). Hover finds the nearest point through a quadtree.
+ */
+function PointsLayer({
+  groups,
+  find,
+  hover,
+}: {
+  groups: PointGroup[];
+  find: RefObject<Finder | null>;
+  hover: Hit | null;
+}) {
+  const xs = useXAxisScale();
+  const ys = useYAxisScale();
+  const area = usePlotArea();
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const { resolvedTheme } = useTheme();
+
+  // Every point in pixels, kept to the plot area (a zoom leaves the rest outside).
+  const placed = useMemo(() => {
+    if (!xs || !ys || !area) return [];
+    const out: Hit[] = [];
+    for (const g of groups)
+      for (const p of g.points) {
+        const x = Number(xs(p.x));
+        const y = Number(ys(p.y));
+        if (
+          Number.isFinite(x) &&
+          Number.isFinite(y) &&
+          x >= area.x - 1 &&
+          x <= area.x + area.width + 1 &&
+          y >= area.y - 1 &&
+          y <= area.y + area.height + 1
+        )
+          out.push({ point: p, group: g.label, color: g.color, x, y });
+      }
+    return out;
+  }, [groups, xs, ys, area]);
+
+  useEffect(() => {
+    const tree = quadtree<Hit>()
+      .x((h) => h.x)
+      .y((h) => h.y)
+      .addAll(placed);
+    find.current = (px, py) => tree.find(px, py, 8) ?? null;
+  }, [placed, find]);
+
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el || !area) return;
+    const dpr = window.devicePixelRatio || 1;
+    el.width = Math.round(area.width * dpr);
+    el.height = Math.round(area.height * dpr);
+    const ctx = el.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, -area.x * dpr, -area.y * dpr);
+    ctx.clearRect(area.x, area.y, area.width, area.height);
+    ctx.globalAlpha = 0.55;
+    const colors = new Map<string, string>();
+    for (const h of placed) {
+      let c = colors.get(h.color);
+      if (!c) colors.set(h.color, (c = resolveColor(h.color)));
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [placed, area, resolvedTheme]);
+
+  if (!area) return null;
+  return (
+    <g pointerEvents="none">
+      <foreignObject
+        x={area.x}
+        y={area.y}
+        width={area.width}
+        height={area.height}
+      >
+        <canvas
+          ref={canvas}
+          style={{ width: area.width, height: area.height, display: "block" }}
+        />
+      </foreignObject>
+      {hover && (
+        <circle
+          cx={hover.x}
+          cy={hover.y}
+          r={5}
+          fill={hover.color}
+          stroke="var(--fg)"
+          strokeWidth={1.5}
+        />
+      )}
+    </g>
   );
 }

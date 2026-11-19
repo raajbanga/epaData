@@ -1,5 +1,5 @@
 /**
- * Prediction without Python (Phase 2 §5–§6): the models ml/train.py registers carry their
+ * Prediction without Python: the models ml/train.py registers carry their
  * preprocessing and parameters as JSON, and these functions reproduce scikit-learn's
  * predictions exactly (checked against ml/fixtures/parity.json by model.test.ts). Keep
  * `modelInputs` and `designRow` in step with `model_inputs` and `design_matrix` in ml/train.py.
@@ -51,14 +51,50 @@ export const MODEL_COLORS: Record<string, string> = {
   tree: "var(--chart-plum)",
 };
 
+/** The numeric inputs: labels and units for the controls, and the change in plain words. */
 export const NUMERIC_INPUTS = {
-  heat_input_mmbtu: { label: "Heat input", unit: "MMBtu" },
-  gross_load_mwh: { label: "Gross load", unit: "MWh" },
-  operating_hours: { label: "Operating time", unit: "hr" },
-  nameplate_mw: { label: "Nameplate capacity", unit: "MW" },
-  unit_age: { label: "Unit age", unit: "years" },
-  prior_nox_rate: { label: "Prior-year NOₓ rate", unit: "lb/MMBtu" },
-  prior_operating_hours: { label: "Prior-year operating time", unit: "hr" },
+  heat_input_mmbtu: {
+    label: "Heat input",
+    unit: "MMBtu",
+    less: "less fuel burned",
+    more: "more fuel burned",
+  },
+  gross_load_mwh: {
+    label: "Gross load",
+    unit: "MWh",
+    less: "less power generated",
+    more: "more power generated",
+  },
+  operating_hours: {
+    label: "Operating time",
+    unit: "hr",
+    less: "fewer hours run",
+    more: "more hours run",
+  },
+  nameplate_mw: {
+    label: "Nameplate capacity",
+    unit: "MW",
+    less: "smaller units",
+    more: "larger units",
+  },
+  unit_age: {
+    label: "Unit age",
+    unit: "years",
+    less: "younger units",
+    more: "older units",
+  },
+  prior_nox_rate: {
+    label: "Prior-year NOₓ rate",
+    unit: "lb/MMBtu",
+    less: "lower NOₓ rates last year",
+    more: "higher NOₓ rates last year",
+  },
+  prior_operating_hours: {
+    label: "Prior-year operating time",
+    unit: "hr",
+    less: "fewer hours run last year",
+    more: "more hours run last year",
+  },
 } as const;
 export type NumericInput = keyof typeof NUMERIC_INPUTS;
 
@@ -212,131 +248,8 @@ export function featureLabel(name: string) {
 export const percentChange = (value: number, base: number) =>
   base ? (value / base - 1) * 100 : null;
 
-/** The most points a sensitivity curve draws. */
-export const MAX_SENSITIVITY_POINTS = 401;
-
-/**
- * §6.2: the input values of a sensitivity curve, from `from` to `to` in steps of `step`, as values
- * in the input's own unit or (`asValues` false) as percentages of the baseline value `value0`.
- * The baseline itself is always included. A reversed range is read low to high and a negative,
- * zero, or missing step as its size (or 1); `reversed` and `step` (the step used) let the page say
- * so, and `capped` says the grid stopped at the point limit.
- */
-export function sensitivityGrid(
-  value0: number,
-  from: number,
-  to: number,
-  step: number,
-  asValues: boolean,
-  maxPoints = MAX_SENSITIVITY_POINTS,
-) {
-  const size = Math.abs(step) || 1;
-  const reversed = from > to;
-  const toValue = (x: number) => (asValues ? x : value0 * (1 + x / 100));
-  const grid = [value0];
-  for (
-    let x = Math.min(from, to);
-    x <= Math.max(from, to) + size * 1e-9 && grid.length < maxPoints;
-    x += size
-  ) {
-    grid.push(toValue(x));
-  }
-  // Every model input is a physical amount (heat, load, hours, MW, years, a rate): below 0 is
-  // impossible, so those points are dropped and counted for the page to say so.
-  const unique = [...new Set(grid)];
-  const values = unique.filter((v) => v >= 0).sort((a, b) => a - b);
-  return {
-    values,
-    capped: grid.length >= maxPoints,
-    reversed,
-    step: size,
-    negative: unique.length - values.length,
-  };
-}
-
-/**
- * §6.2: one model's prediction at each value of one input, every other input held at the
- * baseline, with the input's change from `value0` (its baseline value, or the training median
- * standing in for a missing one), the prediction's absolute and percentage change, and whether
- * the value is outside the training data.
- */
-export function sensitivityCurve(
-  model: ModelArtifact,
-  base: ModelInputs,
-  input: NumericInput,
-  values: readonly number[],
-  value0: number,
-) {
-  const pred0 = predict(model, base);
-  return {
-    pred0,
-    points: values.map((value) => {
-      const inputs = { ...base, [input]: value };
-      const prediction = predict(model, inputs);
-      return {
-        value,
-        change: percentChange(value, value0),
-        prediction,
-        diff: prediction - pred0,
-        diffPct: percentChange(prediction, pred0),
-        outside: outOfRange(model, inputs).includes(input),
-      };
-    }),
-  };
-}
-
 const scaleBy = (v: number | null, pct: number) =>
   v === null ? null : v * (1 + pct / 100);
-
-/** §6.3: the named scenarios, built from the baseline inputs and the chosen percentages. */
-export function scenarios(base: ModelInputs, loadPct: number, heatPct: number) {
-  const gas = /gas/i.test(base.primary_fuel);
-  const fuel = gas ? "Coal" : "Pipeline Natural Gas";
-  const scr = base.scr ? 0 : 1;
-  const signed = (p: number) => `${p > 0 ? "+" : ""}${p} %`;
-  const efficientPct = heatPct < 0 ? heatPct : -5;
-  return [
-    { name: "Baseline", change: "As reported", inputs: base },
-    {
-      name: `Gross load ${signed(loadPct)}`,
-      change: `Gross load × ${1 + loadPct / 100}`,
-      inputs: {
-        ...base,
-        gross_load_mwh: scaleBy(base.gross_load_mwh, loadPct),
-      },
-    },
-    {
-      name: `Heat input ${signed(heatPct)}`,
-      change: `Heat input × ${1 + heatPct / 100}`,
-      inputs: {
-        ...base,
-        heat_input_mmbtu: scaleBy(base.heat_input_mmbtu, heatPct),
-      },
-    },
-    {
-      name: scr ? "Add SCR" : "Remove SCR",
-      change: `Selective catalytic reduction ${scr ? "installed" : "removed"}`,
-      inputs: { ...base, scr },
-    },
-    {
-      name: `Fuel: ${fuel}`,
-      change: `Primary fuel changed from ${base.primary_fuel}`,
-      inputs: { ...base, primary_fuel: fuel },
-    },
-    {
-      // Efficiency means less fuel for the same load: the heat-input change when it is a cut,
-      // else a fixed 5 % cut (a rise in heat input is not more efficient).
-      name: "High efficiency",
-      change: `Heat input × ${1 + efficientPct / 100}${heatPct < 0 ? "" : " (a 5 % cut; the heat input change above is not a cut)"} with the same gross load, plus SCR`,
-      inputs: {
-        ...base,
-        heat_input_mmbtu: scaleBy(base.heat_input_mmbtu, efficientPct),
-        scr: 1,
-      },
-    },
-  ];
-}
-export type Scenario = ReturnType<typeof scenarios>[number];
 
 /** "26.4M", "7,839", "0.2266": an input value as the tooltips show it. */
 const inputNumber = (v: number) =>
@@ -346,7 +259,7 @@ const inputNumber = (v: number) =>
   });
 
 /**
- * §6.4 "input values": each input a scenario changes, with its value and the baseline's, e.g.
+ * Scenario inputs: each input a scenario changes, with its value and the baseline's, e.g.
  * "Heat input 25.1M MMBtu (from 26.4M)", "SCR yes (from no)".
  */
 export function changedInputs(base: ModelInputs, inputs: ModelInputs) {
@@ -367,26 +280,7 @@ export function changedInputs(base: ModelInputs, inputs: ModelInputs) {
   });
 }
 
-/** §6.3–§6.4: one model's prediction per scenario, its change from the baseline, and range warnings. */
-export function scenarioResults(
-  model: ModelArtifact,
-  base: ModelInputs,
-  list: readonly Scenario[],
-) {
-  const pred0 = predict(model, base);
-  return list.map((scenario) => {
-    const prediction = predict(model, scenario.inputs);
-    return {
-      scenario,
-      prediction,
-      diff: prediction - pred0,
-      diffPct: percentChange(prediction, pred0),
-      warnings: outOfRange(model, scenario.inputs),
-    };
-  });
-}
-
-/** §6.2 over a category: the non-numeric inputs a sensitivity can vary, one value at a time. */
+/** Over a category: the non-numeric inputs a sensitivity can vary, one value at a time. */
 export const CATEGORY_INPUTS = {
   primary_fuel: "Primary fuel",
   unit_type: "Unit type",
@@ -398,42 +292,6 @@ export type CategoryInput = keyof typeof CATEGORY_INPUTS;
 
 export const isCategoryInput = (key: string): key is CategoryInput =>
   key in CATEGORY_INPUTS;
-
-/**
- * §6.2 for a categorical input: one model's prediction for each value the training data had
- * (each fuel, each unit type, or a control off and on), everything else at the baseline. The
- * baseline's own value is always included, even when the training data never saw it.
- */
-export function categoryCurve(
-  model: ModelArtifact,
-  base: ModelInputs,
-  input: CategoryInput,
-) {
-  const pred0 = predict(model, base);
-  const known: (string | number)[] =
-    input === "primary_fuel" || input === "unit_type"
-      ? [...model.ranges.categorical[input]]
-      : [0, 1];
-  if (!known.includes(base[input])) known.push(base[input]);
-  return {
-    pred0,
-    points: known.map((value) => {
-      const prediction = predict(model, { ...base, [input]: value });
-      return {
-        value,
-        label: typeof value === "number" ? (value ? "Yes" : "No") : value,
-        baseline: value === base[input],
-        prediction,
-        diff: prediction - pred0,
-        diffPct: percentChange(prediction, pred0),
-        // A category the model never saw gets no coefficient or split of its own.
-        outside:
-          typeof value === "string" &&
-          !model.ranges.categorical[input as "primary_fuel"].includes(value),
-      };
-    }),
-  };
-}
 
 /**
  * Residuals by group (fuel class): how many test unit-years, the average signed error
@@ -460,3 +318,297 @@ export function residualsByGroup(
     }))
     .sort((a, b) => b.mae - a.mae);
 }
+
+/**
+ * A what-if scenario, applied the same way to every unit in a scope: gross load and heat input
+ * scaled by a percentage (−100 % at most: neither can go below zero), SCR kept, added, or removed,
+ * and the primary fuel kept ("") or set.
+ */
+export interface ScenarioSpec {
+  load: number;
+  heat: number;
+  scr: "" | "add" | "remove";
+  fuel: string;
+}
+export const AS_REPORTED: ScenarioSpec = {
+  load: 0,
+  heat: 0,
+  scr: "",
+  fuel: "",
+};
+
+/**
+ * The changes a what-if offers, as the question reads them ("What if … ran 10 % more?") and as a
+ * short label for charts. Running more or less moves fuel burned and power together; burning less
+ * fuel for the same power is efficiency.
+ */
+export const WHAT_IF_CHANGES: {
+  key: string;
+  label: string;
+  phrase: string;
+  /** What the change means, for someone who doesn't know the terms. */
+  explain: string;
+  spec: ScenarioSpec;
+}[] = [
+  {
+    key: "scr",
+    label: "Add SCR",
+    phrase: "added SCR",
+    explain: "Install SCR, a filter that removes most NOₓ from the exhaust.",
+    spec: { ...AS_REPORTED, scr: "add" },
+  },
+  {
+    key: "noscr",
+    label: "Remove SCR",
+    phrase: "removed SCR",
+    explain: "Take out the SCR filter, if the unit has one.",
+    spec: { ...AS_REPORTED, scr: "remove" },
+  },
+  {
+    key: "more",
+    label: "Run 10 % more",
+    phrase: "ran 10 % more",
+    explain: "Make 10 % more power, burning 10 % more fuel.",
+    spec: { ...AS_REPORTED, load: 10, heat: 10 },
+  },
+  {
+    key: "less",
+    label: "Run 10 % less",
+    phrase: "ran 10 % less",
+    explain: "Make 10 % less power, burning 10 % less fuel.",
+    spec: { ...AS_REPORTED, load: -10, heat: -10 },
+  },
+  {
+    key: "efficient",
+    label: "5 % less fuel",
+    phrase: "burned 5 % less fuel for the same power",
+    explain: "Make the same power from 5 % less fuel (a more efficient unit).",
+    spec: { ...AS_REPORTED, heat: -5 },
+  },
+  {
+    key: "gas",
+    label: "Switch to gas",
+    phrase: "switched to natural gas",
+    explain: "Burn natural gas instead of its current fuel.",
+    spec: { ...AS_REPORTED, fuel: "Pipeline Natural Gas" },
+  },
+  {
+    key: "coal",
+    label: "Switch to coal",
+    phrase: "switched to coal",
+    explain: "Burn coal instead of its current fuel.",
+    spec: { ...AS_REPORTED, fuel: "Coal" },
+  },
+];
+
+export const sameScenario = (a: ScenarioSpec, b: ScenarioSpec) =>
+  a.load === b.load &&
+  a.heat === b.heat &&
+  a.scr === b.scr &&
+  a.fuel === b.fuel;
+
+/** One unit's inputs under a scenario. */
+export function applyScenario(base: ModelInputs, s: ScenarioSpec): ModelInputs {
+  return {
+    ...base,
+    gross_load_mwh: scaleBy(base.gross_load_mwh, Math.max(-100, s.load)),
+    heat_input_mmbtu: scaleBy(base.heat_input_mmbtu, Math.max(-100, s.heat)),
+    scr: s.scr === "add" ? 1 : s.scr === "remove" ? 0 : base.scr,
+    primary_fuel: s.fuel || base.primary_fuel,
+  };
+}
+
+/** The scenario in a few words: "Power output +10 %, add SCR". */
+export function describeScenario(s: ScenarioSpec) {
+  const signed = (p: number) => `${p > 0 ? "+" : ""}${p} %`;
+  const parts = [
+    s.load && `power output ${signed(s.load)}`,
+    s.heat && `fuel burned ${signed(s.heat)}`,
+    s.scr === "add" && "add SCR",
+    s.scr === "remove" && "remove SCR",
+    s.fuel && `fuel: ${s.fuel}`,
+  ].filter(Boolean) as string[];
+  const text = parts.join(", ") || "as reported";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** A unit-year in a what-if scope: who it is, its actual NOₓ, and its model inputs. */
+export interface ScopeRow {
+  facilityId: number;
+  facilityName: string;
+  stateCode: string;
+  unitId: string;
+  actual: number;
+  inputs: ModelInputs;
+}
+
+/**
+ * One model over a scope, as reported and under a scenario: predicted NOₓ (short tons) summed over
+ * the units, the NOₓ rates (lb/MMBtu, lb/MWh) from the summed heat input and gross load, how many
+ * units the scenario takes outside the training data, and each unit's change (largest first).
+ */
+export function scopeTotals(
+  model: ModelArtifact,
+  rows: readonly ScopeRow[],
+  spec: ScenarioSpec,
+) {
+  let base = 0;
+  let scenario = 0;
+  let heat = 0;
+  let load = 0;
+  let baseHeat = 0;
+  let baseLoad = 0;
+  let outside = 0;
+  const units = rows.map((r) => {
+    const x = applyScenario(r.inputs, spec);
+    const p0 = predict(model, r.inputs);
+    const p1 = predict(model, x);
+    base += p0;
+    scenario += p1;
+    heat += x.heat_input_mmbtu ?? 0;
+    load += x.gross_load_mwh ?? 0;
+    baseHeat += r.inputs.heat_input_mmbtu ?? 0;
+    baseLoad += r.inputs.gross_load_mwh ?? 0;
+    if (outOfRange(model, x).length) outside++;
+    return { row: r, base: p0, scenario: p1, diff: p1 - p0 };
+  });
+  /** lb per unit of `denominator`; null without one. */
+  const rate = (tons: number, denominator: number) =>
+    denominator > 0 ? (tons * 2000) / denominator : null;
+  return {
+    base,
+    scenario,
+    diff: scenario - base,
+    diffPct: percentChange(scenario, base),
+    rate: { base: rate(base, baseHeat), scenario: rate(scenario, heat) },
+    perMWh: { base: rate(base, baseLoad), scenario: rate(scenario, load) },
+    outside,
+    units: units.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)),
+  };
+}
+export type ScopeTotals = ReturnType<typeof scopeTotals>;
+
+/** A scope's summed prediction with each unit's inputs changed by `change`. */
+const scopePrediction = (
+  model: ModelArtifact,
+  rows: readonly ScopeRow[],
+  change: (x: ModelInputs) => ModelInputs,
+) => rows.reduce((s, r) => s + predict(model, change(r.inputs)), 0);
+
+/**
+ * A scope's summed prediction as one numeric input moves by each percentage of every unit's own
+ * value (a group has no single value to set), everything else as reported. A unit missing the
+ * input keeps the training median, unchanged.
+ */
+export function scopeSensitivity(
+  model: ModelArtifact,
+  rows: readonly ScopeRow[],
+  input: NumericInput,
+  percents: readonly number[],
+) {
+  const base = scopePrediction(model, rows, (x) => x);
+  return percents.map((pct) => {
+    const prediction = scopePrediction(model, rows, (x) => ({
+      ...x,
+      [input]: scaleBy(x[input], pct),
+    }));
+    return {
+      pct,
+      prediction,
+      diff: prediction - base,
+      diffPct: percentChange(prediction, base),
+    };
+  });
+}
+
+/**
+ * A scope's summed prediction with every unit set to each value of a category input the training
+ * data had (each fuel, each unit type, or a control off and on).
+ */
+export function scopeCategory(
+  model: ModelArtifact,
+  rows: readonly ScopeRow[],
+  input: CategoryInput,
+) {
+  const base = scopePrediction(model, rows, (x) => x);
+  const known: (string | number)[] =
+    input === "primary_fuel" || input === "unit_type"
+      ? [...model.ranges.categorical[input]]
+      : [0, 1];
+  return known.map((value) => {
+    const prediction = scopePrediction(model, rows, (x) => ({
+      ...x,
+      [input]: value,
+    }));
+    return {
+      value,
+      prediction,
+      diff: prediction - base,
+      diffPct: percentChange(prediction, base),
+      // Every unit already has this value: the bar is the scope as reported.
+      reported: rows.every((r) => r.inputs[input] === value),
+    };
+  });
+}
+
+/** A standardized (and maybe logged) value back in the input's own unit. */
+function rawValue(spec: Spec["numeric"][number], z: number) {
+  const x = z * spec.scale + spec.mean;
+  return spec.log ? Math.expm1(x) : x;
+}
+
+/**
+ * Where a decision tree's prediction can change as one numeric input moves: the input's split
+ * thresholds in its own unit, ascending. Between two of them the tree predicts one value, which is
+ * why its curve is a staircase. Empty for a model without a tree.
+ */
+export function treeBreakpoints(model: ModelArtifact, input: NumericInput) {
+  const t = model.tree;
+  const index = model.spec.numeric.findIndex((f) => f.name === input);
+  if (!t || index < 0) return [];
+  const spec = model.spec.numeric[index]!;
+  const out = new Set<number>();
+  t.feature.forEach((f, node) => {
+    if (t.left[node] !== -1 && f === index)
+      out.add(rawValue(spec, t.threshold[node]!));
+  });
+  return [...out].filter((v) => v >= 0).sort((a, b) => a - b);
+}
+
+/**
+ * The checks a decision tree makes for one unit-year, root to leaf, each in the input's own terms
+ * ("Heat input above 20.1M MMBtu", "Primary fuel is not Coal", "SCR: no"), and the leaf's value.
+ * Null for a model without a tree.
+ */
+export function treePath(model: ModelArtifact, inputs: ModelInputs) {
+  const t = model.tree;
+  if (!t) return null;
+  const x = designRow(inputs, model.spec);
+  const steps: { feature: string; text: string }[] = [];
+  let node = 0;
+  while (t.left[node] !== -1) {
+    const f = t.feature[node]!;
+    const name = model.featureNames[f]!;
+    const below = Math.fround(x[f]!) <= t.threshold[node]!;
+    const numeric = model.spec.numeric[f];
+    let text: string;
+    if (numeric) {
+      const meta = NUMERIC_INPUTS[numeric.name];
+      const v = inputNumber(rawValue(numeric, t.threshold[node]!));
+      text = `${meta.label} ${below ? "at most" : "above"} ${v} ${meta.unit}`;
+    } else {
+      // One-hot and on/off columns split at 0.5: the low side means "not this".
+      const [field = name, category] = name.split("=");
+      text = category
+        ? `${featureLabel(field)} ${below ? "is not" : "is"} ${category}`
+        : `${featureLabel(field)}: ${below ? "no" : "yes"}`;
+    }
+    steps.push({ feature: name.split("=")[0]!, text });
+    node = below ? t.left[node]! : t.right[node]!;
+  }
+  return { steps, value: t.value[node]! };
+}
+
+/** "Ridge", "Tree": a model's short name, for chart keys and bar labels. */
+export const shortName = (m: { kind: string; name: string }) =>
+  m.kind === "tree" ? "Tree" : m.kind === "ridge" ? "Ridge" : m.name;

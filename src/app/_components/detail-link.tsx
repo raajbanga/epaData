@@ -4,7 +4,7 @@ import { use, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { SelectionContext, type DetailView } from "./selection-context";
 
-/** A name that opens its facility or unit in the detail dialog (§8.4: results link to details). */
+/** A name that opens its facility or unit in the detail dialog (results link to details). */
 export function DetailLink({
   view,
   className,

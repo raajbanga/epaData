@@ -3,6 +3,7 @@
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportButton } from "~/components/ui/export-button";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
+import { QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
 import { TryExamples } from "~/components/ui/try-examples";
 import { formatStat } from "~/lib/analysis";
@@ -12,14 +13,13 @@ import {
   outlierSentence,
   spreadSentences,
 } from "~/lib/takeaways";
-import { formatNumber } from "~/lib/utils";
+import { capitalize, formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { DistributionChart } from "./charts";
 import {
   asDimension,
   bind,
   combinedLabel,
-  Controls,
   DimensionField,
   dimensionLabel,
   findInfo,
@@ -28,7 +28,7 @@ import {
   type TabProps,
 } from "./shared";
 
-/** The four example questions of Phase 2 §4.2. */
+/** Example questions for the Distribution tab. */
 const EXAMPLES = [
   { label: "average CO₂ by state", variable: "co2MassTons", by: "state" },
   {
@@ -44,7 +44,7 @@ const EXAMPLES = [
   },
 ];
 
-/** The full §4.2 set, as table columns. */
+/** The full set of summary statistics, as table columns. */
 const STAT_COLUMNS: [string, (s: Summary) => number | null][] = [
   ["Mean", (s) => s.mean],
   ["Median", (s) => s.median],
@@ -61,7 +61,7 @@ const STAT_COLUMNS: [string, (s: Summary) => number | null][] = [
 ];
 
 /**
- * §4.2 + §4.4 histogram/box plot: how one variable is spread, overall and per group, and which
+ * Histogram/box plot: how one variable is spread, overall and per group, and which
  * unit-years are unusual. Headline numbers first, the picture next, the full table after.
  */
 export function DistributionTab(props: TabProps) {
@@ -100,10 +100,19 @@ export function DistributionTab(props: TabProps) {
 
   return (
     <div className="space-y-6">
-      <Controls>
-        <VariableField {...bind(props, "variable")} />
-        <DimensionField {...bind(props, "by")} none="No grouping" />
-      </Controls>
+      <QuestionSentence label="Distribution question">
+        <span>How is</span>
+        <VariableField {...bind(props, "variable")} inline />
+        <span>spread across unit-years</span>
+        <DimensionField
+          {...bind(props, "by")}
+          label="Group by"
+          none="overall"
+          prefix="by "
+          inline
+        />
+        <span className="-ml-1.5">?</span>
+      </QuestionSentence>
       <TryExamples
         examples={EXAMPLES.map((e) => ({
           label: e.label,
@@ -125,7 +134,7 @@ export function DistributionTab(props: TabProps) {
         >
           <Takeaways
             items={[
-              `${formatNumber(o.count)} unit-years have a value${o.missing ? ` (${formatNumber(o.missing)} don't report one)` : ""}; ${combined.toLowerCase()} ${formatStat(o.value)} ${info.unit}.`,
+              `Of the ${formatNumber(o.count + (o.missing ?? 0))} unit-years picked, ${formatNumber(o.count)} report ${inSentence(info.label)}${o.missing ? ` (${formatNumber(o.missing)} don't)` : ""}. ${capitalize(combined.toLowerCase())}: **${formatStat(o.value)} ${info.unit}**.`,
               ...spreadSentences(o, info.unit),
               by &&
                 groupMedianSentence(

@@ -3,6 +3,7 @@ import { CloudDownload, Database } from "lucide-react";
 import { getFuelTheme } from "~/lib/map-utils";
 import { getCarbonIntensityTier } from "~/lib/plant-narrative";
 import { cn, datasetOriginLabel } from "~/lib/utils";
+import { Swatch } from "~/components/ui/swatch";
 
 /** Flat outlined tags; color only where the tag carries a status. */
 const VARIANT_STYLES = {
@@ -56,7 +57,7 @@ export function SourceBadge({
       title={
         db
           ? "Read from the local SQLite database"
-          : "Fetched live from the EPA CAMPD API (not stored until saved)"
+          : "Just pulled from the EPA; not stored until you save it"
       }
     >
       <Icon className="h-3 w-3 shrink-0" />
@@ -97,7 +98,7 @@ export function OriginBadge({
         <Badge
           variant="outline"
           className="font-normal"
-          title={`Originally uploaded from ${supersededUpload}; superseded by this CAMPD sync`}
+          title={`Originally uploaded from ${supersededUpload}; replaced by a newer copy pulled from the EPA`}
         >
           Replaced upload
         </Badge>
@@ -118,11 +119,7 @@ export function AuditSeverityBadge({ severity }: { severity: string }) {
 export function FuelBadge({ fuel }: { fuel: string }) {
   return (
     <span className="text-fg-2 inline-flex items-center gap-1.5 text-sm whitespace-nowrap">
-      <span
-        aria-hidden
-        className="h-2 w-2 shrink-0 rounded-full"
-        style={{ backgroundColor: getFuelTheme(fuel).color }}
-      />
+      <Swatch color={getFuelTheme(fuel).color} />
       {fuel}
     </span>
   );

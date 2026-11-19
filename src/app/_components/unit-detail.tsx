@@ -19,7 +19,7 @@ import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
 import { AuditPanel, flagsOfRecords } from "./audit-logs-table";
 
-/** §8.4 / §9 unit detail (in the detail dialog): identification, fuel and controls, and every reporting year (2015 on). */
+/** Unit detail (in the detail dialog): identification, fuel and controls, and every reporting year (2015 on). */
 export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
   const { compareUnitIds, toggleUnitCompare } = use(SelectionContext);
   const { data: unit, isLoading } = api.facilities.getUnit.useQuery({
@@ -30,8 +30,8 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
   if (!unit) {
     return (
       <EmptyState
-        title="This unit is not in the database"
-        description="It may not have been retrieved or uploaded yet."
+        title="This unit is not stored here"
+        description="It may not have been pulled from the EPA or uploaded yet."
       />
     );
   }
@@ -162,10 +162,10 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
 
       <Section
         title="Operating data and emissions by year"
-        note="One row per reporting year (§8.3 historical search), with the dataset each record came from. Flag counts are in the year column; hover for details."
+        note="**One row per year**, with where each record came from. A flag next to a year means something looked odd; hover it for details."
       >
         {records.length === 0 ? (
-          <EmptyState title="No annual records for this unit." />
+          <EmptyState title="No yearly records are stored for this unit yet." />
         ) : (
           <ReportTable
             sortable
@@ -235,7 +235,7 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
   );
 }
 
-/** The controls and programs a unit reported for one year (§7: stored per annual record). */
+/** The controls and programs a unit reported for one year (stored per annual record). */
 function YearControls({
   record,
 }: {

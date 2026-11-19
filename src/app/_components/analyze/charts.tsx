@@ -1,20 +1,30 @@
 "use client";
 
+import { Swatch } from "~/components/ui/swatch";
 import { BarList } from "~/components/charts/bars";
-import { BoxPlot, Histogram } from "~/components/charts/distribution";
+import { BoxKey, BoxPlot, Histogram } from "~/components/charts/distribution";
 import { HeatGrid } from "~/components/charts/heat-grid";
 import { Lines } from "~/components/charts/lines";
 import { ScatterPlot } from "~/components/charts/scatter";
 import { StateMap } from "~/components/charts/state-map";
 import {
   ChartFrame,
+  ChartGrid,
   queryStatus,
   seriesColor,
   type Series,
 } from "~/components/ui/chart";
-import { Field } from "~/components/ui/report";
+import { Section } from "~/components/ui/report";
+import { Takeaways } from "~/components/ui/takeaways";
+import { QuestionSentence } from "~/components/ui/question-sentence";
+import { TryExamples } from "~/components/ui/try-examples";
 import { SegmentedControl } from "~/components/ui/segmented-control";
-import { correlationSentence, strongestPairs } from "~/lib/takeaways";
+import {
+  correlationMethodsReading,
+  correlationSentence,
+  correlationStrength,
+  strongestPairs,
+} from "~/lib/takeaways";
 import { getFuelTheme } from "~/lib/map-utils";
 import { formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/react";
@@ -22,7 +32,6 @@ import {
   asDimension,
   bind,
   combinedLabel,
-  Controls,
   DimensionField,
   dimensionLabel,
   findInfo,
@@ -35,7 +44,7 @@ import {
 } from "./shared";
 
 /**
- * The §4.4 charts. Each one draws the tab's selection; the variable picker sits at the top of the
+ * The Analyze charts. Each one draws the tab's selection; the variable picker sits at the top of the
  * tab (shared by its charts), and each chart keeps only its own controls.
  */
 
@@ -142,8 +151,9 @@ export function TrendChart(props: TabProps) {
 export function BarsChart({
   by,
   limit = 30,
+  reading,
   ...props
-}: TabProps & { by: string; limit?: number }) {
+}: TabProps & { by: string; limit?: number; reading?: string }) {
   const { filters, view, catalog } = props;
   const info = findInfo(catalog, view.variable);
   const dimension = asDimension(by) ?? "state";
@@ -158,6 +168,7 @@ export function BarsChart({
     <ChartFrame
       title={`${info?.label} by ${inSentence(dimensionLabel(catalog, dimension))}`}
       subtitle={`${per(info, "over the selected years")}${shownOf(limit, q.data?.total)}.`}
+      reading={reading}
       note={info?.definition}
       filename={`bars-${view.variable}-by-${dimension}`}
       meta={{ variables: [info] }}
@@ -189,7 +200,7 @@ export function BarsChart({
   );
 }
 
-/** §4.4 rankings: the highest or lowest facilities or units, names beside the bars. */
+/** Rankings: the highest or lowest facilities or units, names beside the bars. */
 export function RankingChart({
   limit = 15,
   ...props
@@ -288,7 +299,7 @@ export function DistributionChart(props: TabProps) {
   return (
     <ChartFrame
       title={`Distribution of ${info?.label}${by ? ` by ${inSentence(dimensionLabel(catalog, by))}` : ""}`}
-      subtitle={`${formatNumber(q.data?.total)} unit-years with a value, ${info?.unit}${by ? "; the 12 largest groups" : ""}${box ? ". Box: middle half; line: median; whiskers: 1.5 × IQR" : ""}.`}
+      subtitle={`${formatNumber(q.data?.total)} unit-years with a value, in ${info?.unit}${by ? "; the 12 groups with the most" : ""}. ${box ? "Each box shows how one group's unit-years spread out; the key below says how to read it." : "Each bar counts the unit-years whose value falls in that range, so tall bars are common values."}`}
       note={[
         q.data?.sampled && "An even sample of 20,000 unit-years is drawn.",
         dropped &&
@@ -339,7 +350,10 @@ export function DistributionChart(props: TabProps) {
       }}
     >
       {box ? (
-        <BoxPlot groups={groups} log={log} unit={info?.unit} />
+        <>
+          <BoxKey />
+          <BoxPlot groups={groups} log={log} unit={info?.unit} />
+        </>
       ) : (
         <Histogram groups={groups} log={log} unit={info?.unit} />
       )}
@@ -348,6 +362,31 @@ export function DistributionChart(props: TabProps) {
 }
 
 /** Scatter of two variables over unit-years, colored by a dimension. */
+/** One-click scatter questions. */
+const SCATTER_EXAMPLES = [
+  {
+    label: "NOₓ vs heat input by fuel",
+    x: "heatInputMMBtu",
+    y: "noxMassTons",
+    color: "fuelClass",
+    log: "1",
+  },
+  {
+    label: "NOₓ rate vs capacity factor by NOₓ control",
+    x: "capacityFactor",
+    y: "noxRate",
+    color: "noxControl",
+    log: "",
+  },
+  {
+    label: "CO₂ vs operating time by unit type",
+    x: "operatingHours",
+    y: "co2MassTons",
+    color: "unitType",
+    log: "1",
+  },
+];
+
 export function ScatterChart(props: TabProps) {
   const { filters, view, setView, catalog } = props;
   const x = findInfo(catalog, view.x);
@@ -372,29 +411,48 @@ export function ScatterChart(props: TabProps) {
     }));
   return (
     <div className="space-y-4">
-      <Controls>
-        <VariableField {...bind(props, "x")} label="X axis" className="w-72" />
-        <VariableField {...bind(props, "y")} label="Y axis" className="w-72" />
+      <QuestionSentence label="Relationship question">
+        <span>How does</span>
+        <VariableField {...bind(props, "y")} label="Y axis" inline />
+        <span>move with</span>
+        <VariableField {...bind(props, "x")} label="X axis" inline />
+        <span className="-ml-1.5">, colored by</span>
         <DimensionField
           {...bind(props, "color")}
           label="Color by"
           exclude={["unit", "facility", "state"]}
+          inline
         />
-        <Toggle
-          label="Scale"
-          value={view.log}
-          onChange={(v) => setView({ log: v })}
-          off="Linear"
-          on="Log–log"
-          titles={[
-            "Equal steps on each axis are equal amounts.",
-            "Each step on both axes is 10× the last, so small and large plants both show.",
-          ]}
-        />
-      </Controls>
+        <span className="-ml-1.5">?</span>
+      </QuestionSentence>
+      <TryExamples
+        examples={SCATTER_EXAMPLES.map(({ label, ...patch }) => ({
+          label,
+          onSelect: () => setView(patch),
+        }))}
+      />
       <ChartFrame
-        title={`${y?.label} against ${x?.label}`}
+        title={`${y?.label} against ${inSentence(x?.label ?? "")}`}
         subtitle={`${correlationSentence(q.data?.r, x?.label ?? "", y?.label ?? "") ?? ""} ${formatNumber(q.data?.total)} unit-years with both values.`}
+        actions={
+          <SegmentedControl
+            value={view.log === "1" ? "1" : "0"}
+            onChange={(v) => setView({ log: v === "1" ? "1" : "" })}
+            options={[
+              {
+                value: "0",
+                label: "Linear",
+                title: "Equal steps on each axis are equal amounts.",
+              },
+              {
+                value: "1",
+                label: "Log–log",
+                title:
+                  "Each step on both axes is 10× the last, so small and large plants both show.",
+              },
+            ]}
+          />
+        }
         note={[
           q.data &&
             q.data.total > points.length &&
@@ -427,69 +485,105 @@ export function ScatterChart(props: TabProps) {
   );
 }
 
-/** Correlation heat map over the main variables. */
-export function CorrelationChart({
-  filters,
-  view,
-  setView,
-  catalog,
-}: TabProps) {
-  const method = view.method === "spearman" ? "spearman" : "pearson";
-  const q = api.analysis.correlation.useQuery({
+/**
+ * How closely each pair of measurements moves together, measured two ways side by side: by
+ * amount (Pearson) and by rank (Spearman), so the reader sees whether a few huge units drive it.
+ */
+export function CorrelationChart({ filters, catalog }: TabProps) {
+  const byAmount = api.analysis.correlation.useQuery({
     filters,
     variables: CORRELATION_VARIABLES,
-    method,
+    method: "pearson",
+  });
+  const byRank = api.analysis.correlation.useQuery({
+    filters,
+    variables: CORRELATION_VARIABLES,
+    method: "spearman",
   });
   const infos = CORRELATION_VARIABLES.map((k) => findInfo(catalog, k));
   const labels = infos.map((v, i) => v?.label ?? CORRELATION_VARIABLES[i]!);
-  const matrix = q.data?.matrix ?? [];
-  const pairs = strongestPairs(labels, matrix);
+  const pairs = strongestPairs(labels, byAmount.data?.matrix ?? []);
+  const panels = [
+    {
+      q: byAmount,
+      method: "pearson",
+      title: "Measured by amount",
+      subtitle:
+        "Do bigger amounts of one come with bigger amounts of the other, in a straight line? (Pearson)",
+    },
+    {
+      q: byRank,
+      method: "spearman",
+      title: "Measured by rank",
+      subtitle:
+        "Do units that rank higher on one also rank higher on the other? A few giant units count less. (Spearman)",
+    },
+  ] as const;
   return (
-    <ChartFrame
-      title={`${method === "pearson" ? "Pearson" : "Spearman"} correlation between variables`}
-      subtitle={[
-        pairs.strongest.length &&
-          `Strongest: ${pairs.strongest.map((p) => `${p.a} with ${p.b} (${p.r.toFixed(2)})`).join("; ")}.`,
-        pairs.negative &&
-          `Most opposed: ${pairs.negative.a} with ${pairs.negative.b} (${pairs.negative.r.toFixed(2)}).`,
-        "Rust: rise together; slate: one falls as the other rises; pale: no link.",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      note="Each cell uses the unit-years that report both variables (n on hover). Pearson measures straight-line association; Spearman uses ranks, so a few huge plants matter less. Correlation is association, not cause."
-      actions={
-        <Field group label="Method">
-          <SegmentedControl
-            value={method}
-            onChange={(m) => setView({ method: m })}
-            options={[
-              {
-                value: "pearson",
-                label: "Pearson",
-                title:
-                  "Straight-line link. Pick it when values are roughly evenly spread.",
-              },
-              {
-                value: "spearman",
-                label: "Spearman",
-                title:
-                  "Rank link: does one rise as the other does? Pick it when a few very large values dominate.",
-              },
-            ]}
-          />
-        </Field>
-      }
-      filename={`correlation-${method}`}
-      meta={{ variables: infos, method, pairCounts: q.data?.n }}
-      height={440}
-      {...queryStatus(q)}
-      table={{
-        head: ["variable", ...CORRELATION_VARIABLES],
-        rows: matrix.map((row, i) => [CORRELATION_VARIABLES[i], ...row]),
-      }}
+    <Section
+      title="Which measurements move together?"
+      note="Each square compares two measurements across all the unit-years picked above. Hover a square for the exact number and how many unit-years it uses. Moving together is not proof that one causes the other."
     >
-      <HeatGrid labels={labels} matrix={matrix} counts={q.data?.n} />
-    </ChartFrame>
+      <div className="space-y-4">
+        <div className="text-fg-2 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+          {[
+            ["var(--chart-rust)", "+1: they rise together"],
+            ["var(--surface-2)", "0: no link"],
+            ["var(--chart-slate)", "−1: one rises as the other falls"],
+          ].map(([color, label]) => (
+            <span key={label} className="flex items-center gap-2">
+              <Swatch
+                color={color!}
+                square
+                className="border-edge h-4 w-4 rounded-sm border"
+              />
+              {label}
+            </span>
+          ))}
+        </div>
+        <Takeaways
+          items={[
+            pairs.strongest[0] &&
+              `The closest pair is **${pairs.strongest[0].a}** and **${pairs.strongest[0].b}** (${pairs.strongest[0].r.toFixed(2)}): when one is high, the other almost always is too.`,
+            pairs.negative &&
+              `The most opposite pair is **${pairs.negative.a}** and **${pairs.negative.b}** (${pairs.negative.r.toFixed(2)}), and that link is ${correlationStrength(pairs.negative.r).replace(/^an? /, "")}.`,
+            byAmount.data &&
+              byRank.data &&
+              correlationMethodsReading(
+                labels,
+                byAmount.data.matrix,
+                byRank.data.matrix,
+              ),
+          ].filter((x): x is string => Boolean(x))}
+        />
+        <ChartGrid>
+          {panels.map(({ q, method, title, subtitle }) => (
+            <ChartFrame
+              key={method}
+              title={title}
+              subtitle={subtitle}
+              filename={`correlation-${method}`}
+              meta={{ variables: infos, method, pairCounts: q.data?.n }}
+              height={420}
+              {...queryStatus(q)}
+              table={{
+                head: ["variable", ...CORRELATION_VARIABLES],
+                rows: (q.data?.matrix ?? []).map((row, i) => [
+                  CORRELATION_VARIABLES[i],
+                  ...row,
+                ]),
+              }}
+            >
+              <HeatGrid
+                labels={labels}
+                matrix={q.data?.matrix ?? []}
+                counts={q.data?.n}
+              />
+            </ChartFrame>
+          ))}
+        </ChartGrid>
+      </div>
+    </Section>
   );
 }
 
@@ -507,7 +601,7 @@ export function MapChart(props: TabProps) {
   return (
     <ChartFrame
       title={`${info?.label} by state`}
-      subtitle={`${per(info, "per state")}; outlined states have no value.`}
+      subtitle={`${per(info, "per state")}. **Darker means more**; states with only an outline have no data.`}
       note={<>{info?.definition} For facility locations, see the Map page.</>}
       filename={`map-${view.variable}`}
       meta={{ variables: [info] }}

@@ -19,7 +19,7 @@ type Invert = (px: number, py: number) => [number, number] | null;
 const MIN_DRAG = 8;
 
 /**
- * Drag-to-zoom for the Recharts charts (§4.4 lists zooming among Plotly's reasons): drag a box
+ * Drag-to-zoom for the Recharts charts (lists zooming among Plotly's reasons): drag a box
  * across the plot with a mouse to zoom into it; "Reset zoom" undoes it. Touch is left alone so
  * a finger still scrolls the page. `axes: "x"` zooms the x range only (lines over time or an
  * input); "xy" zooms both (scatter plots).

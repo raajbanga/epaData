@@ -4,7 +4,7 @@ import { type RouterOutputs } from "~/trpc/react";
 type Stats = RouterOutputs["facilities"]["getStats"];
 
 /**
- * §9 home page "current data coverage": unit-year records stored per reporting year, as one
+ * Home page "current data coverage": unit-year records stored per reporting year, as one
  * column per year from zero (values on hover, and as a table for screen readers).
  */
 export function DataCoverage({
@@ -70,7 +70,7 @@ export function DataCoverage({
   );
 }
 
-/** §9 home page "data sources": each source's active datasets and when it last wrote. */
+/** Home page "data sources": each source's active datasets and when it last wrote. */
 export function DataSources({
   sources = [],
   traci,

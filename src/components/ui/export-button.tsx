@@ -13,7 +13,7 @@ import {
 export const ExportContext = createContext<ExportMetadata>({});
 
 /**
- * Downloads `table` as a ZIP with metadata.json (§7): the page's shared metadata plus `meta`,
+ * Downloads `table` as a ZIP with metadata.json: the page's shared metadata plus `meta`,
  * and the chart image when `png` supplies one.
  */
 export function ExportButton({

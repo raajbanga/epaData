@@ -1,28 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState } from "react";
+import { cn } from "~/lib/utils";
 
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ErrorBar,
-  LabelList,
-  Rectangle,
-  ReferenceLine,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  axisProps,
-  ChartContainer,
   formatTick,
   formatValue,
-  gridProps,
-  still,
   TooltipCard,
-  type Series,
   type TooltipRow,
 } from "~/components/ui/chart";
 
@@ -42,20 +26,19 @@ const ROW = 26;
 
 /** Rough rendered width of the longest name, so the name column fits it (capped). */
 const CHAR = 6.6;
-const labelWidth = (rows: BarRow[]) =>
-  Math.min(240, Math.max(48, ...rows.map((r) => r.label.length * CHAR + 8)));
-
-/** A name cut to fit the name column, on one line. */
-const fit = (label: string, width: number) => {
-  // Glyphs run wider than the column estimate, so cut a little early to stay on one line.
-  const max = Math.floor((width - 8) / (CHAR * 1.12));
-  return label.length > max ? `${label.slice(0, max - 1)}…` : label;
-};
+/** Glyphs run wider than CHAR; `fit` cuts names by this wider measure, so the column uses it too. */
+const NAME_CHAR = CHAR * 1.12;
+const labelWidth = (rows: BarRow[], cap: number) =>
+  Math.min(
+    cap,
+    Math.max(48, ...rows.map((r) => r.label.length * NAME_CHAR + 16)),
+  );
 
 /**
  * Horizontal bars in the given order, names on the left and values written at the bar ends, so
  * no value axis is needed. Negative values (coefficients) grow left from a zero line; intervals
- * draw as whiskers.
+ * draw as whiskers. Plain HTML sized in percent, so the bars arrive drawn with the page instead of
+ * waiting for the browser to measure a chart.
  */
 export function BarList({
   rows,
@@ -70,246 +53,131 @@ export function BarList({
   /** Bar-end labels: compact by default ("232M"); the hover card gives the full value. */
   format?: (v: number) => string;
 }) {
-  const values = rows.flatMap((r) => [r.value, r.high ?? null, r.low ?? null]);
-  const finite = values.filter((v): v is number => v != null);
+  const [hover, setHover] = useState<number | null>(null);
+  const finite = rows
+    .flatMap((r) => [r.value, r.high ?? null, r.low ?? null])
+    .filter((v): v is number => v != null && Number.isFinite(v));
   const max = Math.max(0, ...finite);
   const min = Math.min(0, ...finite);
   const diverging = min < 0;
-  const span = Math.max(max, -min);
-  // A fixed margin past the longest bar for its label, so it fits however narrow the chart is
-  // (a share of the plot width runs out on a phone).
+  const span = Math.max(max, -min) || 1;
+  // Negative labels sit inside the 35 % of room left of zero; positive ones use a fixed margin
+  // past the longest bar, so they fit however narrow the chart is.
+  const lo = diverging ? -span * 1.35 : 0;
+  const hi = diverging ? span : max || 1;
   const labelRoom =
     Math.max(...finite.map((v) => format(v).length), 1) * CHAR + 12;
-  // Negative labels sit inside the 35 % of room left of zero; positive ones use the margin.
-  const domain = diverging ? [-span * 1.35, span] : [0, max || 1];
-  const data = rows.map((r) => ({
-    ...r,
-    err:
-      r.value != null && r.low != null && r.high != null
-        ? [r.value - r.low, r.high - r.value]
-        : undefined,
-  }));
-  const hasErr = data.some((r) => r.err);
+  const at = (v: number) => ((v - lo) / (hi - lo)) * 100;
   const full = (v: number) => `${formatValue(v)}${unit ? ` ${unit}` : ""}`;
-  const nameWidth = labelWidth(rows);
+  const nameColumn = `min(${labelWidth(rows, 300)}px, 46%)`;
+  const shown = hover === null ? null : rows[hover];
 
   return (
-    <ChartContainer height={rows.length * ROW + 8}>
-      <BarChart
-        data={data}
-        layout="vertical"
-        margin={{
-          top: 0,
-          right: labelRoom,
-          bottom: 0,
-          left: 0,
-        }}
-        barCategoryGap={5}
-      >
-        <XAxis type="number" hide domain={domain} />
-        <YAxis
-          type="category"
-          dataKey="label"
-          {...axisProps}
-          tickFormatter={(l: string) => fit(l, nameWidth)}
-          width={nameWidth}
-          interval={0}
-        />
-        {diverging && (
-          <ReferenceLine x={0} stroke="var(--fg-muted)" strokeOpacity={0.6} />
-        )}
-        <Tooltip
-          cursor={{ fill: "var(--surface-2)", fillOpacity: 0.5 }}
-          content={({ active, payload }) => {
-            const r = payload?.[0]?.payload as BarRow | undefined;
-            return active && r ? (
-              <TooltipCard
-                title={r.label}
-                rows={[
-                  {
-                    label: "Value",
-                    value: r.value == null ? "—" : full(r.value),
-                    color: r.color ?? color,
-                  },
-                  ...(r.low != null && r.high != null
-                    ? [
-                        {
-                          label: "95 % interval",
-                          value: `${formatValue(r.low)}–${formatValue(r.high)}`,
-                        },
-                      ]
-                    : []),
-                  ...(r.details ?? []),
-                ]}
-              />
-            ) : null;
-          }}
-        />
-        <Bar
-          dataKey="value"
-          radius={3}
-          maxBarSize={18}
-          shape={(p) => {
-            const r = data[p.index];
-            return (
-              <Rectangle
-                {...p}
-                fill={r?.color ?? color}
-                fillOpacity={r?.faded ? 0.35 : 0.9}
-              />
-            );
-          }}
-          {...still}
-        >
-          {hasErr && (
-            <ErrorBar
-              dataKey="err"
-              direction="x"
-              width={6}
-              stroke="var(--fg-2)"
-              strokeWidth={1.25}
-            />
-          )}
-          <LabelList
-            dataKey="value"
-            content={(p) => {
-              const v = Number(p.value);
-              if (!Number.isFinite(v)) return null;
-              const x = Number(p.x);
-              const w = Number(p.width);
-              const y = Number(p.y) + Number(p.height) / 2;
-              const row = data[Number(p.index)];
-              // Past the bar end, or past the interval's end when there is one.
-              const reach =
-                row?.high != null && v !== 0 ? (w / v) * row.high : w;
-              const left = v < 0;
-              return (
-                <text
-                  x={left ? x + Math.min(0, w) - 6 : x + Math.max(reach, 0) + 6}
-                  y={y}
-                  dominantBaseline="central"
-                  textAnchor={left ? "end" : "start"}
-                  fontSize={12}
-                  fill="var(--fg-2)"
-                  className="tabular-nums"
-                >
-                  {format(v)}
-                </text>
-              );
-            }}
-          />
-        </Bar>
-      </BarChart>
-    </ChartContainer>
-  );
-}
-
-/**
- * Vertical bars per category, one bar per series side by side (scenarios by model). Labels go
- * above the bars; faded bars mark a caveat.
- */
-export function Columns({
-  data,
-  series,
-  height = 320,
-  unit = "",
-  labels,
-  detail,
-  footer,
-  faded,
-}: {
-  data: ({ label: string } & Record<string, number | string | null>)[];
-  series: Series[];
-  height?: number;
-  unit?: string;
-  /** The text above a bar, e.g. its change from the baseline. */
-  labels?: (row: Record<string, unknown>, key: string) => string;
-  /** The tooltip's text after a bar's value (defaults to `labels`). */
-  detail?: (row: Record<string, unknown>, key: string) => string;
-  /** Lines under the tooltip's values, e.g. what a scenario changed. */
-  footer?: (row: Record<string, unknown>) => ReactNode;
-  faded?: (row: Record<string, unknown>, key: string) => boolean;
-}) {
-  return (
-    <ChartContainer height={height}>
-      <BarChart
-        data={data}
-        margin={{ top: 20, right: 8, bottom: 0, left: 0 }}
-        barGap={2}
-      >
-        <CartesianGrid vertical={false} {...gridProps} />
-        <XAxis
-          dataKey="label"
-          {...axisProps}
-          tickFormatter={undefined}
-          interval={0}
-        />
-        <YAxis {...axisProps} width={56} />
-        <Tooltip
-          cursor={{ fill: "var(--surface-2)", fillOpacity: 0.5 }}
-          content={({ active, payload, label }) =>
-            active && payload?.length ? (
-              <TooltipCard
-                title={String(label)}
-                rows={series.map((s) => {
-                  const row = payload[0]!.payload as Record<string, unknown>;
-                  const v = row[s.key];
-                  const extra = (detail ?? labels)?.(row, s.key);
-                  return {
-                    label: s.label,
-                    value:
-                      `${formatValue(v)} ${unit}${extra ? ` (${extra})` : ""}`.trim(),
-                    color: s.color,
-                  };
-                })}
-                footer={footer?.(
-                  payload[0]!.payload as Record<string, unknown>,
-                )}
-              />
-            ) : null
-          }
-        />
-        {series.map((s) => (
-          <Bar
-            key={s.key}
-            dataKey={s.key}
-            name={s.label}
-            fill={s.color}
-            radius={[3, 3, 0, 0]}
-            maxBarSize={44}
-            shape={(p) => (
-              <Rectangle
-                {...p}
-                fillOpacity={faded?.(data[p.index] ?? {}, s.key) ? 0.35 : 0.9}
-              />
-            )}
-            {...still}
+    <div
+      className="relative grid gap-x-2 text-[13px]"
+      style={{ gridTemplateColumns: `${nameColumn} minmax(0, 1fr)` }}
+      onPointerLeave={() => setHover(null)}
+    >
+      {rows.map((r, i) => {
+        const v = r.value;
+        const reach = Math.max(v ?? 0, r.high ?? v ?? 0);
+        return (
+          <div
+            key={`${r.label}-${i}`}
+            className={cn("contents", hover === i && "[&>*]:bg-surface-2/60")}
+            onPointerEnter={() => setHover(i)}
           >
-            {labels && (
-              <LabelList
-                dataKey={s.key}
-                // Plain text over the bar: Recharts' own label wraps to the bar's width.
-                content={(p) => {
-                  const row = data[Number(p.index)];
-                  const text = row ? labels(row, s.key) : "";
-                  return text ? (
-                    <text
-                      x={Number(p.x) + Number(p.width) / 2}
-                      y={Number(p.y) - 6}
-                      textAnchor="middle"
-                      fontSize={11}
-                      fill="var(--fg-2)"
-                      className="tabular-nums"
-                    >
-                      {text}
-                    </text>
-                  ) : null;
-                }}
-              />
-            )}
-          </Bar>
-        ))}
-      </BarChart>
-    </ChartContainer>
+            <span
+              className="text-fg-muted flex items-center justify-end truncate rounded-l-sm pr-2"
+              style={{ height: ROW }}
+              title={r.label}
+            >
+              <span className="truncate">{r.label}</span>
+            </span>
+            <div
+              className="relative rounded-r-sm"
+              style={{ height: ROW }}
+              role="img"
+              aria-label={`${r.label}: ${v == null ? "no value" : full(v)}`}
+            >
+              <div
+                className="absolute inset-y-0 left-0"
+                style={{ right: labelRoom }}
+              >
+                {diverging && (
+                  <span
+                    aria-hidden
+                    className="bg-fg-muted/60 absolute inset-y-0 w-px"
+                    style={{ left: `${at(0)}%` }}
+                  />
+                )}
+                {v != null && (
+                  <span
+                    aria-hidden
+                    className="absolute top-1/2 h-[18px] -translate-y-1/2 rounded-[3px]"
+                    style={{
+                      left: `${at(Math.min(0, v))}%`,
+                      width: `${at(Math.max(0, v)) - at(Math.min(0, v))}%`,
+                      background: r.color ?? color,
+                      opacity: r.faded ? 0.35 : 0.9,
+                    }}
+                  />
+                )}
+                {r.low != null && r.high != null && (
+                  <span
+                    aria-hidden
+                    className="border-fg-2 absolute top-1/2 h-1.5 -translate-y-1/2 border-x-[1.25px]"
+                    style={{
+                      left: `${at(r.low)}%`,
+                      width: `${at(r.high) - at(r.low)}%`,
+                      background:
+                        "linear-gradient(var(--fg-2), var(--fg-2)) center / 100% 1.25px no-repeat",
+                    }}
+                  />
+                )}
+                {v != null && (
+                  <span
+                    className="text-fg-2 absolute top-1/2 -translate-y-1/2 whitespace-nowrap tabular-nums"
+                    style={
+                      v < 0
+                        ? { right: `calc(${100 - at(v)}% + 6px)` }
+                        : { left: `calc(${at(reach)}% + 6px)` }
+                    }
+                  >
+                    {format(v)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      {shown && hover !== null && (
+        <div
+          className="pointer-events-none absolute z-10"
+          style={{ top: (hover + 1) * ROW + 4, left: nameColumn }}
+        >
+          <TooltipCard
+            title={shown.label}
+            rows={[
+              {
+                label: "Value",
+                value: shown.value == null ? "—" : full(shown.value),
+                color: shown.color ?? color,
+              },
+              ...(shown.low != null && shown.high != null
+                ? [
+                    {
+                      label: "95 % interval",
+                      value: `${formatValue(shown.low)}–${formatValue(shown.high)}`,
+                    },
+                  ]
+                : []),
+              ...(shown.details ?? []),
+            ]}
+          />
+        </div>
+      )}
+    </div>
   );
 }

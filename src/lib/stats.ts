@@ -1,5 +1,5 @@
 /**
- * Descriptive statistics and tests for the Analyze page (Phase 2 §4.2, §4.5). Missing values
+ * Descriptive statistics and tests for the Analyze page. Missing values
  * (null) are counted, never treated as 0. Quantiles use linear interpolation between order
  * statistics, NumPy's default (`h = (n − 1)·p`).
  */

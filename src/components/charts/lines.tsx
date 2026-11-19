@@ -28,7 +28,9 @@ type Row = { x: number } & Record<string, number | null>;
 
 /**
  * Lines over a numeric x (years, an input's values): no point markers, a dot on hover, optional
- * reference lines, shaded bands, and marked points (e.g. a baseline).
+ * reference lines, shaded bands, and marked points (e.g. a baseline). `stepped` series draw as a
+ * staircase (each value held until the next x), for a model such as a decision tree that only
+ * changes at thresholds.
  */
 export function Lines({
   data,
@@ -42,6 +44,7 @@ export function Lines({
   refLines = [],
   bands = [],
   markers = [],
+  stepped = [],
   tooltipRows,
 }: {
   data: Row[];
@@ -57,6 +60,8 @@ export function Lines({
   refLines?: { axis: "x" | "y"; value: number; color?: string }[];
   bands?: { from: number; to: number }[];
   markers?: { x: number; y: number; color: string }[];
+  /** Keys of the series drawn as steps. */
+  stepped?: string[];
   /** Extra tooltip rows for a hovered x, after each series' value. */
   tooltipRows?: (row: Row, s: Series) => TooltipRow[];
 }) {
@@ -150,6 +155,7 @@ export function Lines({
             {series.map((s) => (
               <Line
                 key={s.key}
+                type={stepped.includes(s.key) ? "stepAfter" : "linear"}
                 dataKey={s.key}
                 name={s.label}
                 stroke={s.color}

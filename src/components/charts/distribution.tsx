@@ -283,3 +283,88 @@ export function BoxPlot({
     </div>
   );
 }
+
+/**
+ * How to read one box, drawn once above a box plot: the whiskers' ends, the middle half, the
+ * typical (median) line, and the dots for unusual values.
+ */
+export function BoxKey() {
+  const y = 26;
+  const label = (x: number, dy: number, text: string, anchor = "middle") => (
+    <text
+      x={x}
+      y={y + dy}
+      textAnchor={anchor as "middle" | "start" | "end"}
+      fontSize={11.5}
+      fill="var(--fg-2)"
+    >
+      {text}
+    </text>
+  );
+  return (
+    <figure className="text-fg-2 -mt-1 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+      <figcaption className="text-fg text-sm font-medium">
+        How to read a box:
+      </figcaption>
+      <svg
+        width={470}
+        height={56}
+        viewBox="0 0 470 56"
+        role="img"
+        aria-label="A box plot key: the line spans the usual range, the box holds the middle half of the unit-years, the line inside the box is the typical value, and dots beyond are unusual."
+        className="max-w-full"
+      >
+        <line x1={30} x2={330} y1={y} y2={y} stroke="var(--chart-slate)" />
+        <line
+          x1={30}
+          x2={30}
+          y1={y - 6}
+          y2={y + 6}
+          stroke="var(--chart-slate)"
+        />
+        <line
+          x1={330}
+          x2={330}
+          y1={y - 6}
+          y2={y + 6}
+          stroke="var(--chart-slate)"
+        />
+        <rect
+          x={120}
+          y={y - 10}
+          width={120}
+          height={20}
+          fill="var(--surface-2)"
+          stroke="var(--chart-slate)"
+        />
+        <line
+          x1={160}
+          x2={160}
+          y1={y - 10}
+          y2={y + 10}
+          stroke="var(--chart-slate)"
+          strokeWidth={2.5}
+        />
+        <circle
+          cx={380}
+          cy={y}
+          r={3.5}
+          fill="var(--chart-slate)"
+          opacity={0.6}
+        />
+        <circle
+          cx={400}
+          cy={y}
+          r={3.5}
+          fill="var(--chart-slate)"
+          opacity={0.6}
+        />
+        {label(180, -15, "middle half of unit-years")}
+        {label(160, 24, "typical value")}
+        {label(30, 24, "low end", "start")}
+        {label(330, 24, "high end", "end")}
+        {label(390, 24, "unusual")}
+      </svg>
+    </figure>
+  );
+}

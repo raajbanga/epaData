@@ -154,11 +154,8 @@ export function AuditTable({
             <TableCell>
               <AuditSeverityBadge severity={log.severity} />
             </TableCell>
-            <TableCell>
-              <div className="text-fg">{RULE_LABELS[log.flagType]}</div>
-              <div className="text-fg-muted font-mono text-xs">
-                {log.flagType}
-              </div>
+            <TableCell className="text-fg" title={log.flagType}>
+              {RULE_LABELS[log.flagType]}
             </TableCell>
             {(has("facilityName") || has("unitId")) && (
               <TableCell>
@@ -166,17 +163,23 @@ export function AuditTable({
                   (log.unitInternalId ? (
                     <DetailLink
                       view={{ kind: "unit", id: log.unitInternalId }}
-                      className="text-fg block"
+                      className="text-fg"
+                      title={`Facility ${log.facilityId ?? "—"}`}
                     >
                       {log.facilityName}
                     </DetailLink>
                   ) : (
-                    <div className="text-fg">{log.facilityName}</div>
+                    <span
+                      className="text-fg"
+                      title={`Facility ${log.facilityId ?? "—"}`}
+                    >
+                      {log.facilityName}
+                    </span>
                   ))}
-                <div className="text-fg-muted text-xs">
-                  {log.facilityId !== undefined && `${log.facilityId}, `}
-                  unit {log.unitId ?? "—"}
-                </div>
+                <span className="text-fg-muted">
+                  {" "}
+                  · unit {log.unitId ?? "—"}
+                </span>
               </TableCell>
             )}
             {has("year") && (
@@ -227,7 +230,7 @@ export function AuditLogsTable({
   const logs = data?.items ?? [];
   return (
     <div className="space-y-3">
-      <p className="text-fg-2 max-w-[75ch] text-sm">
+      <p className="text-fg-2 text-sm">
         Unit-years that broke a physical-sanity rule when they were stored. The
         values shown are the ones that tripped the rule; hover a row for the
         full explanation.
@@ -304,7 +307,7 @@ export function AuditPanel({ logs }: { logs: AuditLog[] }) {
     <EmptyState
       variant="success"
       title="No data-quality flags"
-      description="Every stored record passed the physical-sanity checks."
+      description="**Every stored record passed** the checks for impossible values."
     />
   ) : (
     <DataPanel>

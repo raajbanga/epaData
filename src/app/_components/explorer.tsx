@@ -45,7 +45,7 @@ const ASC_FIRST: readonly string[] = [
 ];
 const descByDefault = (field: string) => !ASC_FIRST.includes(field);
 
-/** §9 data-explorer page: search form, filters, and the Facilities / Unit-years / Audit-flags tables. */
+/** Data-explorer page: search form, filters, and the Facilities / Unit-years / Audit-flags tables. */
 export function Explorer({ initialState }: { initialState: ExplorerState }) {
   const [activeTab, setActiveTab] = useState(initialState.tab);
   const [filters, setFilters] = useState(initialState.filters);
@@ -67,7 +67,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
   };
   const explorerQuery = explorerSearchParams(explorerState);
 
-  // §8.4: mirror tab, filters, sort, and page into the URL so views are shareable and reload-safe.
+  // Mirror tab, filters, sort, and page into the URL so views are shareable and reload-safe.
   useEffect(() => replaceUrlQuery(explorerQuery), [explorerQuery]);
 
   const resetPages = () => {
@@ -87,7 +87,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
   };
 
   /**
-   * Rubric §6: plain text → filters, view, and sort, applied through the same state as manual
+   * Plain text → filters, view, and sort, applied through the same state as manual
    * filters. Text with nothing the parser recognizes (a plant name) becomes a name search instead.
    */
   const { describe, reset: resetDescribe } = useDescribeSearch({
@@ -198,7 +198,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
 
   return (
     <div className="space-y-6">
-      <PageTitle lead="Search the local database by description, name, or any combination of fields. Click a row for its details; tick rows to compare them.">
+      <PageTitle lead="**Find power plants and their yearly records.** Type a plain description (“coal plants in Kentucky”) or a name, or use the filters. **Click a row** for its full details; **tick rows** to compare them side by side.">
         Explore
       </PageTitle>
 

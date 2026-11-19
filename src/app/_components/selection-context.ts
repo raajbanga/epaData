@@ -10,7 +10,7 @@ export type DetailView =
   | { kind: "compare" };
 
 /**
- * The comparison selection (§8.3) and the detail dialog, shared by every page: tables, the map,
+ * The comparison selection and the detail dialog, shared by every page: tables, the map,
  * and the dialog itself open a facility or unit with `inspect` and tick it with `toggle…`.
  */
 export const SelectionContext = createContext({

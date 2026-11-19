@@ -84,7 +84,7 @@ function coverageRow(label: string, key: NumericKey): MatrixRow {
       const pct = percentOf(p[key], p.unitCount);
       return (
         <div className="space-y-1">
-          <div className="text-fg text-xs font-semibold">
+          <div className="text-fg text-sm font-semibold">
             {p[key]} of {p.unitCount} units{" "}
             <span className="text-fg-muted">({pct}%)</span>
           </div>
@@ -353,7 +353,7 @@ function CompareMatrix({
   );
 }
 
-/** §8.3 facility comparison: 2–4 facilities or units side by side, in the detail dialog. */
+/** Facility comparison: 2–4 facilities or units side by side, in the detail dialog. */
 export function CompareView() {
   const [activeTab, setActiveTab] = useState<CompareTab>("overview");
   const {
@@ -396,7 +396,7 @@ export function CompareView() {
       <DialogHeader
         context="Comparison"
         title={`${selectionLabel(compareIds, compareUnitIds) || "Nothing"} side by side`}
-        lead="Capacity, generation, emissions, and efficiency for each one's latest reporting year. Click a name for its full details."
+        lead="**Side by side, for each one's latest year:** how big it is, how much power it made, how much it emitted, and how efficiently. Click a name for its full details."
         actions={
           <>
             <SourceBadge kind="db" />
@@ -405,7 +405,7 @@ export function CompareView() {
                 href={analyzeHref}
                 onClick={() => inspect(null)}
                 className={buttonClass({ variant: "outline", size: "sm" })}
-                title="Every year of each, with confidence intervals and significance tests"
+                title="Every year of each, and how sure we can be that they differ"
               >
                 Analyze these
               </Link>
@@ -420,8 +420,8 @@ export function CompareView() {
         <InlineLoading title="Comparing…" />
       ) : !canCompare ? (
         <EmptyState
-          title="Pick at least two facilities or units to compare."
-          description="Tick up to four rows in Explore, or use “Add to compare” in a facility or unit."
+          title="Pick at least two plants or units to compare."
+          description="**Tick up to four rows in Explore**, or use “Add to compare” on a plant or unit."
         />
       ) : (
         <>
@@ -468,7 +468,7 @@ export function CompareView() {
               { value: "overview", label: "Overview" },
               { value: "emissions", label: "Emissions and controls" },
               { value: "fleet", label: "Units and fuels" },
-              { value: "granular", label: "Hourly and daily (live API)" },
+              { value: "granular", label: "Hourly and daily (from the EPA)" },
             ]}
           />
 

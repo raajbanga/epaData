@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   geoAlbersUsa,
   geoPath,
@@ -11,7 +11,7 @@ import * as topojson from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import { formatTick, formatValue, TooltipCard } from "~/components/ui/chart";
 import { STATE_NAMES } from "~/lib/describe-search";
-import { colorRamp, HoverCard, useHover, useTokens, useWidth } from "./svg";
+import { colorRamp, HoverCard, useTokens, useWidth } from "./svg";
 
 type StateShape = GeoPermissibleObjects & {
   properties: { name: string };
@@ -53,26 +53,74 @@ export function StateMap({
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [states, setStates] = useState<StateShape[]>([]);
-  const { hover, on } = useHover<{ code: string; name: string }>();
+  const [hover, setHover] = useState<{
+    code: string;
+    name: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const t = useTokens(TOKENS);
   useEffect(() => {
     void loadShapes().then(setStates);
   }, []);
   const height = Math.round(width * RATIO);
-  const known = Object.values(values).filter((v): v is number => v != null);
-  const max = Math.max(1, ...known);
-  const color =
-    t &&
-    scaleSequential(
-      colorRamp([t["surface-2"], t["chart-ochre"], t["chart-rust"]]),
-    ).domain([0, max]);
-  const path = geoPath(
-    geoAlbersUsa().fitSize([width, height], {
-      type: "FeatureCollection",
-      features: states,
-    } as GeoPermissibleObjects),
+
+  // The outlines are the expensive part (detailed shapes through a projection): computed once per
+  // size, not on every pointer move.
+  const outlines = useMemo(() => {
+    if (!width || !states.length) return [];
+    const path = geoPath(
+      geoAlbersUsa().fitSize([width, height], {
+        type: "FeatureCollection",
+        features: states,
+      } as GeoPermissibleObjects),
+    );
+    return states.map((s) => ({
+      name: s.properties.name,
+      code: STATE_NAMES[s.properties.name.toLowerCase()] ?? "",
+      d: path(s) ?? "",
+    }));
+  }, [states, width, height]);
+
+  const max = useMemo(
+    () =>
+      Math.max(
+        1,
+        ...Object.values(values).filter((v): v is number => v != null),
+      ),
+    [values],
   );
-  const hovered = hover && values[hover.item.code];
+  const color = useMemo(
+    () =>
+      t &&
+      scaleSequential(
+        colorRamp([t["surface-2"], t["chart-ochre"], t["chart-rust"]]),
+      ).domain([0, max]),
+    [t, max],
+  );
+
+  // The filled states change only with the data, so hovering re-renders just the outline and card.
+  const fills = useMemo(
+    () =>
+      color &&
+      outlines.map((o) => {
+        const v = values[o.code];
+        return (
+          <path
+            key={o.name}
+            d={o.d}
+            data-code={o.code}
+            data-name={o.name}
+            fill={v == null ? "transparent" : color(v)}
+            stroke="var(--edge)"
+            strokeWidth={0.75}
+          />
+        );
+      }),
+    [outlines, values, color],
+  );
+  const hoveredOutline = hover && outlines.find((o) => o.name === hover.name);
+  const hovered = hover && values[hover.code];
   return (
     <div className="space-y-2">
       <div
@@ -81,36 +129,48 @@ export function StateMap({
         style={{ height: height || 300 }}
       >
         {width > 0 && color && (
-          <svg width={width} height={height}>
-            {states.map((s) => {
-              const code = STATE_NAMES[s.properties.name.toLowerCase()] ?? "";
-              const v = values[code];
-              return (
-                <path
-                  key={s.properties.name}
-                  d={path(s) ?? undefined}
-                  fill={v == null ? "transparent" : color(v)}
-                  stroke={
-                    hover?.item.code === code ? "var(--fg)" : "var(--edge)"
-                  }
-                  strokeWidth={hover?.item.code === code ? 1.5 : 0.75}
-                  {...on({ code, name: s.properties.name })}
-                />
-              );
-            })}
+          <svg
+            width={width}
+            height={height}
+            // One handler for the whole map: the state under the pointer names itself.
+            onPointerMove={(e) => {
+              const el = e.target as SVGElement;
+              const code = el.dataset.code;
+              const name = el.dataset.name;
+              if (code === undefined || !name) return setHover(null);
+              const box = e.currentTarget.getBoundingClientRect();
+              setHover({
+                code,
+                name,
+                x: e.clientX - box.left,
+                y: e.clientY - box.top,
+              });
+            }}
+            onPointerLeave={() => setHover(null)}
+          >
+            {fills}
+            {hoveredOutline && (
+              <path
+                d={hoveredOutline.d}
+                fill="none"
+                stroke="var(--fg)"
+                strokeWidth={1.5}
+                pointerEvents="none"
+              />
+            )}
           </svg>
         )}
         <HoverCard at={hover} width={width}>
           {hover && (
             <TooltipCard
-              title={hover.item.name}
+              title={hover.name}
               rows={[
                 {
                   label: unit,
                   value: hovered == null ? "No value" : formatValue(hovered),
                 },
               ]}
-              footer={details?.(hover.item.code)}
+              footer={details?.(hover.code)}
             />
           )}
         </HoverCard>

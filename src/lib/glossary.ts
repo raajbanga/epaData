@@ -120,7 +120,16 @@ const IN_TEXT: [RegExp, string][] = [
   [/\bIQR\b/, GLOSSARY.find(([p]) => p.source === "\\bIQR\\b")![1]],
   [
     /\bwhiskers?\b/,
-    "Whiskers reach the furthest values within 1.5 × IQR of the box; points beyond are unusual.",
+    "The thin line out from a box or bar. On a box it spans the usual range of values (points beyond are unusual); on an average it spans where the true average likely is.",
+  ],
+  [
+    /\bunit-years?\b/,
+    "One generating unit's record for one year. A power plant has one or more units (boilers or turbines), and each reports once a year.",
+  ],
+  [/\bshort tons?\b/, "The U.S. ton: 2,000 pounds, about 907 kg."],
+  [
+    /\bSCR\b/,
+    "Selective catalytic reduction: a catalyst in the exhaust that removes most NOₓ, often 80–90 %.",
   ],
   [
     /\bmedian\b/,

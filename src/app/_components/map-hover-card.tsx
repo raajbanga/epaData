@@ -26,7 +26,7 @@ export function MapHoverCard({
       className="border-edge bg-surface pointer-events-none absolute z-[1000] rounded-md border p-3 text-sm shadow-lg shadow-black/10"
     >
       <p className="text-fg leading-snug font-medium">{plant.name}</p>
-      <p className="text-fg-muted text-xs">
+      <p className="text-fg-muted text-sm">
         {plant.id} ·{" "}
         {plant.county ? `${formatCountyShort(plant.county)}, ` : ""}
         {plant.stateCode}
@@ -34,7 +34,7 @@ export function MapHoverCard({
       <div className="mt-1.5">
         <FuelBadge fuel={plant.primaryFuel} />
       </div>
-      <dl className="border-edge mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t pt-2 text-xs">
+      <dl className="border-edge mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t pt-2 text-sm">
         {[
           [
             "Capacity",
@@ -50,7 +50,7 @@ export function MapHoverCard({
           </div>
         ))}
       </dl>
-      <p className="text-fg-muted mt-2 text-xs">Click for details</p>
+      <p className="text-fg-muted mt-2 text-sm">Click for details</p>
     </div>
   );
 }

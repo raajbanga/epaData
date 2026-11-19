@@ -1,7 +1,9 @@
 "use client";
 
 import { BarList } from "~/components/charts/bars";
-import { ChartFrame, queryStatus } from "~/components/ui/chart";
+import { ChartGrid, ChartFrame, queryStatus } from "~/components/ui/chart";
+import { BLANK, QuestionSentence } from "~/components/ui/question-sentence";
+import { Select } from "~/components/ui/select";
 import { Takeaways } from "~/components/ui/takeaways";
 import { leadersSentence } from "~/lib/takeaways";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
@@ -9,16 +11,14 @@ import { ExportButton } from "~/components/ui/export-button";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { formatStat } from "~/lib/analysis";
 import { IMPACT_DISCLAIMER, SHORT_TON_KG } from "~/lib/traci";
-import { formatNumber } from "~/lib/utils";
+import { formatNumber, chemUnit } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import {
   asDimension,
   bind,
-  Controls,
   DimensionField,
   dimensionLabel,
   inSentence,
-  Toggle,
   valueColumn,
   type TabProps,
 } from "./shared";
@@ -43,9 +43,9 @@ const formatImpact = (v: number | null | undefined) =>
       ? compact.format(v)
       : formatStat(v);
 
-/** §4.6: CAMPD emissions × TRACI factors, one result per impact category in its own unit. */
+/** CAMPD emissions × TRACI factors, one result per impact category in its own unit. */
 export function ImpactsTab(props: TabProps) {
-  const { filters, view, catalog } = props;
+  const { filters, view, catalog, setView } = props;
   const perMWh = view.perMWh === "1";
   const by = asDimension(view.impactBy) ?? "state";
   const impacts = catalog.variables.filter(
@@ -69,23 +69,26 @@ export function ImpactsTab(props: TabProps) {
 
   return (
     <div className="space-y-6">
-      <p className="border-warn text-fg-2 max-w-4xl border-l-2 pl-4 text-sm">
+      <p className="border-warn text-fg-2 border-l-2 pl-4 text-sm">
         {IMPACT_DISCLAIMER}
       </p>
 
-      <Controls>
-        <DimensionField {...bind(props, "impactBy")} />
-        <Toggle
-          {...bind(props, "perMWh")}
-          label="Result"
-          off="Total"
-          on="Per MWh of gross load"
-          titles={[
-            "The total potential impact over the selected years.",
-            "Impact per MWh of electricity, so plants of different sizes compare fairly.",
+      <QuestionSentence label="Impact question">
+        <span>Which</span>
+        <DimensionField {...bind(props, "impactBy")} inline />
+        <span>carries the most potential impact</span>
+        <Select
+          aria-label="Result"
+          value={perMWh ? "1" : "0"}
+          onValueChange={(v) => setView({ perMWh: v === "1" ? "1" : "" })}
+          options={[
+            { value: "0", label: "in total" },
+            { value: "1", label: "per MWh of power" },
           ]}
+          className={BLANK}
         />
-      </Controls>
+        <span className="-ml-1.5">?</span>
+      </QuestionSentence>
 
       <Takeaways
         items={[
@@ -98,12 +101,12 @@ export function ImpactsTab(props: TabProps) {
             }),
           ),
           perMWh
-            ? "Per MWh of gross load: how much impact each unit of electricity carries, so small but dirty plants rise and large clean ones fall."
-            : "Each category has its own unit, the amount of a reference pollutant with the same effect: kg CO₂ eq for warming, SO₂ eq for acid rain, PM2.5 eq for fine particles that harm breathing, O₃ eq for smog. Categories can't be added together.",
+            ? "**Per MWh of power made**: how much harm each unit of electricity carries, so small but dirty plants rise and large clean ones fall."
+            : "Each kind of harm is measured in its own unit: **kg CO₂ eq** for warming the climate, **SO₂ eq** for acid rain, **PM2.5 eq** for fine particles that harm breathing, **O₃ eq** for smog. Each one means “as much harm as this many kg of that pollutant”, so the four **can't be added together**.",
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <ChartGrid>
         {impacts.map((v, i) => {
           const q = tops[i]!;
           const rows = (q.data?.rows ?? []).filter(
@@ -113,7 +116,7 @@ export function ImpactsTab(props: TabProps) {
             <ChartFrame
               key={v.key}
               title={`${v.label} by ${groupName}`}
-              subtitle={`${v.unit}; the ${Math.min(TOP, rows.length)} largest of ${formatNumber(q.data?.total)} groups.`}
+              subtitle={`In ${chemUnit(v.unit)}; the ${Math.min(TOP, rows.length)} largest of ${formatNumber(q.data?.total)}.`}
               note={v.definition}
               filename={`impact-${v.key}-by-${by}`}
               meta={traciMeta}
@@ -125,7 +128,7 @@ export function ImpactsTab(props: TabProps) {
               }}
             >
               <BarList
-                unit={v.unit}
+                unit={chemUnit(v.unit)}
                 rows={rows.slice(0, TOP).map((r) => ({
                   label: r.group,
                   value: r.values[v.key] ?? null,
@@ -134,7 +137,7 @@ export function ImpactsTab(props: TabProps) {
             </ChartFrame>
           );
         })}
-      </div>
+      </ChartGrid>
 
       <Disclosure
         title={`All results by ${groupName}`}
@@ -145,16 +148,16 @@ export function ImpactsTab(props: TabProps) {
 
       <Disclosure
         title={`TRACI ${version} factors used`}
-        hint="how each CAMPD pollutant maps to a TRACI substance and factor"
+        hint="which EPA pollutant counts toward which harm, and by how much"
       >
-        <p className="text-fg-muted max-w-3xl text-xs">
+        <p className="text-fg-muted text-sm">
           Matched by exact TRACI substance and the air medium; masses converted
           with 1 short ton = {SHORT_TON_KG} kg. Impact = Σ mass (kg) × factor
           over the pollutants in a category.
         </p>
         <ReportTable
           head={[
-            "CAMPD pollutant",
+            "EPA pollutant",
             "TRACI substance",
             "CAS",
             "Impact category",
@@ -170,7 +173,7 @@ export function ImpactsTab(props: TabProps) {
             f.factorUnit,
           ])}
         />
-        <div className="text-fg-muted max-w-4xl space-y-1 text-xs">
+        <div className="text-fg-muted space-y-1 text-xs">
           {impacts.map((v) => (
             <p key={v.key}>
               <span className="text-fg-2 font-medium">{v.label}:</span>{" "}

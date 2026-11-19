@@ -27,7 +27,8 @@ export function HeatGrid({
     Math.max(...labels.map((l) => l.length * 6.6)) + 12,
   );
   const top = 8;
-  const n = labels.length;
+  // Rows 2…n against columns 1…n−1: each pair once, never a variable against itself.
+  const n = labels.length - 1;
   // Square cells, capped so the grid stays a compact panel on wide screens.
   const cell = width > 0 ? Math.min(46, Math.max(18, (width - labelW) / n)) : 0;
   const height = top + cell * n + labelW * 0.75;
@@ -42,39 +43,42 @@ export function HeatGrid({
       {width > 0 && color && (
         <svg width={width} height={height}>
           {matrix.map((row, i) =>
-            row.map((v, j) => (
-              <g key={`${i}-${j}`} {...on({ i, j })}>
-                <rect
-                  x={labelW + j * cell}
-                  y={top + i * cell}
-                  width={cell - 2}
-                  height={cell - 2}
-                  rx={2}
-                  fill={v === null ? "transparent" : color((v + 1) / 2)}
-                  stroke={
-                    hover?.item.i === i && hover.item.j === j
-                      ? "var(--fg)"
-                      : "none"
-                  }
-                />
-                {v !== null && cell >= 30 && (
-                  <text
-                    x={labelW + j * cell + (cell - 2) / 2}
-                    y={top + i * cell + (cell - 2) / 2}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={11}
-                    className="tabular-nums"
-                    fill={Math.abs(v) > 0.55 ? "#fff" : "var(--fg-2)"}
-                    pointerEvents="none"
-                  >
-                    {v.toFixed(2)}
-                  </text>
-                )}
-              </g>
-            )),
+            // Each pair once: the lower half, without a variable against itself.
+            row.map((v, j) =>
+              j >= i ? null : (
+                <g key={`${i}-${j}`} {...on({ i, j })}>
+                  <rect
+                    x={labelW + j * cell}
+                    y={top + (i - 1) * cell}
+                    width={cell - 2}
+                    height={cell - 2}
+                    rx={2}
+                    fill={v === null ? "transparent" : color((v + 1) / 2)}
+                    stroke={
+                      hover?.item.i === i && hover.item.j === j
+                        ? "var(--fg)"
+                        : "none"
+                    }
+                  />
+                  {v !== null && cell >= 30 && (
+                    <text
+                      x={labelW + j * cell + (cell - 2) / 2}
+                      y={top + (i - 1) * cell + (cell - 2) / 2}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={11}
+                      className="tabular-nums"
+                      fill={Math.abs(v) > 0.55 ? "#fff" : "var(--fg-2)"}
+                      pointerEvents="none"
+                    >
+                      {v.toFixed(2)}
+                    </text>
+                  )}
+                </g>
+              ),
+            ),
           )}
-          {labels.map((l, i) => (
+          {labels.slice(1).map((l, i) => (
             <text
               key={`r${l}`}
               x={labelW - 8}
@@ -87,7 +91,7 @@ export function HeatGrid({
               {l}
             </text>
           ))}
-          {labels.map((l, j) => {
+          {labels.slice(0, -1).map((l, j) => {
             const x = labelW + j * cell + (cell - 2) / 2;
             const y = top + n * cell + 8;
             return (

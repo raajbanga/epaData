@@ -2,7 +2,7 @@
 
 import { BarList } from "~/components/charts/bars";
 import { ScatterPlot } from "~/components/charts/scatter";
-import { ChartFrame, queryStatus } from "~/components/ui/chart";
+import { ChartGrid, ChartFrame, queryStatus } from "~/components/ui/chart";
 import { Takeaways } from "~/components/ui/takeaways";
 import { modelSentence } from "~/lib/takeaways";
 import { ExportButton, ExportContext } from "~/components/ui/export-button";
@@ -10,12 +10,8 @@ import { Button } from "~/components/ui/button";
 import { downloadBundle } from "~/lib/export-bundle";
 import { use, useState } from "react";
 import { Download } from "lucide-react";
-import {
-  Disclosure,
-  Field,
-  ReportTable,
-  Section,
-} from "~/components/ui/report";
+import { Disclosure, ReportTable, Section } from "~/components/ui/report";
+import { QuestionSentence } from "~/components/ui/question-sentence";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import { formatStat } from "~/lib/analysis";
 import { modelMetadata } from "~/lib/export-bundle";
@@ -26,10 +22,10 @@ import {
   fitYears,
   MODEL_COLORS,
   residualsByGroup,
+  shortName,
 } from "~/lib/model";
 import { formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import { Controls } from "../analyze/shared";
 import type { Model } from "./predict-view";
 
 const KIND_ORDER = ["baseline", "ridge", "tree"];
@@ -125,7 +121,7 @@ const settings = (m: Model) => {
   return "median of training years";
 };
 
-/** §5.3–§5.4: every model against the baseline on validation and test years, with its evidence. */
+/** Every model against the baseline on validation and test years, with its evidence. */
 export function ModelsTab({
   models,
   view,
@@ -168,7 +164,7 @@ export function ModelsTab({
       const b = metric(base!, "test", "mae");
       const t = metric(m, "test", "mae");
       return b && t !== null
-        ? `${m.name} ${((1 - t / b) * 100).toFixed(0)} %`
+        ? `**${((1 - t / b) * 100).toFixed(0)} % lower** for the ${shortName(m).toLowerCase()} model`
         : null;
     })
     .filter(Boolean);
@@ -215,16 +211,16 @@ export function ModelsTab({
               base ? metric(base, "test", "mae") : null,
               metric(best, "test", "mape"),
             ),
-            `Tested on ${chosen.testYears}, years none of the models saw while training.`,
+            `These scores come from **${chosen.testYears}, years the models never saw** while learning, so they show how well the models predict new data.`,
             persistence !== null &&
-              `A simple rule does better still: last year's NOₓ rate × this year's heat input is off by ${formatStat(persistence)} t on average. NOₓ mostly follows last year's rate times this year's fuel use, which the models only approximate.`,
+              `A simple rule does even better: **last year's NOₓ rate × this year's fuel burned** is off by only ${formatStat(persistence)} tons. A unit's NOₓ mostly follows that rule, which the models only approximate.`,
           ]}
         />
       )}
-      <div className="grid grid-cols-1 gap-x-8 gap-y-6 xl:grid-cols-2">
+      <ChartGrid>
         <ChartFrame
           title={`Test error, ${chosen.testYears}: lower is better`}
-          subtitle={`Mean absolute error per unit-year in short tons NOₓ, with 95 % intervals; against the baseline, ${gains.join(", ")} lower.`}
+          subtitle={`**How many tons each model is off by**, on average, for one unit-year it never saw. Shorter is better. Compared with the simple baseline, the error is ${gains.join(" and ")}.`}
           note={`Chronological split: trained on ${chosen.trainYears}, tuned on ${chosen.validationYears}, then refit on both and tested once on ${chosen.testYears}. The baseline predicts the training median of unit-years with the same fuel and unit type. Intervals come from resampling test units (a unit's two test years together).`}
           filename="test-mae"
           height={sorted.length * 26}
@@ -259,7 +255,7 @@ export function ModelsTab({
         </ChartFrame>
         <ChartFrame
           title={`Variation explained (R²), ${chosen.testYears}: higher is better`}
-          subtitle="Share of the differences in NOₓ between test unit-years each model accounts for, with 95 % intervals. 100 % would be perfect; 0 % is no better than guessing the average."
+          subtitle="**How much of the difference between units each model explains.** 100 % would be perfect; 0 % is no better than guessing the average every time. Longer is better."
           note="R² = 1 − (squared prediction errors ÷ squared differences from the test mean). It rewards getting the large units right, so it can be high while the error in tons on small units is still large; read it with the error chart."
           filename="test-r2"
           height={sorted.length * 26}
@@ -288,7 +284,7 @@ export function ModelsTab({
             })}
           />
         </ChartFrame>
-      </div>
+      </ChartGrid>
 
       <Disclosure
         title="All metrics"
@@ -358,20 +354,20 @@ export function ModelsTab({
         </Section>
       </Disclosure>
 
-      <Controls>
-        <Field group label="Model">
-          <SegmentedControl
-            value={chosen.kind}
-            onChange={(model) => setView({ model })}
-            options={sorted.map((m) => ({ value: m.kind, label: m.name }))}
-          />
-        </Field>
-      </Controls>
+      <QuestionSentence label="Model shown below">
+        <span>How does</span>
+        <SegmentedControl
+          value={chosen.kind}
+          onChange={(model) => setView({ model })}
+          options={sorted.map((m) => ({ value: m.kind, label: m.name }))}
+        />
+        <span>predict, and where does it miss?</span>
+      </QuestionSentence>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <ChartGrid>
         <ChartFrame
           title={`Predicted vs actual NOₓ, ${chosen.testYears}`}
-          subtitle={`${formatNumber(points.length)} test unit-years (an even sample), log scales. On the dashed line the prediction is exact; above it, over-predicted.`}
+          subtitle={`Each dot is one unit-year the model never saw (${formatNumber(points.length)}, an even sample). **Dots on the dashed line were predicted exactly**; above it, the model guessed too high; below, too low.`}
           note="Predictions below 0.01 t are drawn at 0.01 so they fit the log scale. Log scales let small and large units show on one chart."
           legend={fuels.map((fuel) => ({
             key: fuel,
@@ -382,7 +378,7 @@ export function ModelsTab({
           actions={
             <AllPredictionsButton from={from!} to={to!} models={sorted} />
           }
-          height={420}
+          height={540}
           {...queryStatus(tests)}
           table={{
             head: [
@@ -401,7 +397,7 @@ export function ModelsTab({
         >
           <ScatterPlot
             log
-            height={420}
+            height={540}
             // Clipped to the axes: the line where prediction equals actual.
             diagonal={[1e-6, 1e9]}
             x={{ title: "Actual NOₓ (short tons)", unit: "t" }}
@@ -419,84 +415,86 @@ export function ModelsTab({
             }))}
           />
         </ChartFrame>
-        {chosen.kind !== "baseline" && (
+        {/* The two shorter charts stack beside the scatter, so the columns end together. */}
+        <div className="min-w-0 space-y-6">
+          {chosen.kind !== "baseline" && (
+            <ChartFrame
+              title={
+                chosen.kind === "tree"
+                  ? "Feature importance"
+                  : "Ridge coefficients (standardized inputs)"
+              }
+              subtitle={
+                chosen.kind === "tree"
+                  ? `${reading} Share of the tree's error reduction per input; the 15 largest.`
+                  : `${reading} Right of the line: more NOₓ; left: less. The 15 largest effects.`
+              }
+              note={
+                chosen.kind === "ridge"
+                  ? "Numeric inputs are standardized, so a coefficient is the effect of one standard deviation; for a category or control, the effect of it being present."
+                  : undefined
+              }
+              filename={`importance-${chosen.id}`}
+              height={importance.length * 26}
+              table={{
+                head: [
+                  "feature",
+                  chosen.kind === "tree" ? "importance" : "coefficient",
+                ],
+                rows: Object.entries(chosen.artifact.importance).map(
+                  ([k, v]) => [featureLabel(k), v],
+                ),
+              }}
+            >
+              <BarList
+                format={(v) => v.toFixed(chosen.kind === "tree" ? 3 : 2)}
+                color={MODEL_COLORS[chosen.kind]}
+                rows={importance.map(([k, v]) => ({
+                  label: featureLabel(k),
+                  value: v,
+                }))}
+              />
+            </ChartFrame>
+          )}
           <ChartFrame
-            title={
-              chosen.kind === "tree"
-                ? "Feature importance"
-                : "Ridge coefficients (standardized inputs)"
-            }
-            subtitle={
-              chosen.kind === "tree"
-                ? `${reading} Share of the tree's error reduction per input; the 15 largest.`
-                : `${reading} Right of the line: more NOₓ; left: less. The 15 largest effects.`
-            }
-            note={
-              chosen.kind === "ridge"
-                ? "Numeric inputs are standardized, so a coefficient is the effect of one standard deviation; for a category or control, the effect of it being present."
-                : undefined
-            }
-            filename={`importance-${chosen.id}`}
-            height={importance.length * 26}
+            title={`Average error by fuel, ${chosen.testYears}`}
+            subtitle={`${residualReading} Right of the line: the model **guesses too high** for that fuel; left: **too low**. Hover for the typical miss.`}
+            note="Residuals of the same even sample as the scatter. A bias near 0 with a large typical error means the misses cancel out: the model is right on average for that fuel but wrong for individual units."
+            filename={`residuals-${chosen.id}`}
+            height={residuals.length * 26}
+            {...queryStatus(tests)}
             table={{
               head: [
-                "feature",
-                chosen.kind === "tree" ? "importance" : "coefficient",
+                "fuel_class",
+                "test_unit_years",
+                "mean_error_tons",
+                "mean_absolute_error_tons",
               ],
-              rows: Object.entries(chosen.artifact.importance).map(([k, v]) => [
-                featureLabel(k),
-                v,
-              ]),
+              rows: residuals.map((r) => [r.group, r.n, r.bias, r.mae]),
             }}
           >
             <BarList
-              format={(v) => v.toFixed(chosen.kind === "tree" ? 3 : 2)}
-              color={MODEL_COLORS[chosen.kind]}
-              rows={importance.map(([k, v]) => ({
-                label: featureLabel(k),
-                value: v,
+              unit="t"
+              format={(v) => `${v > 0 ? "+" : ""}${formatStat(v)} t`}
+              rows={residuals.map((r) => ({
+                label: r.group,
+                value: r.bias,
+                color: getFuelTheme(r.group).color,
+                details: [
+                  { label: "Typical error", value: `${formatStat(r.mae)} t` },
+                  { label: "Unit-years", value: formatNumber(r.n) },
+                ],
               }))}
             />
           </ChartFrame>
-        )}
-        <ChartFrame
-          title={`Average error by fuel, ${chosen.testYears}`}
-          subtitle={`${residualReading} Bars: average of predicted − actual (right of the line: over-predicts, left: under-predicts); hover for the typical error size.`}
-          note="Residuals of the same even sample as the scatter. A bias near 0 with a large typical error means the misses cancel out: the model is right on average for that fuel but wrong for individual units."
-          filename={`residuals-${chosen.id}`}
-          height={residuals.length * 26}
-          {...queryStatus(tests)}
-          table={{
-            head: [
-              "fuel_class",
-              "test_unit_years",
-              "mean_error_tons",
-              "mean_absolute_error_tons",
-            ],
-            rows: residuals.map((r) => [r.group, r.n, r.bias, r.mae]),
-          }}
-        >
-          <BarList
-            unit="t"
-            format={(v) => `${v > 0 ? "+" : ""}${formatStat(v)} t`}
-            rows={residuals.map((r) => ({
-              label: r.group,
-              value: r.bias,
-              color: getFuelTheme(r.group).color,
-              details: [
-                { label: "Typical error", value: `${formatStat(r.mae)} t` },
-                { label: "Unit-years", value: formatNumber(r.n) },
-              ],
-            }))}
-          />
-        </ChartFrame>
-      </div>
+        </div>
+      </ChartGrid>
 
       <Disclosure
         title="Leakage rules and model record"
         hint="what the models may not see, settings, files, and versions"
       >
-        <p className="text-fg-muted max-w-4xl text-sm">
+        <p className="text-fg-muted text-[15px]">
           No same-year NOₓ, NOₓ rate, or value computed from them is an input;
           the previous year&apos;s NOₓ rate is allowed because it is known
           before the year starts. Same-year heat input, gross load, and
@@ -527,7 +525,7 @@ export function ModelsTab({
 }
 
 /**
- * §7 "model evaluation results and predictions": every test unit-year with each model's
+ * The model-evaluation export: every test unit-year with each model's
  * prediction and error, as a ZIP with the page's metadata. The chart's own download holds only
  * the plotted sample.
  */

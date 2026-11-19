@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
+import { GlossedText } from "~/components/ui/glossed-text";
 import { cn } from "~/lib/utils";
 
 /**
- * Page body for the §9 pages (Retrieve, Upload, Download): title block, sections, and an
+ * Page body for the data pages (Retrieve, Upload, Download): title block, sections, and an
  * optional action bar after them.
  */
 export function PageView({
@@ -44,7 +45,11 @@ export function PageTitle({
       <h1 className="text-fg text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
         {children}
       </h1>
-      {lead && <p className="text-fg-2 max-w-[68ch] text-sm">{lead}</p>}
+      {lead && (
+        <p className="text-fg-2 text-[15px] text-pretty">
+          <GlossedText>{lead}</GlossedText>
+        </p>
+      )}
     </div>
   );
 }

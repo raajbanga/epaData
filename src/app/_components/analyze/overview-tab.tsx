@@ -1,32 +1,30 @@
 "use client";
 
+import { ChartGrid } from "~/components/ui/chart";
+
 import { ProgressBar } from "~/components/ui/metric-bar";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
 import type { VariableInfo } from "~/lib/analysis";
 import { GLOSS_CLASS } from "~/components/ui/glossed-text";
+import { QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
 import { formatStat } from "~/lib/analysis";
-import {
-  leaderSentence,
-  measureName,
-  shareSentence,
-  trendSentence,
-} from "~/lib/takeaways";
+import { leaderSentence, shareSentence, trendSentence } from "~/lib/takeaways";
 import { formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { MapChart, RankingChart, TrendChart } from "./charts";
 import {
   bind,
   combinedLabel,
-  Controls,
   findInfo,
+  inSentence,
   VariableField,
   type TabProps,
 } from "./shared";
 
 const KINDS: { group: VariableInfo["group"]; note: string }[] = [
-  { group: "Measured", note: "As reported to CAMPD." },
+  { group: "Measured", note: "As the plants reported them to the EPA." },
   {
     group: "Derived",
     note: "Rates computed per unit-year; missing when an input is missing or a denominator is 0.",
@@ -42,7 +40,7 @@ const KINDS: { group: VariableInfo["group"]; note: string }[] = [
 ];
 
 /**
- * §4.1 + §4.4: what the selection holds and how it changed. Size first, then one variable over
+ * What the selection holds and how it changed. Size first, then one variable over
  * time, by state, and by its largest emitters; the missing-value summary and variable
  * definitions are one click away.
  */
@@ -51,15 +49,17 @@ export function OverviewTab(props: TabProps) {
   if (!summary) return null;
   return (
     <div className="space-y-6">
-      <Controls>
-        <VariableField {...bind(props, "variable")} label="Show" />
-      </Controls>
+      <QuestionSentence label="Overview question">
+        <span>How has</span>
+        <VariableField {...bind(props, "variable")} label="Show" inline />
+        <span>changed over the years, and where is it?</span>
+      </QuestionSentence>
       <OverviewTakeaways {...props} />
       <TrendChart {...props} />
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <ChartGrid>
         <MapChart {...props} />
         <RankingChart {...props} />
-      </div>
+      </ChartGrid>
 
       <DataQuality {...props} />
     </div>
@@ -102,10 +102,10 @@ function OverviewTakeaways({ filters, view, catalog, summary }: TabProps) {
   return (
     <Takeaways
       items={[
-        `${formatNumber(summary.records)} unit-years from ${formatNumber(summary.facilities)} facilities and ${formatNumber(summary.units)} units${span}.`,
+        `**${formatNumber(summary.records)} unit-years** (yearly records) from ${formatNumber(summary.facilities)} plants and ${formatNumber(summary.units)} units${span}.`,
         sum &&
           total > 0 &&
-          `${measureName(info.label, "sum")}: ${formatStat(total)} ${info.unit}.`,
+          `Together they add up to **${formatStat(total)} ${info.unit}** of ${inSentence(info.label)}.`,
         trendSentence({
           label: info.label,
           unit: info.unit,
@@ -163,7 +163,7 @@ function whyMissing(v: VariableInfo, r: Reasons) {
   return why.length ? `Mostly: ${why.join("; ")}.` : undefined;
 }
 
-/** §4.1 missing-value summary and the variables available, collapsed under one heading. */
+/** Missing-value summary and the variables available, collapsed under one heading. */
 function DataQuality({ catalog, summary }: TabProps) {
   if (!summary) return null;
   const { records } = summary;

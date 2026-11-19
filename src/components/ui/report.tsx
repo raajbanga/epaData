@@ -7,6 +7,7 @@ import {
   SortableTableHead,
   Table,
   TableBody,
+  TablePagination,
   TableCell,
   TableHead,
   TableHeader,
@@ -61,20 +62,24 @@ export function Section({
   children?: ReactNode;
 }) {
   return (
-    <section className="space-y-2.5">
-      <div className="flex items-end gap-3">
-        <div className="min-w-0 flex-1 space-y-0.5">
+    <section className="space-y-3">
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
           {/* Inside a Disclosure the disclosure's title stands in for it. */}
           {title && (
-            <h2 className="text-fg text-base font-semibold">{title}</h2>
+            <h2 className="text-fg min-w-0 flex-1 text-lg font-semibold">
+              {title}
+            </h2>
           )}
-          {note && (
-            <p className="text-fg-muted max-w-3xl text-xs">
-              <GlossedText>{note}</GlossedText>
-            </p>
+          {actions && (
+            <div className="ml-auto flex shrink-0 gap-2">{actions}</div>
           )}
         </div>
-        {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+        {note && (
+          <p className="text-fg-muted text-[15px] text-pretty">
+            <GlossedText>{note}</GlossedText>
+          </p>
+        )}
       </div>
       {children}
     </section>
@@ -124,13 +129,19 @@ export function ReportTable({
   sortable = false,
   sortKeys,
   wrap = [],
+  itemLabel = "rows",
 }: {
   head: string[];
   rows: ReactNode[][];
   sortable?: boolean;
   sortKeys?: SortValue[][];
   wrap?: number[];
+  /** What a row is, for the pager: "uploads". Tables over 20 rows page, 10 rows at a time. */
+  itemLabel?: string;
 }) {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const paged = rows.length > 20;
   const [sort, setSort] = useState({
     sortBy: "",
     sortDir: "asc" as SortDirection,
@@ -153,6 +164,10 @@ export function ReportTable({
       texts.every((t) => t !== null && (NUMERIC_TEXT.test(t) || BLANK.test(t)))
     );
   });
+  // Number columns are only as wide as their numbers: tighter padding, and a long header
+  // ("Replaced by API") wraps onto two lines instead of widening the column.
+  const headClass = (j: number) =>
+    alignRight[j] ? "px-2 text-right leading-tight" : "whitespace-nowrap";
   const order =
     sortable && sort.sortBy
       ? sortRows(
@@ -161,6 +176,10 @@ export function ReportTable({
           sort.sortDir,
         )
       : rows.map((_, i) => i);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const shown = paged
+    ? order.slice((page - 1) * pageSize, page * pageSize)
+    : order;
   return (
     <DataPanel>
       <Table className="text-xs">
@@ -173,19 +192,10 @@ export function ReportTable({
                   label={<Glossed term={h} />}
                   sort={String(j)}
                   {...localSortProps(sort, setSort, (f) => numeric(Number(f)))}
-                  className={cn(
-                    "whitespace-nowrap",
-                    alignRight[j] && "text-right",
-                  )}
+                  className={headClass(j)}
                 />
               ) : (
-                <TableHead
-                  key={j}
-                  className={cn(
-                    "whitespace-nowrap",
-                    alignRight[j] && "text-right",
-                  )}
-                >
+                <TableHead key={j} className={headClass(j)}>
                   <Glossed term={h} />
                 </TableHead>
               ),
@@ -193,15 +203,15 @@ export function ReportTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {order.map((i) => (
+          {shown.map((i) => (
             <TableRow key={i}>
               {rows[i]!.map((cell, j) => (
                 <TableCell
                   key={j}
                   className={cn(
                     "tabular-nums",
-                    wrap.includes(j) ? "min-w-64" : "max-w-64 truncate",
-                    alignRight[j] && "text-right",
+                    wrap.includes(j) ? "min-w-64" : "max-w-56 truncate",
+                    alignRight[j] && "px-2 text-right",
                   )}
                 >
                   {cell}
@@ -211,6 +221,21 @@ export function ReportTable({
           ))}
         </TableBody>
       </Table>
+      {paged && (
+        <TablePagination
+          page={Math.min(page, totalPages)}
+          pageSize={pageSize}
+          totalCount={rows.length}
+          totalPages={totalPages}
+          itemLabel={itemLabel}
+          isPlaceholderData={false}
+          onPageChange={setPage}
+          onPageSizeChange={(n) => {
+            setPageSize(n);
+            setPage(1);
+          }}
+        />
+      )}
     </DataPanel>
   );
 }
@@ -277,7 +302,7 @@ export function Disclosure({
     >
       <summary className="hover:bg-surface flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3">
         <span className="text-fg font-semibold">{title}</span>
-        {hint && <span className="text-fg-muted text-xs">{hint}</span>}
+        {hint && <span className="text-fg-muted text-sm">{hint}</span>}
       </summary>
       {opened && <div className="space-y-6 px-4 pt-2 pb-5">{children}</div>}
     </details>

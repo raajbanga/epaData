@@ -36,7 +36,7 @@ function DatasetStatus({ row }: { row: DatasetRow }) {
         status === "Error"
           ? (row.notes ?? undefined)
           : row.replacedByApi
-            ? `${formatNumber(row.replacedByApi)} of this file's unit-years were replaced by a CAMPD API sync`
+            ? `${formatNumber(row.replacedByApi)} of this file's unit-years were later replaced by records pulled from the EPA`
             : undefined
       }
     >
@@ -45,7 +45,7 @@ function DatasetStatus({ row }: { row: DatasetRow }) {
   );
 }
 
-/** §5 / §6 dataset history: the CAMPD retrievals (Retrieve page) or the file uploads (Upload page), newest first. */
+/** Dataset history: the CAMPD retrievals (Retrieve page) or the file uploads (Upload page), newest first. */
 export function DatasetHistory({
   title,
   note,
@@ -69,9 +69,10 @@ export function DatasetHistory({
       ) : (
         <ReportTable
           sortable
+          itemLabel={uploads ? "uploads" : "retrievals"}
           sortKeys={history.map((d) => [
             undefined,
-            undefined,
+            ...(uploads ? [] : [undefined]),
             datasetParams(d),
             d.importedAt,
             ...Array<undefined>(uploads ? 8 : 6),
@@ -79,7 +80,8 @@ export function DatasetHistory({
           ])}
           head={[
             "Year",
-            "Source",
+            // An upload's file name says CSV or Excel; only retrievals need a source.
+            ...(uploads ? [] : ["Source"]),
             uploads ? "File" : "Parameters",
             "Imported",
             "Received",
@@ -93,11 +95,13 @@ export function DatasetHistory({
           ]}
           rows={history.map((d) => [
             d.reportingYear,
-            sourceLabel(d.source),
+            ...(uploads ? [] : [sourceLabel(d.source)]),
             <span key="params" title={d.name}>
               {datasetParams(d)}
             </span>,
-            d.importedAt.toLocaleString(),
+            <span key="at" title={d.importedAt.toLocaleString()}>
+              {d.importedAt.toLocaleDateString()}
+            </span>,
             formatNumber(d.rawRecordCount),
             formatNumber(d.validRecords),
             tracked(d.insertedRecords),

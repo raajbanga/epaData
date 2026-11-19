@@ -2,7 +2,7 @@ import { buttonClass } from "~/components/ui/button";
 import { EmptyState } from "~/components/ui/empty-state";
 import { PageTitle, PageView } from "~/components/ui/page";
 
-const REPO_URL = "https://github.com/raajbanga/cs396-project";
+const REPO_URL = "https://github.com/raajbanga/epaData";
 
 /** Stands in for a page that writes to the database when the hosted build is read-only. */
 export function LocalOnly({ title }: { title: string }) {
@@ -11,7 +11,7 @@ export function LocalOnly({ title }: { title: string }) {
       <EmptyState
         className="border-edge rounded-lg border"
         title="This page only works when you run epaData locally"
-        description="The hosted version is read-only: it can't save new records to the database. Download the project from GitHub and follow the README's Setup steps to use it."
+        description="**This online version can't save new data.** To add data, download the project from GitHub and follow the README's Setup steps."
         action={
           <a
             href={REPO_URL}

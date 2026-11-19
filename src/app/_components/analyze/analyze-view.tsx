@@ -41,7 +41,7 @@ const TABS = {
 };
 
 /**
- * Phase 2 Analyze page: the Explore filters define the analytical dataset (§4.1); each tab answers
+ * Phase 2 Analyze page: the Explore filters define the analytical dataset; each tab answers
  * one question about it. Filters and every tab choice live in the URL.
  */
 export function AnalyzeView({
@@ -109,7 +109,7 @@ export function AnalyzeView({
       value={analyzeMetadata(source, Object.fromEntries(filterQuery), view)}
     >
       <div className="space-y-6">
-        <PageTitle lead="Pick unit-years with the filters; each tab answers one question about them. Every view can be shared by its URL.">
+        <PageTitle lead="**Pick which records to look at** with the filters (a state, a fuel, some years), then choose a tab: each one answers **one question** about them. Copy the address to share exactly what you see.">
           Analyze
         </PageTitle>
 

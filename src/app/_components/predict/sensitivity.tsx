@@ -1,309 +1,466 @@
 "use client";
 
+import { useMemo } from "react";
+import { BarList } from "~/components/charts/bars";
 import { Lines } from "~/components/charts/lines";
-import { Takeaways } from "~/components/ui/takeaways";
-import { ChartFrame } from "~/components/ui/chart";
-import { Input } from "~/components/ui/input";
-import {
-  Disclosure,
-  Field,
-  ReportTable,
-  Section,
-} from "~/components/ui/report";
+import { ChartGrid, ChartFrame } from "~/components/ui/chart";
+import { Section } from "~/components/ui/report";
 import { Select } from "~/components/ui/select";
+import { BLANK, QuestionSentence } from "~/components/ui/question-sentence";
+import { Takeaways } from "~/components/ui/takeaways";
+import { sensitivitySentences } from "~/lib/takeaways";
+import { capitalize, inSentence } from "~/lib/utils";
 import { formatPct, formatStat } from "~/lib/analysis";
 import {
   CATEGORY_INPUTS,
   isCategoryInput,
-  MAX_SENSITIVITY_POINTS,
   MODEL_COLORS,
   NUMERIC_INPUTS,
-  sensitivityCurve,
-  sensitivityGrid,
+  predict,
+  scopeCategory,
+  scopeSensitivity,
+  treeBreakpoints,
+  type CategoryInput,
   type NumericInput,
+  shortName,
 } from "~/lib/model";
-import { Controls, Toggle } from "../analyze/shared";
-import { CategorySection } from "./category-sensitivity";
-import { rangeWarning, type PredictTabProps } from "./predict-view";
+import { shortNumber } from "~/lib/utils";
+import {
+  modelName,
+  modelSeries,
+  type Model,
+  type WhatIfProps,
+} from "./predict-view";
 
-/** The input a sensitivity varies: a number (a curve) or a category (bars). */
-export function VarySelect({
+const RANGES = ["10", "25", "50", "100"];
+/** Points across the range (plus the tree's own cut points for one unit). */
+const STEPS = 20;
+
+/** The input a sensitivity varies, and for a number, how far. */
+function VaryControls({
   view,
   setView,
-}: Pick<PredictTabProps, "view" | "setView">) {
+  numeric,
+}: Pick<WhatIfProps, "view" | "setView"> & { numeric: boolean }) {
   return (
-    <Field label="Vary">
+    <QuestionSentence label="Sensitivity question">
+      <span>How does the prediction change if</span>
       <Select
+        aria-label="Input to vary"
         value={view.input}
-        onValueChange={(v) =>
-          setView({ input: v, values: "", from: "-50", to: "50", step: "5" })
-        }
-        className="w-60"
+        onValueChange={(input) => setView({ input })}
+        className={BLANK}
         options={[
           ...Object.entries(NUMERIC_INPUTS).map(([value, m]) => ({
             value,
-            label: `${m.label} (${m.unit})`,
+            label: inSentence(m.label),
+            group: "Amounts",
           })),
           ...Object.entries(CATEGORY_INPUTS).map(([value, label]) => ({
             value,
-            label,
+            label: inSentence(label),
+            group: "Fuel, type, and controls",
           })),
         ]}
       />
-    </Field>
+      {numeric ? (
+        <>
+          <span>moves by up to</span>
+          <Select
+            aria-label="Range"
+            value={RANGES.includes(view.range) ? view.range : "50"}
+            onValueChange={(range) => setView({ range })}
+            className={BLANK}
+            options={RANGES.map((r) => ({ value: r, label: `± ${r} %` }))}
+          />
+        </>
+      ) : (
+        <span>changes</span>
+      )}
+      <span className="-ml-1.5">?</span>
+    </QuestionSentence>
   );
 }
-
-/** Three significant figures, for range defaults in an input's own unit. */
-const round3 = (x: number) => Number(x.toPrecision(3));
 
 /**
- * §6.2: one input varied from a minimum to a maximum, as values in its own unit or as
- * percentages of the baseline value, everything else held constant; one curve per chosen model.
- * §6.4: the curve marks the baseline and shades values outside the training data.
+ * One input changed on every unit in the scope, everything else as reported (the scenario aside):
+ * a curve for a number, bars for a fuel, unit type, or control.
  */
-export function SensitivitySection(props: PredictTabProps) {
-  return isCategoryInput(props.view.input) ? (
-    <CategorySection {...props} input={props.view.input} />
-  ) : (
-    <NumericSection {...props} />
+export function SensitivitySection(props: WhatIfProps) {
+  const input = isCategoryInput(props.view.input)
+    ? props.view.input
+    : props.view.input in NUMERIC_INPUTS
+      ? (props.view.input as NumericInput)
+      : "heat_input_mmbtu";
+  const numeric = !isCategoryInput(input);
+  return (
+    <Section
+      title="How the prediction responds to one input"
+      note="Everything else stays as reported."
+    >
+      <VaryControls {...props} numeric={numeric} />
+      {numeric ? (
+        props.unit ? (
+          <UnitCurve {...props} input={input} />
+        ) : (
+          <GroupCurve {...props} input={input} />
+        )
+      ) : (
+        <CategoryBars {...props} input={input} />
+      )}
+    </Section>
   );
 }
 
-function NumericSection({ view, setView, chosen, baseline }: PredictTabProps) {
-  const input = (
-    view.input in NUMERIC_INPUTS ? view.input : "heat_input_mmbtu"
-  ) as NumericInput;
+/** A value as the axis shows it: "26.4M", "0.231". */
+const axisValue = (v: number) =>
+  shortNumber(v) ?? Number(v.toPrecision(3)).toLocaleString();
+
+/**
+ * One unit: predictions at evenly spaced values, plus, for the tree, at each of its cut points, so
+ * its staircase steps exactly where the tree's thresholds are.
+ */
+function UnitCurve({
+  view,
+  chosen,
+  scope,
+  place,
+  input,
+}: WhatIfProps & { input: NumericInput }) {
   const meta = NUMERIC_INPUTS[input];
-  // Every model is trained on the same rows, so their ranges are the same.
+  const base = scope.rows[0]!.inputs;
   const first = chosen[0]!.artifact;
   const [min, max] = first.ranges.numeric[input];
-  const base = baseline.inputs;
   const median = first.spec.numeric.find((f) => f.name === input)?.median ?? 0;
   const value0 = base[input] ?? median;
-  const asValues = view.values === "1";
+  const range = Number(view.range) || 50;
+  const tree = chosen.find((m) => m.kind === "tree");
 
-  // The grid of input values, always including the baseline itself.
-  const from = Number(view.from) || 0;
-  const to = Number(view.to) || 0;
-  const step = Number(view.step);
-  const grid = sensitivityGrid(value0, from, to, step, asValues);
-  const { values, capped } = grid;
-  // What the grid had to correct, said next to the inputs instead of silently.
-  const stepFixed = grid.step !== step;
-  const curves = chosen.map((m) => ({
-    model: m,
-    ...sensitivityCurve(m.artifact, base, input, values, value0),
-  }));
-  // "Over this range, Ridge goes from 1.95K to 3.83K t (2.97K at the baseline); …"
-  const reading = `Over this range, ${curves
-    .map(({ model: m, points, pred0 }) => {
-      const first = points[0]?.prediction ?? null;
-      const last = points.at(-1)?.prediction ?? null;
-      return `${m.kind === "tree" ? "the tree" : m.kind === "ridge" ? "Ridge" : m.name} goes from ${formatStat(first)} to ${formatStat(last)} t (${formatStat(pred0)} at the baseline)`;
-    })
-    .join("; ")}.`;
-  const lo = values[0] ?? value0;
-  const hi = values.at(-1) ?? value0;
-  const outside = curves[0]!.points.filter((q) => q.outside).length;
+  const { rows, jumps, lo, hi } = useMemo(() => {
+    const lo = Math.max(0, value0 * (1 - range / 100));
+    const hi = value0 * (1 + range / 100);
+    const xs = new Set([value0]);
+    for (let i = 0; i <= STEPS; i++) xs.add(lo + ((hi - lo) * i) / STEPS);
+    // Just past each cut point, so the step lands on it.
+    const cuts = tree
+      ? treeBreakpoints(tree.artifact, input).filter((c) => c > lo && c < hi)
+      : [];
+    for (const c of cuts) xs.add(c * (1 + 1e-9) + 1e-12);
+    const rows = [...xs]
+      .sort((a, b) => a - b)
+      .map((x): { x: number } & Record<string, number> => ({
+        x,
+        ...Object.fromEntries(
+          chosen.map((m) => [
+            m.kind,
+            predict(m.artifact, { ...base, [input]: x }),
+          ]),
+        ),
+      }));
+    // Where the tree's prediction actually changes (most cut points don't apply to this unit).
+    const jumps = tree
+      ? rows
+          .filter((r, i) => i > 0 && r.tree !== rows[i - 1]!.tree)
+          .map((r) => r.x)
+      : [];
+    return { rows, jumps, lo, hi };
+  }, [chosen, base, input, value0, range, tree]);
 
-  /** Switching units keeps the same span: ±50 % of the baseline, or the values it covers. */
-  const setUnits = (v: string) =>
-    setView(
-      v
-        ? {
-            values: "1",
-            from: String(round3(value0 * 0.5)),
-            to: String(round3(value0 * 1.5)),
-            step: String(round3((value0 || 1) * 0.05)),
-          }
-        : { values: "", from: "-50", to: "50", step: "5" },
-    );
-  const unit = asValues ? meta.unit : "% of baseline";
+  const at0 = (m: Model) => predict(m.artifact, base);
+  const pctFrom = (v: number | null | undefined, base: number) =>
+    v == null || !base ? null : (v / base - 1) * 100;
+  const reading = [
+    ...sensitivitySentences({
+      range,
+      less: meta.less,
+      more: meta.more,
+      results: chosen.map((m) => ({
+        model: modelName(m),
+        low: pctFrom(rows[0]![m.kind], at0(m)),
+        high: pctFrom(rows.at(-1)![m.kind], at0(m)),
+      })),
+    }),
+    tree &&
+      (jumps.length
+        ? `The tree's line is a staircase: it only changes when ${meta.label.toLowerCase()} crosses ${jumps.length === 1 ? "one threshold" : `one of ${jumps.length} thresholds`} (such as ${jumps.slice(0, 2).map(axisValue).join(" or ")} ${meta.unit}), and stays flat in between.`
+        : `The tree's line is flat: none of its thresholds for ${meta.label.toLowerCase()} falls in this range for this unit.`),
+  ];
 
   return (
-    <Section
-      title="Change one input"
-      note="Every other input stays at its baseline value."
-    >
-      <Controls>
-        <VarySelect view={{ ...view, input }} setView={setView} />
-        <Toggle
-          label="Range in"
-          value={view.values}
-          onChange={setUnits}
-          off="% of baseline"
-          on={meta.unit}
-          titles={[
-            "Set the range as percentages of this unit's actual value (-50 to 50 means half to one and a half times it).",
-            `Set the range in ${meta.unit} directly.`,
-          ]}
-        />
-        {(
-          [
-            ["from", "Minimum"],
-            ["to", "Maximum"],
-            ["step", "Step"],
-          ] as const
-        ).map(([key, label]) => (
-          <Field key={key} label={`${label} (${unit})`}>
-            <Input
-              type="number"
-              value={view[key]}
-              aria-invalid={
-                (key === "step" && stepFixed) ||
-                (key !== "step" && grid.reversed) ||
-                (key === "from" && grid.negative > 0)
-              }
-              onChange={(e) => setView({ [key]: e.target.value })}
-              className="h-9 w-32"
-            />
-          </Field>
-        ))}
-      </Controls>
-      {(grid.reversed || stepFixed || grid.negative > 0) && (
-        <p role="alert" className="text-warn text-sm">
-          {grid.reversed &&
-            `The minimum (${formatStat(from)}) is above the maximum (${formatStat(to)}); the curve runs from ${formatStat(to)} to ${formatStat(from)} ${unit}. `}
-          {stepFixed &&
-            `The step must be a positive number; a step of ${formatStat(grid.step)} ${unit} is used. `}
-          {grid.negative > 0 &&
-            `${meta.label} can't be below 0, so the curve starts at 0 (${grid.negative} impossible ${grid.negative === 1 ? "point" : "points"} left out).`}
-        </p>
-      )}
-      {base[input] === null && (
-        <p className="text-warn text-sm">
-          The baseline has no {meta.label.toLowerCase()}; the model&apos;s
-          training median ({formatStat(median)} {meta.unit}) stands in for it.
-        </p>
-      )}
-      {(outside > 0 || capped) && (
-        <p className="text-warn text-sm">
-          {outside > 0 &&
-            `${rangeWarning([input])} (${outside} of ${values.length} points, shaded.) `}
-          {capped &&
-            `The curve stops at ${MAX_SENSITIVITY_POINTS} points; use a larger step to cover the whole range.`}
-        </p>
-      )}
-
-      <Takeaways items={[reading]} />
-
+    <>
+      <Takeaways items={reading} />
       <ChartFrame
         title={`Predicted NOₓ as ${meta.label.toLowerCase()} changes`}
-        subtitle={`Dots and dashed lines mark the baseline; shading is outside the training data. ${baseline.label}, short tons.`}
-        note={`Training data range: ${formatStat(min)}–${formatStat(max)} ${meta.unit}. This shows how each model responds, not a measured real-world effect.`}
-        legend={curves.map(({ model: m }) => ({
-          key: m.kind,
-          label: m.name,
-          color: MODEL_COLORS[m.kind]!,
-        }))}
+        subtitle={`${capitalize(place)}, short tons. **The dot is how it is now.** Shaded areas are values the models never saw, so treat them as guesses.`}
+        note={`Training data range: ${formatStat(min)}–${formatStat(max)} ${meta.unit}. The tree's line is drawn as steps because it only predicts a handful of values: the average NOₓ of the training unit-years that answer its yes/no questions the same way.`}
+        legend={modelSeries(chosen)}
         filename={`sensitivity-${input}`}
         height={340}
         table={{
           head: [
-            "model",
             `${input} (${meta.unit})`,
-            "change_from_baseline_pct",
-            "predicted_nox_tons",
-            "prediction_change_tons",
-            "prediction_change_pct",
-            "outside_training_range",
+            ...chosen.map((m) => `${m.kind}_predicted_nox_tons`),
           ],
-          rows: curves.flatMap(({ model: m, points }) =>
-            points.map((q) => [
-              m.id,
-              q.value,
-              q.change,
-              q.prediction,
-              q.diff,
-              q.diffPct,
-              q.outside,
-            ]),
-          ),
+          rows: rows.map((r) => [r.x, ...chosen.map((m) => r[m.kind] ?? null)]),
         }}
       >
         <Lines
           height={340}
           xTitle={`${meta.label} (${meta.unit})`}
           unit="t"
-          data={values.map((x, i) => ({
-            x,
-            ...Object.fromEntries(
-              curves.map(({ model: m, points }) => [
-                m.kind,
-                points[i]?.prediction ?? null,
-              ]),
-            ),
-          }))}
-          series={curves.map(({ model: m }) => ({
-            key: m.kind,
-            label: m.name,
-            color: MODEL_COLORS[m.kind]!,
-          }))}
-          refLines={[
-            { axis: "x", value: value0 },
-            ...curves.map(({ model: m, pred0 }) => ({
-              axis: "y" as const,
-              value: pred0,
-              color: MODEL_COLORS[m.kind],
-            })),
-          ]}
+          data={rows}
+          series={modelSeries(chosen)}
+          stepped={["tree"]}
+          refLines={[{ axis: "x", value: value0 }]}
           bands={[
             ...(lo < min ? [{ from: lo, to: min }] : []),
             ...(hi > max ? [{ from: max, to: hi }] : []),
           ]}
-          markers={curves.map(({ model: m, pred0 }) => ({
+          markers={chosen.map((m) => ({
             x: value0,
-            y: pred0,
+            y: at0(m),
             color: MODEL_COLORS[m.kind]!,
           }))}
           tooltipRows={(row, s) => {
-            const point = curves
+            const m = chosen.find((c) => c.kind === s.key);
+            const v = row[s.key];
+            if (!m || v == null) return [];
+            const d = v - at0(m);
+            return Math.abs(d) < 1e-9
+              ? []
+              : [
+                  {
+                    label: "vs. as reported",
+                    value: `${d > 0 ? "+" : ""}${formatStat(d)} t (${formatPct((d / at0(m)) * 100)})`,
+                  },
+                ];
+          }}
+        />
+      </ChartFrame>
+    </>
+  );
+}
+
+/** A group: the summed prediction as the input moves by a share of each unit's own value. */
+function GroupCurve({
+  view,
+  chosen,
+  scope,
+  place,
+  input,
+}: WhatIfProps & { input: NumericInput }) {
+  const meta = NUMERIC_INPUTS[input];
+  const range = Number(view.range) || 50;
+  const percents = useMemo(
+    () =>
+      Array.from(
+        { length: STEPS + 1 },
+        (_, i) => -range + (2 * range * i) / STEPS,
+      ),
+    [range],
+  );
+  const curves = useMemo(
+    () =>
+      chosen.map((m) => ({
+        model: m,
+        points: scopeSensitivity(m.artifact, scope.rows, input, percents),
+      })),
+    [chosen, scope.rows, input, percents],
+  );
+  const signed = (p: number) => `${p > 0 ? "+" : ""}${Number(p.toFixed(1))} %`;
+  const reading = sensitivitySentences({
+    range,
+    less: meta.less,
+    more: meta.more,
+    results: curves.map(({ model: m, points }) => ({
+      model: modelName(m),
+      low: points[0]!.diffPct,
+      high: points.at(-1)!.diffPct,
+    })),
+  });
+
+  return (
+    <>
+      <Takeaways items={reading} />
+      <ChartFrame
+        title={`Total predicted NOₓ as ${meta.label.toLowerCase()} changes on every unit`}
+        subtitle={`${capitalize(place)}, short tons. Left to right: **every unit's value changed by the same percentage**.`}
+        note="Each unit's value is scaled by the same percentage, so a big unit moves more than a small one. The tree's total looks smooth because it adds up many units' steps; pick one unit to see the steps themselves."
+        legend={modelSeries(chosen)}
+        filename={`sensitivity-${input}-scope`}
+        height={340}
+        table={{
+          head: [
+            `${input}_change_pct`,
+            ...chosen.flatMap((m) => [
+              `${m.kind}_predicted_nox_tons`,
+              `${m.kind}_change_pct`,
+            ]),
+          ],
+          rows: percents.map((p, i) => [
+            p,
+            ...curves.flatMap(({ points }) => [
+              points[i]!.prediction,
+              points[i]!.diffPct,
+            ]),
+          ]),
+        }}
+      >
+        <Lines
+          height={340}
+          xTitle={`${meta.label}, change on every unit`}
+          xFormat={signed}
+          unit="t"
+          data={percents.map((x, i) => ({
+            x,
+            ...Object.fromEntries(
+              curves.map(({ model: m, points }) => [
+                m.kind,
+                points[i]!.prediction,
+              ]),
+            ),
+          }))}
+          series={modelSeries(chosen)}
+          refLines={[{ axis: "x", value: 0 }]}
+          markers={curves.map(({ model: m, points }) => ({
+            x: 0,
+            y: points[STEPS / 2]!.prediction,
+            color: MODEL_COLORS[m.kind]!,
+          }))}
+          tooltipRows={(row, s) => {
+            const p = curves
               .find((c) => c.model.kind === s.key)
-              ?.points.find((q) => q.value === row.x);
-            return point
+              ?.points.find((q) => q.pct === row.x);
+            return p && Math.abs(p.diff) > 1e-9
               ? [
                   {
-                    label: "Change",
-                    value: `${point.diff > 0 ? "+" : ""}${formatStat(point.diff)} t (${formatPct(point.diffPct)})`,
+                    label: "vs. as reported",
+                    value: `${p.diff > 0 ? "+" : ""}${formatStat(p.diff)} t (${formatPct(p.diffPct)})`,
                   },
                 ]
               : [];
           }}
         />
       </ChartFrame>
+    </>
+  );
+}
 
-      <Disclosure title="Show values" hint={`${values.length} points`}>
-        <ReportTable
-          sortable
-          head={[
-            `${meta.label} (${meta.unit})`,
-            "Input change",
-            ...curves.flatMap(({ model: m }) => [`${m.name} (t)`, "Change"]),
-            "Training range",
-          ]}
-          rows={values.map((value, i) => [
-            formatStat(value),
-            value === value0
-              ? "baseline"
-              : formatPct(curves[0]!.points[i]!.change),
-            ...curves.flatMap(({ points }) => [
-              formatStat(points[i]!.prediction),
-              formatPct(points[i]!.diffPct),
+/** A fuel, unit type, or control set on every unit: one bar per value, per model. */
+function CategoryBars({
+  chosen,
+  scope,
+  place,
+  unit,
+  input,
+}: WhatIfProps & { input: CategoryInput }) {
+  const label = CATEGORY_INPUTS[input];
+  const lower = /^[A-Z]{2}/.test(label) ? label : label.toLowerCase();
+  const control = input !== "primary_fuel" && input !== "unit_type";
+  const curves = useMemo(
+    () =>
+      chosen.map((m) => ({
+        model: m,
+        points: scopeCategory(m.artifact, scope.rows, input),
+      })),
+    [chosen, scope.rows, input],
+  );
+  const name = (value: string | number) =>
+    typeof value === "number"
+      ? unit
+        ? value
+          ? "Yes"
+          : "No"
+        : value
+          ? "All units"
+          : "No units"
+      : value;
+  // Highest first, by the first model.
+  const order = curves[0]!.points
+    .map((q, i) => ({ q, i }))
+    .sort((a, b) => b.q.prediction - a.q.prediction)
+    .map(({ i }) => i);
+
+  const reading = curves.map(({ model: m, points }) => {
+    const who = capitalize(modelName(m));
+    const sorted = [...points].sort((a, b) => b.prediction - a.prediction);
+    const top = sorted[0]!;
+    const bottom = sorted.at(-1)!;
+    if (top.prediction - bottom.prediction < Math.abs(top.prediction) * 0.01)
+      return `${who} barely responds to the ${lower}.`;
+    if (control) {
+      const on = points.find((q) => q.value === 1)!;
+      const off = points.find((q) => q.value === 0)!;
+      const pct = off.prediction
+        ? (on.prediction / off.prediction - 1) * 100
+        : 0;
+      return `${who} predicts ${Math.abs(Math.round(pct))} % ${pct < 0 ? "less" : "more"} NOₓ ${unit ? `with ${label} than without it` : `with ${label} on every unit than on none`}.`;
+    }
+    return `${who} predicts the most NOₓ with ${top.value} and the least with ${bottom.value}.`;
+  });
+
+  return (
+    <>
+      <Takeaways items={reading} />
+      <ChartFrame
+        title={`Predicted NOₓ for each ${lower}${control ? " setting" : ""}`}
+        subtitle={`${capitalize(place)}, short tons${unit ? "" : ", with every unit set the same way"}. "(reported)" marks how it is now.`}
+        note="Each bar swaps only this input. A fuel or unit type changes what the model assumes about the whole unit, so read the bars as how the models respond, not what a real conversion would do."
+        filename={`sensitivity-${input}`}
+        height={order.length * 26}
+        table={{
+          head: [
+            "model",
+            input,
+            "as_reported",
+            "predicted_nox_tons",
+            "change_pct",
+          ],
+          rows: curves.flatMap(({ model: m, points }) =>
+            points.map((q) => [
+              m.id,
+              name(q.value),
+              q.reported,
+              q.prediction,
+              q.diffPct,
             ]),
-            curves[0]!.points[i]!.outside ? "outside" : "inside",
-          ])}
-          sortKeys={values.map((value, i) => [
-            value,
-            curves[0]!.points[i]!.change,
-            ...curves.flatMap(({ points }) => [
-              points[i]!.prediction,
-              points[i]!.diffPct,
-            ]),
-            undefined,
-          ])}
-        />
-      </Disclosure>
-    </Section>
+          ),
+        }}
+      >
+        <ChartGrid>
+          {curves.map(({ model: m, points }) => (
+            <div key={m.kind} className="min-w-0 space-y-1">
+              {chosen.length > 1 && (
+                <p className="text-fg-muted text-sm font-medium">
+                  {shortName(m)} model
+                </p>
+              )}
+              <BarList
+                unit="t"
+                format={(v) => `${formatStat(v)} t`}
+                rows={order.map((i) => {
+                  const q = points[i]!;
+                  return {
+                    label: q.reported
+                      ? `${name(q.value)} (reported)`
+                      : String(name(q.value)),
+                    value: q.prediction,
+                    color: MODEL_COLORS[m.kind],
+                    details: q.reported
+                      ? []
+                      : [
+                          {
+                            label: "vs. as reported",
+                            value: `${q.diff > 0 ? "+" : ""}${formatStat(q.diff)} t (${formatPct(q.diffPct)})`,
+                          },
+                        ],
+                  };
+                })}
+              />
+            </div>
+          ))}
+        </ChartGrid>
+      </ChartFrame>
+    </>
   );
 }

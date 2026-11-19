@@ -72,7 +72,7 @@ const METRIC_COLUMNS: {
   },
 ];
 
-/** §8 Units view: one row per facility-unit-year, sharing the facilities table's header, pagination, and compare checkbox. */
+/** Units view: one row per facility-unit-year, sharing the facilities table's header, pagination, and compare checkbox. */
 export function UnitsTable({
   data,
   paging,
@@ -157,7 +157,7 @@ export function UnitsTable({
                     onToggle={() => onToggleCompare(r.unitInternalId)}
                   />
                 </TableCell>
-                <TableCell className="max-w-48 min-w-36">
+                <TableCell className="max-w-44 min-w-32">
                   <div className="truncate">
                     {showRank && <RankBadge rank={r.rank} />}
                     <span className="text-fg" title={r.facilityName}>
@@ -168,7 +168,7 @@ export function UnitsTable({
                     {r.facilityId}
                   </div>
                 </TableCell>
-                <TableCell className="max-w-36 min-w-24">
+                <TableCell className="max-w-32 min-w-20">
                   <DetailLink
                     view={{ kind: "unit", id: r.unitInternalId }}
                     className="text-fg block font-medium"

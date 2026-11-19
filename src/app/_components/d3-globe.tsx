@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
+import {
+  geoDistance,
+  geoGraticule10,
+  geoOrthographic,
+  geoPath,
+  type GeoPermissibleObjects,
+} from "d3";
 import {
   Compass,
   Maximize2,
@@ -31,21 +37,22 @@ type Rotation = [number, number, number];
 type Projection = ReturnType<typeof createProjection>;
 
 interface GeoLayers {
-  land: d3.GeoPermissibleObjects;
-  states: d3.GeoPermissibleObjects;
-  nation: d3.GeoPermissibleObjects;
+  land: GeoPermissibleObjects;
+  states: GeoPermissibleObjects;
+  nation: GeoPermissibleObjects;
 }
 
 const MIN_SCALE = 160;
 const MAX_SCALE = 10000;
 const clampScale = (scale: number) =>
   Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-const HOME_VIEW = { yaw: 98, pitch: -38, scale: 380 };
+// The contiguous US fills most of the frame; drag or zoom out for the rest of the globe.
+const HOME_VIEW = { yaw: 96, pitch: -38, scale: 960 };
 const PRESETS = [
   { label: "US", ...HOME_VIEW },
-  { label: "East", yaw: 78, pitch: -38, scale: 560 },
-  { label: "Texas", yaw: 99, pitch: -31, scale: 720 },
-  { label: "West", yaw: 118, pitch: -38, scale: 560 },
+  { label: "East", yaw: 82, pitch: -38, scale: 1500 },
+  { label: "Texas", yaw: 99, pitch: -31, scale: 2200 },
+  { label: "West", yaw: 114, pitch: -40, scale: 1500 },
 ];
 const HUD_BUTTON = "text-fg-2 hover:text-fg hover:bg-surface-2/60 h-7 px-2";
 const HUD_PANEL =
@@ -86,8 +93,7 @@ function createProjection(
   scale: number,
   rotation: Rotation,
 ) {
-  return d3
-    .geoOrthographic()
+  return geoOrthographic()
     .scale(scale)
     .translate([width / 2, height / 2])
     .rotate(rotation)
@@ -101,7 +107,7 @@ function projectVisible(
   plant: Pick<MapFacility, "latitude" | "longitude">,
 ) {
   const lonLat: [number, number] = [plant.longitude, plant.latitude];
-  if (d3.geoDistance(lonLat, [-rotation[0], -rotation[1]]) > Math.PI / 2)
+  if (geoDistance(lonLat, [-rotation[0], -rotation[1]]) > Math.PI / 2)
     return null;
   return projection(lonLat);
 }
@@ -141,7 +147,7 @@ async function loadGeoLayers(): Promise<GeoLayers> {
     Topology<{ states: GeometryCollection; nation: GeometryCollection }>,
   ];
   const toGeo = (topo: Topology, obj: GeometryCollection) =>
-    topojson.feature(topo, obj) as unknown as d3.GeoPermissibleObjects;
+    topojson.feature(topo, obj) as unknown as GeoPermissibleObjects;
   return {
     land: toGeo(landTopo, landTopo.objects.land),
     states: toGeo(statesTopo, statesTopo.objects.states),
@@ -226,9 +232,9 @@ export function D3Globe({
       scale,
       rotation,
     ).precision(0.3);
-    const path = d3.geoPath(projection, ctx);
+    const path = geoPath(projection, ctx);
     const strokePath = (
-      obj: d3.GeoPermissibleObjects,
+      obj: GeoPermissibleObjects,
       lineWidth: number,
       strokeStyle: string,
       fillStyle?: string,
@@ -280,7 +286,7 @@ export function D3Globe({
     ctx.lineWidth = 1.25;
     ctx.strokeStyle = palette.sphereEdge;
     ctx.stroke();
-    strokePath(d3.geoGraticule10(), 0.5, palette.graticule);
+    strokePath(geoGraticule10(), 0.5, palette.graticule);
     strokePath(
       {
         type: "LineString",

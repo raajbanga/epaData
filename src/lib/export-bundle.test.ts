@@ -18,7 +18,7 @@ import {
 } from "./export-bundle";
 import type { TraciFactor } from "./traci";
 
-/** Phase 2 §7: what each export's metadata.json must contain to be reproducible. */
+/** What each export's metadata.json must contain to be reproducible. */
 
 const source: Provenance = {
   software: { name: "epaData", version: "0.1.0", commit: "abc1234" },
@@ -124,7 +124,7 @@ void test("downloadMetadata: date, page URL, and the files in the ZIP", () => {
   ]);
 });
 
-void test("Analyze chart exports carry every §7 field", () => {
+void test("Analyze chart exports carry every reproducibility field", () => {
   const page = analyzeMetadata(
     source,
     { yearMin: "2015", state: "KY" },
@@ -149,7 +149,7 @@ void test("Analyze chart exports carry every §7 field", () => {
   );
 });
 
-void test("the analytical dataset export carries every §7 field", () => {
+void test("the analytical dataset export carries every reproducibility field", () => {
   const meta = datasetMetadata({
     source,
     filters: { yearMin: "2015", yearMax: "2025" },
@@ -164,7 +164,7 @@ void test("the analytical dataset export carries every §7 field", () => {
   );
 });
 
-void test("Predict exports carry every §7 field for each model", () => {
+void test("Predict exports carry every reproducibility field for each model", () => {
   const page = predictMetadata(source, { tab: "whatif" }, models);
   assert.deepEqual(missingMetadata(download(page, {})), []);
   // The Models tab's own download lists every model the same way.
@@ -178,7 +178,7 @@ void test("Predict exports carry every §7 field for each model", () => {
   assert.match(m.pipeline, /^git [0-9a-f]{7}; Python /);
 });
 
-void test("missingMetadata names each §7 item that is left out", () => {
+void test("missingMetadata names each reproducibility item that is left out", () => {
   const page = predictMetadata(source, {}, models);
   const full = download(page, {});
   const without = (patch: ExportMetadata) =>

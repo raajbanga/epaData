@@ -89,6 +89,15 @@ export function formatQuantity(
 export const formatNumber = (value: number | null | undefined, digits = 0) =>
   formatQuantity(value, "", { digits, fallback: "0" });
 
+/** "Every unit in Texas" from "every unit in Texas". */
+export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A label inside a sentence: "fuel class", but "NOₓ control" and "CO₂ mass" keep their case. */
+export const inSentence = (label: string) =>
+  /^[A-Z][A-Z]/.test(label)
+    ? label
+    : label.charAt(0).toLowerCase() + label.slice(1);
+
 /** "1 unit", "3 units", "2 facilities": the count with its noun; `many` defaults to `one` + "s". */
 export const plural = (n: number, one: string, many = `${one}s`) =>
   `${shortNumber(n) ?? n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -147,3 +156,7 @@ export function replaceUrlQuery(query: string) {
     search ? `?${search}` : window.location.pathname,
   );
 }
+
+/** "kg CO2 eq" → "kg CO₂ eq": subscripts in the chemical formulas of a unit stored as plain text. */
+export const chemUnit = (unit: string) =>
+  unit.replace(/\b(CO|SO|NO)2\b/g, "$1₂").replace(/\bO3\b/g, "O₃");

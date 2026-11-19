@@ -55,7 +55,7 @@ async function postUpload<T>(file: File, commit: boolean): Promise<T> {
   return json;
 }
 
-/** §9 upload page: file → Python validation report → approve or cancel → stored records. */
+/** Upload page: file → Python validation report → approve or cancel → stored records. */
 export function UploadView() {
   const utils = api.useUtils();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -111,7 +111,7 @@ export function UploadView() {
   return (
     <PageView
       header={
-        <PageTitle lead="Python reads the file, matches its columns to the project schema, and checks every row for missing, invalid, and duplicate values. Nothing is saved until you approve the import; rejected rows are listed, never dropped silently.">
+        <PageTitle lead="**Add your own CSV or Excel file.** Every row is checked for missing, impossible, and repeated values first. **Nothing is saved until you approve it**, and any row that is rejected is listed with the reason.">
           Upload a file
         </PageTitle>
       }
@@ -176,35 +176,39 @@ export function UploadView() {
             if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
           }}
           className={cn(
-            "border-edge bg-surface hover:border-fg-muted flex cursor-pointer flex-col items-center rounded-md border border-dashed px-6 py-14 text-center",
+            "border-edge bg-surface hover:border-fg-muted flex cursor-pointer flex-col items-center gap-x-10 gap-y-3 rounded-md border border-dashed px-6 py-6 sm:flex-row sm:justify-center",
             dragging && "border-primary bg-primary/5",
             busy && "pointer-events-none opacity-60",
           )}
         >
-          {busy ? (
-            <Loader2 className="text-fg-muted h-6 w-6 animate-spin" />
-          ) : (
-            <FileUp className="text-fg-muted h-6 w-6" />
-          )}
-          <p className="text-fg mt-3 font-medium">
-            {busy
-              ? "Reading and validating with Python…"
-              : "Drop a file here, or click to choose one"}
-          </p>
-          <dl className="text-fg-muted mt-3 grid max-w-lg grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-left text-sm">
+          <div className="flex items-center gap-3">
+            {busy ? (
+              <Loader2 className="text-fg-muted h-6 w-6 shrink-0 animate-spin" />
+            ) : (
+              <FileUp className="text-fg-muted h-6 w-6 shrink-0" />
+            )}
+            <div>
+              <p className="text-fg font-medium">
+                {busy
+                  ? "Reading the file and checking every row…"
+                  : "Drop a file here, or click to choose one"}
+              </p>
+              <p className="text-fg-muted text-sm">
+                Sample files are in the repository&apos;s <code>samples/</code>{" "}
+                folder.
+              </p>
+            </div>
+          </div>
+          <dl className="text-fg-muted grid max-w-lg grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-left text-sm">
             <dt className="text-fg-2">Supported formats</dt>
             <dd>CSV (.csv) and Excel (.xlsx), up to 100 MB</dd>
             <dt className="text-fg-2">What it fills</dt>
             <dd>
-              CAMPD facility files fill <code>facilities</code> and{" "}
+              EPA facility files fill <code>facilities</code> and{" "}
               <code>units</code>; annual emissions files also fill{" "}
               <code>annual_records</code>.
             </dd>
           </dl>
-          <p className="text-fg-muted mt-3 text-xs">
-            Sample files for a first try are in the repository&apos;s{" "}
-            <code>samples/</code> folder.
-          </p>
         </div>
       )}
 
@@ -212,7 +216,7 @@ export function UploadView() {
         <DatasetHistory
           title="Past uploads"
           uploads
-          note="Each upload is its own dataset. New / Updated / Unchanged compare it with what the database held before; Dropped rows are in its invalid-records report on the Download page. Still in use counts the unit-years the database takes from this file now; Replaced by API counts those a later CAMPD sync took over."
+          note="Each file you upload is kept as its own dataset. **New / Updated / Unchanged** compare it with what was stored before. **Still in use** counts records this file still supplies; **Replaced by API** counts those a later EPA retrieval took over. Rejected rows are in the invalid-records report on the Download page."
         />
       )}
     </PageView>
@@ -379,14 +383,14 @@ function ReportView({
           <EmptyState
             variant="success"
             title="No data-quality issues"
-            description="Every row has valid keys, numbers, coordinates, and state codes, and passes the physical sanity rules."
+            description="**Every row passed.** All IDs, numbers, coordinates, and state codes are valid and physically possible."
           />
         ) : (
           <>
             {report.validationErrors.length > 0 && (
               <Section
                 title={`Rejected rows (${formatNumber(summary.invalidCount)})`}
-                note={`These rows are not imported.${summary.invalidCount > report.validationErrors.length ? ` Showing the first ${report.validationErrors.length} problems.` : ""}`}
+                note={`These rows are **not saved**.${summary.invalidCount > report.validationErrors.length ? ` Showing the first ${report.validationErrors.length} problems.` : ""}`}
               >
                 <ReportTable
                   sortable
@@ -409,8 +413,8 @@ function ReportView({
             )}
             {report.anomalies.length > 0 && (
               <Section
-                title={`Physical sanity flags (${formatNumber(report.anomalies.length)})`}
-                note="These records are imported and the flags are logged to data_audit_logs."
+                title={`Records that look odd (${formatNumber(report.anomalies.length)})`}
+                note="These records **are saved**, each with a note saying what looks odd. Explore → Audit flags lists them."
               >
                 <DataPanel>
                   <AuditTable logs={report.anomalies} />
@@ -451,12 +455,12 @@ function ReportView({
           <EmptyState
             variant="success"
             title="All records are new"
-            description="None of the file's facility-unit-years is in the database yet."
+            description="**All new:** none of these records is stored yet."
           />
         ) : (
           <Section
             title={`Already in the database (${formatNumber(report.existing.length)})`}
-            note="On import, changed records are updated and attributed to this upload; unchanged ones keep their values."
+            note="**On import**, changed records take the new values from this file; unchanged ones stay as they are."
           >
             <ReportTable
               sortable
@@ -500,7 +504,7 @@ function ReportView({
           </Section>
           {report.unmappedColumns.length > 0 && (
             <Section
-              title={`Not imported (${report.unmappedColumns.length})`}
+              title={`Columns not saved (${report.unmappedColumns.length})`}
               note={report.unmappedColumns.join(" · ")}
             />
           )}
@@ -554,7 +558,7 @@ function ImportSuccess({ result }: { result: ImportResult }) {
             Download rejected rows ({formatNumber(result.issues)})
           </a>
         )}
-        <p className="text-fg-muted text-xs sm:ml-auto">
+        <p className="text-fg-muted text-sm sm:ml-auto">
           Dataset ID {result.datasetId}
         </p>
       </div>

@@ -127,7 +127,7 @@ export function DialogHeader({
         <h2 className="text-fg text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
           {title}
         </h2>
-        {lead && <p className="text-fg-2 max-w-[75ch] text-sm">{lead}</p>}
+        {lead && <p className="text-fg-2 text-sm">{lead}</p>}
       </div>
       {actions && (
         <div className="flex flex-wrap items-center gap-2">{actions}</div>

@@ -1,23 +1,27 @@
 const TERMS = [
   {
     term: "ORISPL ID",
-    body: "The permanent federal facility ID issued by DOE/EIA. Every power plant in the data has one, and it is the facility key used throughout epaData.",
+    body: "A power plant's permanent federal ID number. Every plant has one, and this site uses it to tell plants apart.",
   },
   {
     term: "NERC region",
-    body: "The reliability council whose grid a plant feeds, such as ERCOT, WECC, or SERC.",
+    body: "The regional power grid a plant feeds, such as ERCOT (most of Texas) or WECC (the West).",
   },
   {
     term: "Nameplate capacity (MW)",
-    body: "Maximum sustained electrical output. One megawatt reliably powers roughly 750 to 1,000 homes.",
+    body: "The most power a unit can make at once. One megawatt (MW) powers roughly 750 to 1,000 homes.",
   },
   {
     term: "CO₂ rate (lbs/MWh)",
-    body: "Pounds of CO₂ emitted per megawatt-hour generated. Gas combined cycle is about 800, coal about 2,100; nuclear and renewables are 0.",
+    body: "Pounds of CO₂ for each megawatt-hour of electricity. A modern gas plant is about 800, coal about 2,100; nuclear, wind, and solar are 0.",
+  },
+  {
+    term: "MMBtu",
+    body: "Million British thermal units: the amount of heat in the fuel a unit burns. More MMBtu means more fuel burned.",
   },
   {
     term: "Data-quality checks",
-    body: "Every stored unit-year is checked against physical-sanity rules: heat rate outside 5–25 MMBtu/MWh, generation with zero operating hours, and heat input with no CO₂ reported.",
+    body: "Every record is checked for values that can't be right: fuel use far outside what a working plant needs for its power, power made with zero hours of running, or fuel burned with no CO₂ reported.",
   },
 ];
 
@@ -32,7 +36,7 @@ export function EpaPrimer() {
         {TERMS.map(({ term, body }) => (
           <div key={term}>
             <dt className="text-fg font-medium">{term}</dt>
-            <dd className="text-fg-2 mt-0.5 max-w-[60ch]">{body}</dd>
+            <dd className="text-fg-2 mt-0.5">{body}</dd>
           </div>
         ))}
       </dl>

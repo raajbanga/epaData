@@ -3,28 +3,28 @@
 import { useState } from "react";
 import { BarList } from "~/components/charts/bars";
 import { ChartFrame } from "~/components/ui/chart";
+import { QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { TryExamples } from "~/components/ui/try-examples";
-import { formatPct, formatStat } from "~/lib/analysis";
+import { formatPct, formatStat, GROUP_EXPLAIN } from "~/lib/analysis";
+import { compareSentences } from "~/lib/takeaways";
 import { cn, formatNumber } from "~/lib/utils";
-import { api, type RouterOutputs } from "~/trpc/react";
+import { api } from "~/trpc/react";
 import { FacilitySearch } from "../facility-search";
 import { BarsChart } from "./charts";
 import {
   asDimension,
   bind,
   combinedLabel,
-  Controls,
   DimensionField,
   dimensionLabel,
   findInfo,
+  inSentence,
   VariableField,
   type TabProps,
 } from "./shared";
-
-type Result = RouterOutputs["analysis"]["compare"];
 
 const EXAMPLES = [
   {
@@ -54,40 +54,9 @@ const EXAMPLES = [
 ];
 
 const formatP = (p: number) => (p < 0.001 ? "< 0.001" : p.toFixed(3));
-const significant = (p?: number | null) => p != null && p < 0.05;
 
 /** The result in plain language: the size of the gap, whether tests support it, and what it can't show. */
-function explain(result: Result, label: string, unit: string) {
-  const [base, ...rest] = result.groups;
-  if (!base) return [];
-  const lines = rest.map((g) =>
-    g.diffPct === null
-      ? `${g.group} has no ${label} value to compare.`
-      : `${g.group}: ${formatStat(g.value)} ${unit}, ${Math.abs(g.diffPct).toFixed(1)} % ${g.diffPct < 0 ? "lower" : "higher"} than ${base.group} (${formatStat(base.value)} ${unit}).`,
-  );
-  const { welch, mannWhitney, anova, kruskal } = result.tests;
-  if (welch && mannWhitney) {
-    lines.push(
-      significant(welch.p) && significant(mannWhitney.p)
-        ? `Both tests find the unit-year values differ between the two groups (Welch t-test p ${formatP(welch.p)}; Mann–Whitney p ${formatP(mannWhitney.p)}), so the gap is unlikely to be chance alone.`
-        : significant(welch.p) || significant(mannWhitney.p)
-          ? `The tests disagree (Welch p ${formatP(welch.p)}, Mann–Whitney p ${formatP(mannWhitney.p)}): the means and the typical values tell different stories, often because of a few extreme unit-years.`
-          : `Neither test finds a difference at the 5 % level (Welch p ${formatP(welch.p)}, Mann–Whitney p ${formatP(mannWhitney.p)}).`,
-    );
-  } else if (anova && kruskal) {
-    lines.push(
-      significant(anova.p) || significant(kruskal.p)
-        ? `At least one group differs from the others (ANOVA p ${formatP(anova.p)}; Kruskal–Wallis p ${formatP(kruskal.p)}).`
-        : `No group differs at the 5 % level (ANOVA p ${formatP(anova.p)}; Kruskal–Wallis p ${formatP(kruskal.p)}).`,
-    );
-  }
-  lines.push(
-    "Groups differ in more than the attribute compared (size, age, fuel, hours run), so a difference is an association, not proof that the attribute causes it. Tests treat each unit-year as independent, which repeated years of the same unit are not, so p-values are optimistic.",
-  );
-  return lines;
-}
-
-/** §4.5: two or more groups along one dimension, with differences, confidence intervals, and tests. */
+/** Two or more groups along one dimension, with differences, confidence intervals, and tests. */
 export function CompareTab(props: TabProps) {
   const { filters, view, setView, catalog } = props;
   const info = findInfo(catalog, view.variable);
@@ -124,7 +93,7 @@ export function CompareTab(props: TabProps) {
   const combined = combinedLabel(info);
   const unit = info?.unit ?? "";
   const rows = result.data?.groups ?? [];
-  // §4.5 rankings: 1 = the largest value among the compared groups.
+  // Rankings: 1 = the largest value among the compared groups.
   const ranked = rows
     .filter((g) => g.value !== null)
     .sort((a, b) => b.value! - a.value!);
@@ -134,15 +103,19 @@ export function CompareTab(props: TabProps) {
 
   return (
     <div className="space-y-6">
-      <Controls>
-        <VariableField {...bind(props, "variable")} />
+      <QuestionSentence label="Comparison question">
+        <span>How does</span>
+        <VariableField {...bind(props, "variable")} inline />
+        <span>differ by</span>
         <DimensionField
           label="Compare"
           value={by}
           onChange={(compareBy) => setView({ compareBy, groups: "" })}
           catalog={catalog}
+          inline
         />
-      </Controls>
+        <span className="-ml-1.5">?</span>
+      </QuestionSentence>
       <TryExamples
         examples={EXAMPLES.map(({ label, ...patch }) => ({
           label,
@@ -150,11 +123,19 @@ export function CompareTab(props: TabProps) {
         }))}
       />
 
-      <BarsChart {...props} by={by} />
+      <BarsChart
+        {...props}
+        by={by}
+        reading={
+          info?.aggregation === "sum"
+            ? "These are **totals**: a group with more or bigger units has a bigger total. To compare one unit with another, pick groups below and read the averages."
+            : "Each bar is the group's rate with all its unit-years **pooled together**, so big units count for more. To compare a typical unit in each, pick groups below and read the averages."
+        }
+      />
 
       <Section
         title={`${dimensionLabel(catalog, by)} groups`}
-        note={`Pick two to eight; the first one picked is the baseline for differences.${searchable ? (by === "facility" ? " Search to add any facility; the list shows the first 80 by name." : unitsOf ? ` Units of ${unitsOf.name}.` : " Search for a facility to list its units; the list shows the first 80 by name.") : ""}`}
+        note={`Pick two to eight groups to compare; the others are compared with the first one you pick (numbered 1).${searchable ? (by === "facility" ? " Search to add any facility; the list shows the first 80 by name." : unitsOf ? ` Units of ${unitsOf.name}.` : " Search to add a unit (“Ghent 2”) and list the other units of its plant; the list shows the first 80 by name.") : ""}`}
       >
         {searchable && (
           <FacilitySearch
@@ -162,19 +143,33 @@ export function CompareTab(props: TabProps) {
             inputClassName="h-9 text-sm"
             value={text}
             onValueChange={setText}
-            onPick={(f) => {
-              setText("");
-              const label = `${f.name} (${f.id})`;
-              if (by === "unit") setUnitsOf({ id: f.id, name: label });
-              else if (!groups.includes(label)) toggleGroup(label);
-            }}
+            onPick={
+              by === "facility"
+                ? (f) => {
+                    setText("");
+                    const label = `${f.name} (${f.id})`;
+                    if (!groups.includes(label)) toggleGroup(label);
+                  }
+                : undefined
+            }
+            onPickUnit={
+              by === "unit"
+                ? (u) => {
+                    setText("");
+                    const plant = `${u.facilityName} (${u.facilityId})`;
+                    setUnitsOf({ id: u.facilityId, name: plant });
+                    const label = `${plant} unit ${u.unitId}`;
+                    if (!groups.includes(label)) toggleGroup(label);
+                  }
+                : undefined
+            }
             onClear={() => {
               setText("");
               setUnitsOf(null);
             }}
             placeholder={
               by === "unit"
-                ? "Find a facility to list its units"
+                ? "Add a unit: “Ghent 2”, or a plant to list its units"
                 : "Add a facility: name, operator, county, or ID"
             }
           />
@@ -225,6 +220,18 @@ export function CompareTab(props: TabProps) {
             );
           })}
         </div>
+        {GROUP_EXPLAIN[by] && groups.some((g) => GROUP_EXPLAIN[by]![g]) && (
+          <dl className="grid grid-cols-1 gap-x-8 gap-y-2 pt-1 text-sm sm:grid-cols-2">
+            {groups
+              .filter((g) => GROUP_EXPLAIN[by]![g])
+              .map((g) => (
+                <div key={g}>
+                  <dt className="text-fg inline font-medium">{g}: </dt>
+                  <dd className="text-fg-2 inline">{GROUP_EXPLAIN[by]![g]}</dd>
+                </div>
+              ))}
+          </dl>
+        )}
       </Section>
 
       {groups.length < 2 ? (
@@ -242,10 +249,18 @@ export function CompareTab(props: TabProps) {
         result.data &&
         info && (
           <>
-            <Takeaways items={explain(result.data, info.label, unit)} />
+            <Takeaways
+              items={compareSentences({
+                groups: rows,
+                tests: result.data.tests,
+                label: info.label,
+                unit,
+                dimension: dimensionLabel(catalog, by),
+              })}
+            />
             <ChartFrame
-              title={`Mean ${info.label} per unit-year, with 95 % confidence intervals`}
-              subtitle={`In ${unit}. The table's ${combined.toLowerCase()} weights every unit-year by its size; the mean here counts each unit-year once, and the whisker shows how sure that mean is.`}
+              title={`Average ${inSentence(info.label)} per unit-year`}
+              subtitle={`In ${unit}. The bar is the average for one unit-year in the group. The thin whisker is the range the true average almost surely falls in; when two whiskers don't overlap, the gap is real.`}
               filename={`compare-${view.variable}-by-${by}`}
               meta={{ variables: [info], groups, tests: result.data.tests }}
               height={rows.length * 26}

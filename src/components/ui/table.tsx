@@ -158,7 +158,7 @@ function pageWindow(page: number, totalPages: number): (number | "…")[] {
 }
 
 /** Table footer: "Showing a–b of n", page size, jump-to-page, and page buttons. */
-function TablePagination({
+export function TablePagination({
   page,
   pageSize,
   totalCount,

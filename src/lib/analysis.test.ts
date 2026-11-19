@@ -14,7 +14,11 @@ import {
   UnknownVariableError,
   type AnalysisRow,
 } from "./analysis";
-import { parseAnalysisParams, parsePredictParams } from "./analysis-state";
+import {
+  parseAnalysisParams,
+  parsePredictParams,
+  predictSearchParams,
+} from "./analysis-state";
 import { noxImpacts, SHORT_TON_KG, type TraciFactor } from "./traci";
 
 /** The committed TRACI extract, as the import script reads it. */
@@ -201,6 +205,22 @@ void test("old Predict tab links open What-if", () => {
   assert.equal(parsePredictParams({ tab: "sensitivity" }).tab, "whatif");
   assert.equal(parsePredictParams({ tab: "scenarios" }).tab, "whatif");
   assert.equal(parsePredictParams({ tab: "nope" }).tab, "models");
+});
+
+void test("a What-if question round-trips through the URL", () => {
+  const view = parsePredictParams({
+    tab: "whatif",
+    scope: "state",
+    st: "TX",
+    burns: "Coal",
+  });
+  assert.equal(view.scope, "state");
+  assert.equal(view.scr, "add"); // the default question adds SCR
+  const query = new URLSearchParams(predictSearchParams(view));
+  assert.equal(query.get("st"), "TX");
+  assert.equal(query.get("burns"), "Coal");
+  assert.equal(query.has("scr"), false);
+  assert.equal(parsePredictParams({ scope: "nope" }).scope, "unit");
 });
 
 void test("changing Compare's field without groups drops the default groups", () => {

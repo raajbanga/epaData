@@ -6,7 +6,7 @@ import {
 } from "~/lib/facility-filters";
 
 /**
- * Analyze page state (Phase 2 §4.1: reproducible through URL parameters): the Explore filters
+ * Analyze page state (reproducible through URL parameters): the Explore filters
  * plus the active tab and each tab's choices, all as strings so they round-trip through the URL.
  */
 
@@ -146,21 +146,26 @@ export function analysisSearchParams(
   return params.toString();
 }
 
-/** Predict page state (Phase 2 §5–§6): tab, model, baseline unit-year, and analysis inputs. */
+/** Predict page state: tab, model (Models tab), and the what-if question. */
 export const PREDICT_TABS = ["models", "whatif"] as const;
+/** What a what-if covers: one unit, every unit at a plant, in a state, or in the US. */
+export const PREDICT_SCOPES = ["unit", "plant", "state", "us"] as const;
 export const DEFAULT_PREDICT_VIEW = {
   tab: "models" as (typeof PREDICT_TABS)[number],
-  model: "both", // "ridge" | "tree" | "both" (What-if); Models shows "both" as Ridge
-  fid: "1356", // baseline: Ghent unit 2, 2024 (coal, no SCR)
+  model: "both", // Models tab: "ridge" | "tree" | "both"
+  scope: "unit" as (typeof PREDICT_SCOPES)[number],
+  fid: "1356", // unit and plant: Ghent unit 2, 2024 (coal, no SCR)
   uid: "2",
+  st: "KY", // state
+  burns: "", // a group's units narrowed to a fuel ("Coal", "Gas", "Oil"); "" any
   year: "2024",
-  input: "heat_input_mmbtu",
-  values: "", // "1" = sensitivity range in the input's own unit, else % of the baseline value
-  from: "-50",
-  to: "50",
-  step: "5",
-  load: "10", // scenarios: gross load +10 %
-  heat: "-5", // heat input −5 %
+  // The change, applied to every unit: power output and fuel burned in %, SCR, primary fuel.
+  load: "0",
+  heat: "0",
+  scr: "add", // "" unchanged | "add" | "remove"
+  fuel: "", // "" unchanged, else the primary fuel every unit switches to
+  input: "heat_input_mmbtu", // one input varied
+  range: "50", // ± this % of each unit's value
 };
 export type PredictView = typeof DEFAULT_PREDICT_VIEW;
 
@@ -170,5 +175,10 @@ export function parsePredictParams(params: Params) {
   const tab: string = view.tab;
   if (tab === "sensitivity" || tab === "scenarios") view.tab = "whatif";
   if (!PREDICT_TABS.includes(view.tab)) view.tab = DEFAULT_PREDICT_VIEW.tab;
+  if (!PREDICT_SCOPES.includes(view.scope)) view.scope = "unit";
   return view;
 }
+
+/** The inverse of parsePredictParams: the non-default choices. */
+export const predictSearchParams = (view: PredictView) =>
+  writeView(DEFAULT_PREDICT_VIEW, view).toString();

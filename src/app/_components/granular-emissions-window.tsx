@@ -255,12 +255,12 @@ export function GranularEmissionsWindow({
           <EmptyState
             title={
               data?.error
-                ? "CAMPD window unavailable"
+                ? "The EPA could not send this time window"
                 : "No data for this window"
             }
             description={
               data?.error ??
-              "EPA CAMPD returned no records for this facility and time window."
+              "The EPA has no records for this plant in this time window."
             }
           />
         ) : (

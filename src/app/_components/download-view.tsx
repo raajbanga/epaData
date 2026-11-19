@@ -74,7 +74,7 @@ const datasetLabel = (d: DatasetRow) =>
   `${d.reportingYear} · ${sourceLabel(d.source)} · ${datasetParams(d)} · ${datasetStatus(d)} · ${d.importedAt.toLocaleDateString()}`;
 
 /**
- * §9 / §10 download page: what to export (dataset, search results, selection, reports,
+ * Download page: what to export (dataset, search results, selection, reports,
  * provenance), the dataset or filters, and the file format. Filters arrive in the URL from
  * Explore's "More formats" link, so search results download exactly what Explore showed.
  */
@@ -160,10 +160,12 @@ export function DownloadView({
         <PageTitle
           lead={
             <>
-              Export data from the local database as CSV: whole datasets, search
-              results, your comparison selection, data-quality reports, or
-              provenance. Analysis results (statistics, charts, TRACI impacts,
-              predictions, scenarios) download from their own views on{" "}
+              <strong className="text-fg font-semibold">
+                Take any of this data away as a CSV file
+              </strong>{" "}
+              (opens in Excel): whole datasets, search results, the plants you
+              picked to compare, data-quality reports, or where each dataset
+              came from. Charts and results download from their own pages on{" "}
               <Link href="/analyze" className="text-primary hover:underline">
                 Analyze
               </Link>{" "}
@@ -171,7 +173,7 @@ export function DownloadView({
               <Link href="/predict" className="text-primary hover:underline">
                 Predict
               </Link>
-              , as ZIPs with a metadata file that records how they were made.
+              .
             </>
           }
         >
@@ -239,14 +241,14 @@ export function DownloadView({
         <div
           role="radiogroup"
           aria-label="What to download"
-          className="border-edge bg-surface divide-edge/70 divide-y rounded-md border"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
         >
           {TYPES.map((t) => (
             <label
               key={t.value}
               className={cn(
-                "flex cursor-pointer items-start gap-3 px-3 py-2.5",
-                type === t.value && "bg-primary/[0.05]",
+                "border-edge bg-surface hover:border-fg-muted flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2.5",
+                type === t.value && "border-primary bg-primary/[0.05]",
               )}
             >
               <input
@@ -270,82 +272,86 @@ export function DownloadView({
         </div>
       </Section>
 
-      {DATASET_TYPES.includes(type) && (
-        <Section title="2. Dataset">
-          {historyQuery.isLoading ? (
-            <InlineLoading className="py-6" title="Loading datasets…" />
-          ) : datasetOptions.length === 0 ? (
-            <EmptyState title="No datasets yet" />
-          ) : (
-            <Select
-              size="drawer"
-              value={selectedDataset ?? ""}
-              onValueChange={setDatasetId}
-              options={datasetOptions}
-            />
+      {/* Step 2 and the file format side by side: both are one choice each. */}
+      <div className="grid grid-cols-1 items-start gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-6">
+          {DATASET_TYPES.includes(type) && (
+            <Section title="2. Dataset">
+              {historyQuery.isLoading ? (
+                <InlineLoading className="py-6" title="Loading datasets…" />
+              ) : datasetOptions.length === 0 ? (
+                <EmptyState title="No datasets yet" />
+              ) : (
+                <Select
+                  size="drawer"
+                  value={selectedDataset ?? ""}
+                  onValueChange={setDatasetId}
+                  options={datasetOptions}
+                />
+              )}
+            </Section>
           )}
+
+          {type === "search" && (
+            <Section
+              title="2. Filters"
+              note="The **same filters as Explore**. Coming from Explore's “More formats”, they start as your current search."
+            >
+              <SegmentedControl
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "explorer", label: "Facilities" },
+                  { value: "units", label: "Unit-years" },
+                ]}
+                className="w-fit"
+              />
+              <FacilityFilterBar
+                filters={filters}
+                filterOptions={filterOptions}
+                onFilterChange={onFilterChange}
+                onResetFilters={onResetFilters}
+                {...(view === "units"
+                  ? {
+                      itemLabel: "unit-years",
+                      totalMatching: unitsQuery.data?.totalCount,
+                      isLoading: unitsQuery.isLoading,
+                    }
+                  : {
+                      itemLabel: "facilities",
+                      totalMatching: facilitiesQuery.data?.totalCount,
+                      isLoading: facilitiesQuery.isLoading,
+                    })}
+              />
+            </Section>
+          )}
+
+          {type === "selection" &&
+            (selectionCount ? (
+              <Section title="2. Selection">
+                <p className="text-fg-2 text-sm">
+                  {selectionLabel(compareIds, compareUnitIds)}
+                  {compareIds.length > 0 &&
+                    ` (facility IDs ${compareIds.join(", ")})`}
+                </p>
+              </Section>
+            ) : (
+              <EmptyState
+                title="Nothing selected"
+                description="**Tick plants or units in Explore** (the checkbox column), then come back here."
+              />
+            ))}
+        </div>
+
+        <Section title="3. File format">
+          <Select
+            size="drawer"
+            value="csv"
+            onValueChange={() => undefined}
+            options={[{ value: "csv", label: "CSV (comma-separated, UTF-8)" }]}
+          />
         </Section>
-      )}
-
-      {type === "search" && (
-        <Section
-          title="2. Filters"
-          note="The same filters as Explore. Opened from Explore's “More formats”, they start as Explore's current search."
-        >
-          <SegmentedControl
-            value={view}
-            onChange={setView}
-            options={[
-              { value: "explorer", label: "Facilities" },
-              { value: "units", label: "Unit-years" },
-            ]}
-            className="w-fit"
-          />
-          <FacilityFilterBar
-            filters={filters}
-            filterOptions={filterOptions}
-            onFilterChange={onFilterChange}
-            onResetFilters={onResetFilters}
-            {...(view === "units"
-              ? {
-                  itemLabel: "unit-years",
-                  totalMatching: unitsQuery.data?.totalCount,
-                  isLoading: unitsQuery.isLoading,
-                }
-              : {
-                  itemLabel: "facilities",
-                  totalMatching: facilitiesQuery.data?.totalCount,
-                  isLoading: facilitiesQuery.isLoading,
-                })}
-          />
-        </Section>
-      )}
-
-      {type === "selection" &&
-        (selectionCount ? (
-          <Section title="2. Selection">
-            <p className="text-fg-2 text-sm">
-              {selectionLabel(compareIds, compareUnitIds)}
-              {compareIds.length > 0 &&
-                ` (facility IDs ${compareIds.join(", ")})`}
-            </p>
-          </Section>
-        ) : (
-          <EmptyState
-            title="Nothing selected"
-            description="Tick facilities or units in Explore (the checkbox column), then come back here."
-          />
-        ))}
-
-      <Section title="3. File format">
-        <Select
-          size="drawer"
-          value="csv"
-          onValueChange={() => undefined}
-          options={[{ value: "csv", label: "CSV (comma-separated, UTF-8)" }]}
-          className="sm:w-72"
-        />
-      </Section>
+      </div>
     </PageView>
   );
 }
