@@ -1,13 +1,20 @@
-import { and, between, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, between, desc, eq, sql, sum, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 
-import { modelInputs, predict, type ModelArtifact } from "~/lib/model";
+import type { FilterInput } from "~/lib/facility-filters";
+import {
+  modelInputs,
+  predict,
+  type ModelArtifact,
+  type ScopeRow,
+} from "~/lib/model";
 import { getFuelTheme } from "~/lib/map-utils";
 import { sample } from "~/server/analysis";
+import { unitYearConditions } from "~/server/api/routers/facilities";
 import { db } from "~/server/db";
 import { annualRecords, facilities, models, units } from "~/server/db/schema";
 
-/** Phase 2 §5–§6: registered models, baseline unit-years, and test-year predictions. */
+/** Registered models, baseline unit-years, and test-year predictions. */
 
 const prev = alias(annualRecords, "prev");
 
@@ -29,6 +36,7 @@ async function modelRows(where: SQL | undefined, limit?: number) {
       prev_operating_hours: prev.operatingHours,
       facilityId: annualRecords.facilityId,
       facilityName: facilities.name,
+      stateCode: facilities.stateCode,
       unitId: units.unitId,
       noxMassTons: annualRecords.noxMassTons,
     })
@@ -69,36 +77,16 @@ export async function baselineUnits(facilityId: number, year: number) {
   return rows.map((r) => ({
     facilityId: r.facilityId,
     facilityName: r.facilityName,
+    stateCode: r.stateCode,
     unitId: r.unitId,
     fuel: r.primary_fuel,
     noxMassTons: r.noxMassTons,
   }));
 }
 
-/** One unit-year's model inputs and actual NOₓ. */
-export async function baselineUnitYear(
-  facilityId: number,
-  unitId: string,
-  year: number,
-) {
-  const [row] = await modelRows(
-    and(
-      eq(annualRecords.facilityId, facilityId),
-      eq(units.unitId, unitId),
-      eq(annualRecords.year, year),
-    ),
-  );
-  if (!row) return null;
-  return {
-    label: `${row.facilityName} (${row.facilityId}) unit ${row.unitId}, ${row.year}`,
-    actual: row.noxMassTons,
-    inputs: modelInputs(row),
-  };
-}
-
 /**
  * Actual vs predicted NOₓ per model for test-year unit-years: an even sample of `max` for the
- * evaluation charts, or every one (`max` = Infinity) for the §7 predictions export.
+ * evaluation charts, or every one (`max` = Infinity) for the predictions export.
  */
 export async function testPredictions(from: number, to: number, max = 3000) {
   const [rows, registered] = await Promise.all([
@@ -124,4 +112,56 @@ export async function testPredictions(from: number, to: number, max = 3000) {
       ),
     };
   });
+}
+
+/** Total reported NOₓ (short tons) in `year`, nationally or in `stateCode`. */
+async function noxTotal(year: number, stateCode?: string) {
+  const [row] = await db
+    .select({ tons: sum(annualRecords.noxMassTons).mapWith(Number) })
+    .from(annualRecords)
+    .innerJoin(facilities, eq(annualRecords.facilityId, facilities.id))
+    .where(
+      and(
+        eq(annualRecords.year, year),
+        stateCode ? eq(facilities.stateCode, stateCode) : undefined,
+      ),
+    );
+  return row?.tons ?? 0;
+}
+
+/**
+ * What-if scope: every unit-year matching the filters in `year` with a NOₓ value, as model inputs,
+ * plus the reported NOₓ of the nation and (when the scope lies in one state) that state, so a
+ * change reads as a share of either. The year is the page's own, whatever the filters say.
+ */
+export async function scopeUnitYears(filters: FilterInput, year: number) {
+  const rows = await modelRows(
+    and(
+      ...unitYearConditions({
+        ...filters,
+        year: undefined,
+        yearMin: undefined,
+        yearMax: undefined,
+      }),
+      eq(annualRecords.year, year),
+      sql`${annualRecords.noxMassTons} IS NOT NULL`,
+    ),
+  );
+  const states = [...new Set(rows.map((r) => r.stateCode))];
+  const state = states.length === 1 ? states[0]! : null;
+  const [nation, inState] = await Promise.all([
+    noxTotal(year),
+    state ? noxTotal(year, state) : null,
+  ]);
+  return {
+    rows: rows.map((r): ScopeRow => ({
+      facilityId: r.facilityId,
+      facilityName: r.facilityName,
+      stateCode: r.stateCode,
+      unitId: r.unitId,
+      actual: r.noxMassTons!,
+      inputs: modelInputs(r),
+    })),
+    totals: { nation, state, inState },
+  };
 }

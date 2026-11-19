@@ -21,6 +21,7 @@ import {
   provenance,
   scatterPoints,
 } from "~/server/analysis";
+import { cachedResult } from "~/server/result-cache";
 
 /** Phase 2 Analyze page: every procedure takes the Explore filters as the selection. */
 const filters = facilityFilterSchema.default({});
@@ -51,21 +52,23 @@ export const analysisRouter = createTRPCRouter({
 
   provenance: publicProcedure.query(() => provenance()),
 
-  summary: publicProcedure
-    .input(z.object({ filters }))
-    .query(async ({ input }) => {
+  summary: publicProcedure.input(z.object({ filters })).query(({ input }) =>
+    cachedResult("analysis.summary", input, async () => {
       const { rows, variables } = await load(input.filters, []);
       return datasetSummary(rows, variables);
     }),
+  ),
 
   describe: publicProcedure
     .input(
       z.object({ filters, variable: z.string(), by: dimension.optional() }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, [input.variable]);
-      return describeVariable(rows, picked[0]!, input.by);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.describe", input, async () => {
+        const { rows, picked } = await load(input.filters, [input.variable]);
+        return describeVariable(rows, picked[0]!, input.by);
+      }),
+    ),
 
   aggregate: publicProcedure
     .input(
@@ -78,28 +81,34 @@ export const analysisRouter = createTRPCRouter({
         limit: z.number().int().min(1).max(500).optional(),
       }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, input.variables);
-      return aggregateTable(rows, picked, input.by, input);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.aggregate", input, async () => {
+        const { rows, picked } = await load(input.filters, input.variables);
+        return aggregateTable(rows, picked, input.by, input);
+      }),
+    ),
 
   distribution: publicProcedure
     .input(
       z.object({ filters, variable: z.string(), by: dimension.optional() }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, [input.variable]);
-      return distribution(rows, picked[0]!, input.by);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.distribution", input, async () => {
+        const { rows, picked } = await load(input.filters, [input.variable]);
+        return distribution(rows, picked[0]!, input.by);
+      }),
+    ),
 
   scatter: publicProcedure
     .input(
       z.object({ filters, x: z.string(), y: z.string(), color: dimension }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, [input.x, input.y]);
-      return scatterPoints(rows, picked[0]!, picked[1]!, input.color);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.scatter", input, async () => {
+        const { rows, picked } = await load(input.filters, [input.x, input.y]);
+        return scatterPoints(rows, picked[0]!, picked[1]!, input.color);
+      }),
+    ),
 
   correlation: publicProcedure
     .input(
@@ -109,10 +118,12 @@ export const analysisRouter = createTRPCRouter({
         method: z.enum(["pearson", "spearman"]),
       }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, input.variables);
-      return correlationMatrix(rows, picked, input.method);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.correlation", input, async () => {
+        const { rows, picked } = await load(input.filters, input.variables);
+        return correlationMatrix(rows, picked, input.method);
+      }),
+    ),
 
   compare: publicProcedure
     .input(
@@ -123,8 +134,10 @@ export const analysisRouter = createTRPCRouter({
         groups: z.array(z.string()).min(2).max(8),
       }),
     )
-    .query(async ({ input }) => {
-      const { rows, picked } = await load(input.filters, [input.variable]);
-      return compareGroups(rows, picked[0]!, input.by, input.groups);
-    }),
+    .query(({ input }) =>
+      cachedResult("analysis.compare", input, async () => {
+        const { rows, picked } = await load(input.filters, [input.variable]);
+        return compareGroups(rows, picked[0]!, input.by, input.groups);
+      }),
+    ),
 });

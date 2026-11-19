@@ -31,7 +31,7 @@ export const facilities = sqliteTable(
     index("facility_name_idx").on(t.name),
     index("facility_nerc_idx").on(t.nercRegion),
     index("facility_source_cat_idx").on(t.sourceCategory),
-    index("facility_county_idx").on(t.county), // §8.1 county search (equality)
+    index("facility_county_idx").on(t.county), // County search (equality)
   ],
 );
 
@@ -151,7 +151,7 @@ export const annualRecords = sqliteTable(
     so2MassTons: real("so2_mass_tons"),
     noxMassTons: real("nox_mass_tons"),
 
-    // §7 control and program information as reported for this year (units hold the latest values)
+    // Control and program information as reported for this year (units hold the latest values)
     so2Controls: text("so2_controls"),
     noxControls: text("nox_controls"),
     pmControls: text("pm_controls"),
@@ -257,7 +257,7 @@ export const importIssuesRelations = relations(importIssues, ({ one }) => ({
 }));
 
 /**
- * TRACI Factors: EPA TRACI characterization factors for the CAMPD pollutants (Phase 2 §3, §4.6),
+ * TRACI Factors: EPA TRACI characterization factors for the CAMPD pollutants,
  * loaded from data/traci by `npm run traci:import`. One row per substance and impact category.
  */
 export const traciFactors = sqliteTable(
@@ -285,8 +285,7 @@ export const traciFactors = sqliteTable(
 );
 
 /**
- * Models: prediction models trained offline and registered by ml/train.py (`npm run ml:train`,
- * Phase 2 §5). `artifact` holds everything the app needs to predict without Python.
+ * Models: prediction models trained offline and registered by ml/train.py (`npm run ml:train`). `artifact` holds everything the app needs to predict without Python.
  */
 export const models = sqliteTable("models", {
   id: text("id").primaryKey(), // e.g. "nox-ridge"
@@ -309,4 +308,18 @@ export const models = sqliteTable("models", {
   artifactPath: text("artifact_path").notNull(), // ml/models/<id>.joblib
   pipelineVersion: text("pipeline_version").notNull(), // git commit + scikit-learn version
   trainedAt: integer("trained_at", { mode: "timestamp" }).notNull(),
+});
+
+/**
+ * Stored results of slow analyses, keyed by procedure, input, and data version, so a view
+ * computed once (locally, or by `npm run db:precompute`) is read instead of recomputed. The
+ * hosted database is read-only, so it serves what was stored before deploying.
+ */
+export const resultCache = sqliteTable("result_cache", {
+  key: text("key").primaryKey(), // procedure + input as stable JSON
+  procedure: text("procedure").notNull(),
+  input: text("input").notNull(), // JSON, so the precompute script can recompute it
+  dataVersion: text("data_version").notNull(),
+  value: text("value").notNull(), // SuperJSON
+  computedAt: integer("computed_at", { mode: "timestamp" }).notNull(),
 });

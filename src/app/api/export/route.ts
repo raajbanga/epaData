@@ -1,6 +1,6 @@
 import { buildExport, ExportError } from "~/server/export";
 
-/** §10 CSV download: `?type=dataset|valid|invalid|search|selection|provenance` plus that type's params; `analysis` returns a ZIP (Phase 2 §7). */
+/** CSV download: `?type=dataset|valid|invalid|search|selection|provenance` plus that type's params; `analysis` returns a ZIP. */
 export async function GET(req: Request) {
   try {
     const result = await buildExport(new URL(req.url).searchParams);

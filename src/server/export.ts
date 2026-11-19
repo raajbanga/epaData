@@ -28,7 +28,7 @@ import {
   units,
 } from "~/server/db/schema";
 
-/** §10 downloads behind `GET /api/export`: every export is built from the same queries as the explorer. */
+/** Downloads behind `GET /api/export`: every export is built from the same queries as the explorer. */
 
 /** A bad export request; the route answers with `status`. */
 export class ExportError extends Error {
@@ -152,7 +152,7 @@ function selectUnitYears(
     .orderBy(asc(ranked.facilityId), asc(ranked.unitId), asc(ranked.year));
 }
 
-/** Unit-year CSV with each record's audit flags; `ranked` adds the §8.3 rank column. */
+/** Unit-year CSV with each record's audit flags; `ranked` adds the rank column. */
 async function unitYearCsv(rows: UnitYearRow[], ranked = false) {
   const flags = await db
     .select({
@@ -207,7 +207,7 @@ export async function buildExport(params: URLSearchParams) {
     }
 
     case "invalid": {
-      // Data-quality report (§6): rows the upload rejected or skipped, plus stored records the
+      // Data-quality report: rows the upload rejected or skipped, plus stored records the
       // physical-sanity rules flagged as questionable (one row per flag).
       const dataset = await findDataset(id);
       const issues = await db
@@ -337,7 +337,7 @@ export async function buildExport(params: URLSearchParams) {
     }
 
     case "analysis": {
-      // Phase 2 §7: the analytical dataset with every variable, plus metadata to reproduce it.
+      // The analytical dataset with every variable, plus metadata to reproduce it.
       const { filters } = parseAnalysisParams(Object.fromEntries(params));
       const [rows, factors, source] = await Promise.all([
         analysisRows(filters),

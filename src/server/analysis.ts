@@ -1,3 +1,4 @@
+import { dataVersion } from "~/server/result-cache";
 import { execSync } from "node:child_process";
 import { and, count, eq, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
@@ -90,10 +91,6 @@ async function selectRows(filters: FilterInput): Promise<AnalysisRow[]> {
 const CACHE_MS = 5 * 60_000;
 const cache = new Map<string, { at: number; rows: Promise<AnalysisRow[]> }>();
 
-/** When the data last changed: every retrieval, upload, and sync records a dataset. */
-const dataVersion = async () =>
-  (await db.select({ at: max(datasets.importedAt) }).from(datasets))[0]?.at;
-
 /**
  * The selection's unit-years, cached per selection and data version, so a page's several views
  * share one query and an import is visible at once.
@@ -130,7 +127,7 @@ const appVersion = (() => {
   return { name: "epaData", version: pkg.version, commit };
 })();
 
-/** §7 reproducibility: which software and which state of the database produced an export. */
+/** Reproducibility: which software and which state of the database produced an export. */
 export async function provenance() {
   const [[d], [r]] = await Promise.all([
     db
@@ -158,7 +155,7 @@ export async function catalog() {
   };
 }
 
-/** §4.1: how much was selected, and how much of each variable is missing. */
+/** How much was selected, and how much of each variable is missing. */
 export function datasetSummary(rows: AnalysisRow[], variables: Variable[]) {
   const years = [...new Set(rows.map((r) => r.year))].sort((a, b) => a - b);
   return {
@@ -233,7 +230,7 @@ function unusualRows(
   };
 }
 
-/** §4.2: a variable's summary statistics overall and, with `by`, per group. */
+/** A variable's summary statistics overall and, with `by`, per group. */
 export function describeVariable(
   rows: AnalysisRow[],
   v: Variable,
@@ -315,7 +312,7 @@ export function sample<T>(items: T[], max: number) {
   return Array.from({ length: max }, (_, i) => items[Math.floor(i * step)]!);
 }
 
-/** §4.4 histograms and box plots: reported values per group (largest groups by count). */
+/** Histograms and box plots: reported values per group (largest groups by count). */
 export function distribution(
   rows: AnalysisRow[],
   v: Variable,
@@ -343,7 +340,7 @@ export function distribution(
   };
 }
 
-/** §4.4 scatter plots: complete (x, y) pairs colored by `color`, sampled to `max`. */
+/** Scatter plots: complete (x, y) pairs colored by `color`, sampled to `max`. */
 export function scatterPoints(
   rows: AnalysisRow[],
   x: Variable,
@@ -370,7 +367,7 @@ export function scatterPoints(
   };
 }
 
-/** §4.4 correlation heat map: Pearson or Spearman over pairwise-complete unit-years. */
+/** Correlation heat map: Pearson or Spearman over pairwise-complete unit-years. */
 export function correlationMatrix(
   rows: AnalysisRow[],
   variables: Variable[],
@@ -384,7 +381,7 @@ export function correlationMatrix(
 }
 
 /**
- * §4.5 comparison of groups along one dimension (states, fuels, with vs without a control,
+ * Comparison of groups along one dimension (states, fuels, with vs without a control,
  * period vs period): per-group statistics with a 95 % CI, differences from the first group,
  * and tests. Values are unit-years, so a test compares unit-year distributions.
  */

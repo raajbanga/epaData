@@ -1,10 +1,12 @@
 import { z } from "zod";
 
+import { facilityFilterSchema } from "~/lib/facility-filters";
+
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import {
   baselineUnits,
-  baselineUnitYear,
   listModels,
+  scopeUnitYears,
   testPredictions,
 } from "~/server/prediction";
 
@@ -16,24 +18,17 @@ export const predictionRouter = createTRPCRouter({
     .input(z.object({ facilityId: z.number().int(), year: z.number().int() }))
     .query(({ input }) => baselineUnits(input.facilityId, input.year)),
 
-  baseline: publicProcedure
-    .input(
-      z.object({
-        facilityId: z.number().int(),
-        unitId: z.string(),
-        year: z.number().int(),
-      }),
-    )
-    .query(({ input }) =>
-      baselineUnitYear(input.facilityId, input.unitId, input.year),
-    ),
+  /** What-if: every unit-year in a scope (a unit, a facility, a state, or the nation, narrowed by filters). */
+  scope: publicProcedure
+    .input(z.object({ filters: facilityFilterSchema, year: z.number().int() }))
+    .query(({ input }) => scopeUnitYears(input.filters, input.year)),
 
   testPredictions: publicProcedure
     .input(
       z.object({
         from: z.number().int(),
         to: z.number().int(),
-        /** Every test unit-year (the §7 export) instead of the charts' sample. */
+        /** Every test unit-year (the predictions export) instead of the charts' sample. */
         all: z.boolean().optional(),
       }),
     )
