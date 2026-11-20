@@ -311,192 +311,129 @@ pres.addSection({ title: "What Phase 2 added" });
   ], { x: 0.6, y: 5.75, w: 12.1, h: 0.8, fontSize: 14, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
 }
 
-// ── 7. Prediction ────────────────────────────────────────────────────────
-pres.addSection({ title: "The models" });
+// ── 7. TRACI factors ─────────────────────────────────────────────────────
+pres.addSection({ title: "Impacts and models" });
 {
-  const s = frame("Phase 2 · prediction", "Predicting NOₓ on years the models never saw", "The models", "Raaj", "Split by year; models trained offline and stored as rows.");
-  const ty = 2.2;
-  const seg = [["Train 2016–2021", 25116, K.ridge, 4.6], ["Validate 2022–23", 7970, K.base, 1.9], ["Test 2024–25", 7755, K.amber, 1.9]];
-  let x = 0.6;
-  seg.forEach(([label, n, color, w]) => {
-    s.addShape(pres.shapes.RECTANGLE, { x, y: ty, w, h: 0.55, fill: { color }, line: { color: K.bg, width: 2 } });
-    s.addText(label, { x, y: ty, w, h: 0.55, fontSize: 13, bold: true, color: "FFFFFF", align: "center", valign: "middle", margin: 0, isTextBox: true });
-    s.addText(`${n.toLocaleString("en-US")} unit-years`, { x, y: ty + 0.6, w, h: 0.3, fontSize: 11, color: K.muted, align: "center", margin: 0, isTextBox: true });
-    x += w;
-  });
-  caption(s, "tune on validation → refit on 2016–2023 → score once on test", 0.6, ty + 0.98, 8.4);
-  bullets(s, [
-    { b: "Target:", t: "a unit's yearly NOₓ, in short tons.", sub: "NOₓ depends on controls; CO₂ is nearly fuel × a constant" },
-    { b: "No leakage:", t: "no same-year NOₓ or anything computed from it." },
-    { b: "Stored as rows:", t: "each model is JSON in the models table.", sub: "replayed in the browser; matches scikit-learn to 10⁻⁶" },
-  ], 0.6, 3.65, 8.4, 3.0, 15);
-  [["Baseline", "median by fuel and unit type", K.base], ["Ridge regression", "log target, α = 10", K.ridge], ["Decision tree", "depth ≤ 20, leaf ≥ 20", K.tree], ["Persistence (reference)", "last year's rate × this year's fuel", K.persist]].forEach(([h, t, c], i) => {
-    const yy = 2.2 + i * 1.08;
-    s.addShape(pres.shapes.OVAL, { x: 9.45, y: yy + 0.1, w: 0.22, h: 0.22, fill: { color: c }, line: { color: c } });
-    s.addText([{ text: h, options: { bold: true, fontSize: 15, color: K.ink, breakLine: true } }, { text: t, options: { fontSize: 12, color: K.muted } }], { x: 9.85, y: yy, w: 3.0, h: 0.8, margin: 0, valign: "top", isTextBox: true });
-  });
-}
-
-// ── 8. Demo overview ────────────────────────────────────────────────────
-pres.addSection({ title: "Demo" });
-{
-  const s = frame("Demo", "Eight steps, four questions", "Demo", "Arnav", "One plant ties them together: Ghent, Kentucky.");
-  const steps = [
-    ["Build a dataset", "Filters as a sentence"], ["CO₂ trend by fuel", "Visualization 1 · Q1"], ["NOₓ rate by fuel", "Visualization 2 · statistics"], ["SCR vs no control", "Comparison · Q2"],
-    ["TRACI impacts", "Impacts · Q3"], ["Models vs baseline", "Prediction · Q4"], ["Sensitivity", "One input varied"], ["What-if and export", "Scenarios · ZIP"],
-  ];
-  steps.forEach(([h, t], i) => {
-    const col = i % 4, row = Math.floor(i / 4);
-    const x = 0.6 + col * 3.1, y = 2.2 + row * 1.75;
-    s.addShape(pres.shapes.LINE, { x, y, w: 2.8, h: 0, line: { color: K.rule, width: 0.75 } });
-    s.addShape(pres.shapes.OVAL, { x, y: y + 0.2, w: 0.42, h: 0.42, fill: { color: K.paper }, line: { color: K.rule, width: 1 } });
-    s.addText(String(i + 1), { x, y: y + 0.2, w: 0.42, h: 0.42, fontSize: 13, bold: true, color: K.ink, align: "center", valign: "middle", margin: 0, isTextBox: true });
-    s.addText(h, { x, y: y + 0.75, w: 2.8, h: 0.38, fontSize: 16, bold: true, color: K.ink, margin: 0, isTextBox: true });
-    s.addText(t, { x, y: y + 1.13, w: 2.8, h: 0.3, fontSize: 12, color: K.muted, margin: 0, isTextBox: true });
-  });
-  s.addText([{ text: "Ghent: ", options: { bold: true } }, { text: "Kentucky's largest coal emitter in step 1, the TRACI example checked by hand in step 5, and the unit we change in steps 7–8." }],
-    { x: 0.6, y: 5.95, w: 12.1, h: 0.6, fontSize: 15, color: K.ink, margin: 0, valign: "top", isTextBox: true });
-}
-
-// ── Demo steps ───────────────────────────────────────────────────────────
-const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
-
-// 9. Step 1
-{
-  const s = frame(kicker(1, "build a dataset"), "Filters from a sentence", "Demo", "Arnav", "“coal units in Kentucky” becomes two filter chips.");
-  bullets(s, [
-    { b: "Chips:", t: "State KY · Fuel Coal.", sub: "plus the defaults: 2015–2025, units that ran" },
-    { b: "358 unit-years,", t: "17 plants, 46 units." },
-    { b: "CO₂ fell 30 %", t: "(76.5M → 53.7M t).", sub: "Ghent alone is 20 %" },
-    { b: "Data quality", t: "says why values are missing." },
-    { b: "The URL is the analysis:", t: "reload it or share it." },
-  ], 0.6, 2.15, 5.2, 4.6, 16);
-  shot(s, img("kycoal"), 6.2, 2.15, 6.5, 4.5, "right");
-}
-
-// 10. Step 2
-{
-  const s = frame(kicker(2, "visualization 1 · Q1"), "Gas overtook coal in 2023; coal came back in 2025", "Demo", "Arnav", "CO₂ mass by year, one line per fuel class.");
-  shot(s, fig("p2-trend"), 0.6, 2.0, 12.1, 3.2, "center");
-  stat(s, 0.6, 5.4, "−22 %", "all CO₂, 2015 → 2025 (2.10B → 1.64B t)", K.ink, 2.8);
-  stat(s, 3.7, 5.4, "798 vs 760M", "gas vs coal CO₂ in 2023", K.ink, 2.8);
-  stat(s, 6.8, 5.4, "≈ 2,040", "coal lb CO₂/MWh, flat all decade", K.amber, 2.8);
-  s.addText([{ text: "So: ", options: { bold: true } }, { text: "coal didn't get cleaner; power moved from coal to gas." }],
-    { x: 9.9, y: 5.4, w: 2.85, h: 1.3, fontSize: 13, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
-}
-
-// 11. Step 3
-{
-  const s = frame(kicker(3, "visualization 2 · statistics"), "NOₓ rate by fuel: typical values differ 17-fold", "Demo", "Arnav", "A box plot per fuel, on a log scale, with a key for reading a box.");
-  shot(s, fig("p2-box"), 0.6, 2.0, 12.1, 3.3, "center");
-  stat(s, 0.6, 5.5, "0.034", "gas median, lb/MMBtu", K.ink, 2.3);
-  stat(s, 3.1, 5.5, "0.136", "coal median", K.ink, 2.3);
-  stat(s, 5.6, 5.5, "0.574", "oil median", K.ink, 2.3);
-  s.addText([{ text: "Median, not mean: ", options: { bold: true } }, { text: "the average is 2.5× the median because a few huge values pull it up; 3,178 unit-years (7 %) are unusually large." }],
-    { x: 8.2, y: 5.5, w: 4.55, h: 1.3, fontSize: 12, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
-}
-
-// 12. Step 4
-{
-  const s = frame(kicker(4, "comparison · Q2"), "SCR units emit NOₓ at a fraction of the rate", "Demo", "Arnav", "Compare groups: SCR vs no NOₓ control, 2015–2025.");
-  bullets(s, [
-    { b: "Pooled:", t: "0.1746 vs 0.0495 lb/MMBtu.", sub: "no control is 252.6 % higher" },
-    { b: "Per unit-year:", t: "0.4767 vs 0.03446 on average.", sub: "13.83 times as much" },
-    { b: "Not chance:", t: "both tests give p < 0.001." },
-    { b: "Association, not effect:", t: "the fleets differ in fuel, size, hours." },
-  ], 0.6, 2.15, 4.9, 4.6, 16);
-  shot(s, img("compare-all"), 5.85, 2.15, 6.85, 3.0, "right");
-  stat(s, 5.85, 5.35, "+252.6 %", "no-control rate vs SCR, pooled", K.amber, 3.2);
-  stat(s, 9.4, 5.35, "p < 0.001", "Welch t and Mann–Whitney U", K.ink, 3.3);
-}
-
-// 13. Step 5
-{
-  const s = frame(kicker(5, "TRACI impacts · Q3"), "Texas leads in total; Nebraska per MWh", "Demo", "Raaj", "2024, by state. Totals show where; per MWh shows how dirty each MWh is.");
-  shot(s, img("impacts-mwh"), 0.6, 2.05, 7.3, 3.2, "left");
-  caption(s, "Per MWh of power, 2024", 0.6, 5.3, 7.3);
-  bullets(s, [
-    { b: "Total:", t: "Texas leads all four categories." },
-    { b: "Per MWh (acidification):", t: "NE 2.322, ND 1.83, MO 1.569 kg SO₂ eq." },
-    { b: "Impact = kg × TRACI factor,", t: "summed within one category.", sub: "six factors, stored as rows; NOₓ → nitrogen oxides" },
-  ], 8.3, 2.1, 4.45, 3.2, 15);
-  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 0.6, y: 5.7, w: 12.1, h: 1.1, rectRadius: 0.06, fill: { color: K.paper }, line: { color: K.rule, width: 1 } });
-  s.addText([
-    { text: "Ghent, 2024, by hand:  ", options: { bold: true, color: K.ink } },
-    { text: "(9,157.169 t SO₂ × 1 + 6,987.671 t NOₓ × 0.7) × 907.18474 = 12,744,620 kg SO₂ eq", options: { fontFace: MONO, color: K.ink2 } },
-    { text: "\n÷ 11,580,029 MWh = 1.101 kg SO₂ eq/MWh. The page shows 12.74M and 1.101.", options: { color: K.ink2 } },
-  ], { x: 0.85, y: 5.7, w: 11.7, h: 1.1, fontSize: 14, margin: 0, valign: "middle", isTextBox: true });
-}
-
-// 14. Step 6
-{
-  const s = frame(kicker(6, "prediction · Q4"), "The tree beats the baseline; persistence beats both", "Demo", "Raaj", "Error per unit-year on 2024–25, years no model saw.");
-  s.addText("Mean absolute error per unit-year (short tons NOx)", { x: 0.6, y: 2.1, w: 6.4, h: 0.35, fontSize: 13, bold: true, color: K.ink, margin: 0, isTextBox: true });
-  const maes = [["Baseline (median)", 109.4, K.base], ["Ridge regression", 58.5, K.ridge], ["Decision tree", 26.3, K.tree], ["Persistence (reference)", 18.5, K.persist]];
-  maes.forEach(([label, v, color], i) => {
-    const y = 2.6 + i * 0.68;
-    s.addText(label, { x: 0.6, y, w: 2.25, h: 0.48, fontSize: 13, color: K.ink2, align: "right", valign: "middle", margin: 0, isTextBox: true });
-    const w = (v / 109.4) * 3.3;
-    s.addShape(pres.shapes.RECTANGLE, { x: 3.0, y: y + 0.06, w, h: 0.36, fill: { color }, line: { color } });
-    s.addText(`${v.toFixed(1)} t`, { x: 3.0 + w + 0.1, y, w: 1.0, h: 0.48, fontSize: 13, bold: true, color: K.ink, valign: "middle", margin: 0, isTextBox: true });
-  });
-  s.addShape(pres.shapes.LINE, { x: 3.0, y: 2.55, w: 0, h: 2.75, line: { color: K.rule, width: 0.75 } });
-  stat(s, 0.6, 5.55, "R² 0.951", "tree (95 % interval 0.937–0.963)", K.ink, 6.2);
-  bullets(s, [
-    { b: "Tree:", t: "76 % less error than the baseline.", sub: "training, validation, and test agree" },
-    { b: "Persistence wins:", t: "last year's rate × this year's fuel." },
-    { b: "Coal has the largest errors;", t: "the models under-predict it." },
-    { b: "So the models are for", t: "what-if, not the best forecast." },
-  ], 7.3, 2.15, 5.45, 4.6, 15);
-}
-
-// 15. Step 7
-{
-  const s = frame(kicker(7, "sensitivity"), "Ghent unit 2: change heat input, hold the rest", "Demo", "Arnav", "± 50 % heat input; every other input stays as reported.");
-  shot(s, fig("p2-sensitivity"), 0.6, 2.05, 7.6, 4.7, "left");
-  bullets(s, [
-    { b: "Reported 4,146 t;", t: "Ridge 2,972, tree 2,738.", sub: "the rate jumped; the models see last year's" },
-    { b: "−50 % fuel:", t: "Ridge −35 %, tree −57 %." },
-    { b: "+50 % fuel:", t: "both +29 %." },
-    { b: "The tree is a staircase:", t: "8 thresholds in this range." },
-    { b: "Shaded:", t: "values the models never saw." },
-  ], 8.55, 2.1, 4.2, 4.6, 14);
-}
-
-// 16. Step 8
-{
-  const s = frame(kicker(8, "what-if · export"), "The models agree on fuel use, not on controls", "Demo", "Raaj", "“What if Ghent unit 2 added SCR in 2024?”, then every other change.");
-  s.addText("Predicted NOx, Ghent unit 2, 2024 (short tons): as it is → with SCR", { x: 0.6, y: 2.05, w: 7.6, h: 0.32, fontSize: 13, bold: true, color: K.ink, margin: 0, isTextBox: true });
-  const X0 = 2.2, PX = 5.6 / 4500, xs = (v) => X0 + v * PX;
-  [0, 1500, 3000, 4500].forEach((v) => {
-    s.addShape(pres.shapes.LINE, { x: xs(v), y: 2.55, w: 0, h: 1.75, line: { color: K.rule, width: 0.5 } });
-    s.addText(v.toLocaleString("en-US"), { x: xs(v) - 0.4, y: 4.3, w: 0.8, h: 0.25, fontSize: 10, color: K.muted, align: "center", margin: 0, isTextBox: true });
-  });
-  s.addShape(pres.shapes.LINE, { x: xs(4146), y: 2.5, w: 0, h: 1.8, line: { color: K.ink, width: 1, dashType: "dash" } });
-  s.addText("reported 4,146", { x: xs(4146) - 0.6, y: 4.55, w: 1.2, h: 0.25, fontSize: 10, color: K.ink2, align: "center", margin: 0, isTextBox: true });
-  [["Ridge", 2972, 1222, K.ridge, "2,972 → 1,222  (−59 %)"], ["Tree", 2738, 2738, K.tree, "2,738 either way"]].forEach(([name, a, b, c, lbl], i) => {
-    const y = 2.85 + i * 0.75;
-    s.addText(name, { x: 0.6, y: y - 0.2, w: 1.45, h: 0.4, fontSize: 14, bold: true, color: K.ink, align: "right", valign: "middle", margin: 0, isTextBox: true });
-    if (a !== b) s.addShape(pres.shapes.LINE, { x: xs(b), y, w: xs(a) - xs(b), h: 0, flipH: true, line: { color: c, width: 2.5, endArrowType: "triangle" } });
-    s.addShape(pres.shapes.OVAL, { x: xs(a) - 0.08, y: y - 0.08, w: 0.16, h: 0.16, fill: { color: c }, line: { color: c } });
-    s.addText(lbl, { x: xs(Math.min(a, b)) - 2.6, y: y + 0.08, w: 2.5, h: 0.3, fontSize: 11, color: K.ink2, align: "right", margin: 0, isTextBox: true });
-  });
+  const s = frame("Phase 2 · TRACI 2.2", "Six TRACI factors, read from a table", "Impacts and models", "Raaj", "CAMPD measures three pollutants; we use every TRACI 2.2 air factor for those three.");
+  const d = { text: "—", options: { color: K.muted } };
   table(s, [
+    [hdr("Per kg to air"), hdr("Warming\nkg CO₂ eq"), hdr("Acidification\nkg SO₂ eq"), hdr("Particulate\nkg PM2.5 eq"), hdr("Smog\nkg O₃ eq")],
+    [strong("CO₂  (co2_mass_tons)"), "1", d, d, d],
+    [strong("SO₂  (so2_mass_tons)"), d, "1", "0.0611", d],
+    [strong("NOₓ  (nox_mass_tons)"), d, "0.7", "0.00722", "24.79"],
+  ], { x: 0.6, y: 2.15, w: 7.3, colW: [2.5, 1.15, 1.25, 1.25, 1.15], fontSize: 13, rowH: [0.6, 0.42, 0.42, 0.42] });
+  caption(s, "EPA TRACI 2.2 workbook, Substances sheet; each row's source cell is stored with it", 0.6, 4.05, 7.3);
+  const y = 4.65, w = 1.62, g = 0.3;
+  [["annual_records", "mass, short tons"], ["× 907.18474", "kg per short ton"], ["× factor", "a traci_factors row"], ["Σ per category", "4 totals"]].forEach(([h, b], i) => {
+    const x = 0.6 + i * (w + g);
+    node(s, x, y, w, 0.95, h, b, { headSize: 12, bodySize: 10, ...(i === 3 ? { line: K.amber, lineW: 1.5 } : {}) });
+    if (i < 3) arrow(s, x + w, y + 0.47, x + w + g, y + 0.47);
+  });
+  s.addText("÷ gross load gives 4 more per MWh: 8 TRACI variables, built from the rows at startup.", { x: 0.6, y: 5.75, w: 7.3, h: 0.6, fontSize: 13, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
+  bullets(s, [
+    { b: "Only what CAMPD measures:", t: "CO₂, SO₂, and NOₓ mass to air." },
+    { b: "Every non-empty factor", t: "for those three.", sub: "CO₂: warming only; SO₂: no smog factor" },
+    { b: "Matched by exact substance:", t: "NITROGEN OXIDES, not NITROGEN DIOXIDE.", sub: "smog 24.79 vs 16.85 kg O₃ eq per kg" },
+    { b: "No factor in the code:", t: "a new TRACI version is new rows." },
+    { b: "A missing pollutant", t: "leaves its categories missing, never 0." },
+  ], 8.3, 2.15, 4.45, 4.6, 15);
+}
+
+// ── 8. Data split ────────────────────────────────────────────────────────
+{
+  const s = frame("Phase 2 · prediction", "Splitting the data by year", "Impacts and models", "Arnav", "Train on earlier years, tune on the next two, and score once on the newest two.");
+  const yrs = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
+  const cw = 12.1 / yrs.length;
+  const role = (y) => (y === 2015 || y === 2026 ? null : y <= 2021 ? K.ridge : y <= 2023 ? K.base : K.amber);
+  yrs.forEach((yr, i) => {
+    const c = role(yr);
+    s.addShape(pres.shapes.RECTANGLE, { x: 0.6 + i * cw, y: 2.15, w: cw, h: 0.5, fill: { color: c ?? K.card }, line: { color: K.bg, width: 2 } });
+    s.addText(String(yr), { x: 0.6 + i * cw, y: 2.15, w: cw, h: 0.5, fontSize: 13, bold: !!c, color: c ? "FFFFFF" : K.muted, align: "center", valign: "middle", margin: 0, isTextBox: true });
+  });
+  [[0, 1, "previous year only"], [1, 6, "Train · 25,116 unit-years"], [7, 2, "Validate · 7,970"], [9, 2, "Test · 7,755"], [11, 1, "partial year"]].forEach(([i, n, t]) =>
+    s.addText(t, { x: 0.6 + i * cw, y: 2.7, w: n * cw, h: 0.3, fontSize: 12, bold: n > 1, color: n > 1 ? K.ink : K.muted, align: "center", margin: 0, isTextBox: true }));
+  const sw = 3.85, sg = 0.275;
+  [["Tune", "Fit on 2016–21; pick settings by error on 2022–23. Ridge: 5 strengths; tree: 27 sizes."], ["Refit", "Fit the chosen settings again on 2016–23, so the models use the newest training data."], ["Score once", "On 2024–25. 95 % intervals resample whole units, since a unit's two years aren't independent."]].forEach(([h, b], i) => {
+    const x = 0.6 + i * (sw + sg);
+    step(s, x, 3.3, sw, 1.45, i + 1, h, b, i === 2 ? { line: K.amber, lineW: 1.5 } : {});
+    if (i < 2) arrow(s, x + sw, 4.02, x + sw + sg, 4.02);
+  });
+  card(s, 0.6, 5.1, 3.85, "Why by year, not at random", "A random split trains on a unit's 2025 and tests on its 2024: scores look better than they are.");
+  card(s, 4.725, 5.1, 3.85, "Why 2016 to 2025", "2016 is the first year with a previous year, an input; 2026 isn't finished.");
+  card(s, 8.85, 5.1, 3.85, "Why two years each", "About 7,800 unit-years each, and more than one year's conditions.");
+}
+
+// ── 9. Models ────────────────────────────────────────────────────────────
+{
+  const s = frame("Phase 2 · prediction", "Three models, chosen on the validation years", "Impacts and models", "Raaj", "Target: a unit's NOₓ for the year, in short tons. Nothing computed from this year's NOₓ is an input.");
+  bullets(s, [
+    { b: "This year's activity:", t: "heat input, gross load, hours." },
+    { b: "The unit:", t: "capacity, age, fuel, type, and 5 controls.", sub: "SCR, SNCR, low-NOₓ burner, injection, overfire air" },
+    { b: "Last year:", t: "NOₓ rate and hours.", sub: "known in advance, so allowed" },
+  ], 0.6, 2.15, 4.6, 3.2, 15);
+  table(s, [
+    [hdr("Model"), hdr("Settings searched"), hdr("Chosen"), hdr("Validation error")],
+    [strong("Baseline"), "median by fuel and unit type", "—", "114.2 t"],
+    [strong("Ridge regression"), "strength 0.01 to 100, on log tons", "10", "57.9 t"],
+    [strong("Decision tree"), "depth 4 to 24 or none × leaf 5, 20, 50", "20 × 20", { text: "26.5 t", options: { bold: true, color: K.green } }],
+    [{ text: "Persistence (reference)", options: { color: K.muted } }, "last year's rate × this year's fuel", "—", "18.7 t"],
+  ], { x: 5.5, y: 2.15, w: 7.2, colW: [1.95, 2.85, 0.9, 1.5], fontSize: 12, rowH: 0.45 });
+  stat(s, 0.6, 5.2, "26.5 → 63.2 t", "tree's validation error without this year's activity", K.amber, 3.9);
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 5.5, y: 5.2, w: 7.2, h: 1.3, rectRadius: 0.06, fill: { color: K.paper }, line: { color: K.blue, width: 1.5 } });
+  s.addText([
+    { text: "Stored as rows. ", options: { bold: true, color: K.ink } },
+    { text: "ml/train.py writes each model's preprocessing and coefficients or tree as JSON in models.artifact. The app replays it in TypeScript; a test matches scikit-learn on 200 rows to 10⁻⁶." },
+  ], { x: 5.75, y: 5.2, w: 6.8, h: 1.3, fontSize: 13, color: K.ink2, margin: 0, valign: "middle", isTextBox: true });
+}
+
+// ── Demo: two steps per slide ────────────────────────────────────────────
+pres.addSection({ title: "Demo" });
+/** One demo step in half a slide: label, headline, screenshot (or a drawing), two numbers. */
+function half(s, x, n, label, head, draw, stats) {
+  const w = 5.9;
+  s.addText(`Step ${n} · ${label}`, { x, y: 1.95, w, h: 0.3, fontSize: 12, color: K.muted, margin: 0, isTextBox: true });
+  s.addText(head, { x, y: 2.25, w, h: 0.42, fontSize: 18, bold: true, color: K.ink, margin: 0, isTextBox: true });
+  if (typeof draw === "string") shot(s, draw, x, 2.8, w, 2.55, "left");
+  else draw(x, 2.8, w);
+  stats.forEach(([v, l, c], i) => stat(s, x + i * 3.0, 5.55, v, l, c ?? K.ink, 2.8));
+}
+const demo = (n, title, speaker, subtitle) => frame(`Demo · steps ${n}–${n + 1} of 8`, title, "Demo", speaker, subtitle);
+
+// 10. Steps 1–2
+{
+  const s = demo(1, "Build a dataset, then follow CO₂", "Arnav", "Q1: how did emissions change, and how much is coal giving way to gas?");
+  half(s, 0.6, 1, "a dataset from a sentence", "“coal units in Kentucky”", img("kycoal"), [["358", "unit-years from 17 plants"], ["−30 %", "their CO₂, 2015 → 2025"]]);
+  half(s, 6.8, 2, "visualization 1", "Gas passed coal in 2023", fig("p2-trend"), [["−22 %", "all CO₂, 2015 → 2025"], ["≈ 2,040", "coal lb CO₂/MWh, flat", K.amber]]);
+}
+
+// 11. Steps 3–4
+{
+  const s = demo(3, "Spread by fuel, then SCR vs none", "Arnav", "Q2: how much lower is the NOₓ rate of units with SCR?");
+  half(s, 0.6, 3, "visualization 2 · statistics", "NOₓ rate by fuel, log scale", fig("p2-box"), [["0.034 · 0.574", "gas and oil medians, lb/MMBtu"], ["2.5×", "mean over median: use the median"]]);
+  half(s, 6.8, 4, "comparison", "SCR vs no NOₓ control", img("compare-all"), [["+252.6 %", "no control vs SCR, pooled", K.amber], ["p < 0.001", "Welch t and Mann–Whitney"]]);
+}
+
+// 12. Steps 5–6
+{
+  const s = demo(5, "Impacts by state, then model accuracy", "Raaj", "Q3: which states contribute most? Q4: how well can we predict NOₓ?");
+  half(s, 0.6, 5, "TRACI impacts", "Per MWh of power, 2024", img("impacts-mwh"), [["Texas", "leads every total"], ["Nebraska", "leads acidification per MWh"]]);
+  half(s, 6.8, 6, "prediction", "Error on years no model saw", img("models-top"), [["26.3 t", "tree, 76 % below baseline", K.green], ["18.5 t", "persistence: still best"]]);
+}
+
+// 13. Steps 7–8
+{
+  const s = demo(7, "Change one input, then ask what-if", "Arnav", "Q4: how does Ghent unit 2's predicted NOₓ respond to changes?");
+  half(s, 0.6, 7, "sensitivity", "Heat input ± 50 %", fig("p2-sensitivity"), [["−35 · −57 %", "Ridge, tree at half the fuel"], ["8 steps", "the tree is a staircase"]]);
+  half(s, 6.8, 8, "what-if and export", "The models disagree on controls", (x, y, w) => table(s, [
     [hdr("Change"), hdr("Ridge"), hdr("Tree")],
-    ["Add SCR", "−58.9 %", "0.0 %"],
+    [strong("Add SCR"), { text: "−58.9 %", options: { bold: true, color: K.ridge } }, "0.0 %"],
     ["Switch to gas", "−68.8 %", "0.0 %"],
     ["5 % less fuel", "−3.2 %", "−9.1 %"],
     ["Run 10 % more", "+6.2 %", "+10.1 %"],
-  ], { x: 0.6, y: 5.0, w: 7.6, colW: [3.6, 2.0, 2.0], fontSize: 12, rowH: 0.3 });
-  bullets(s, [
-    { b: "Ridge: −59 % (1.7K t),", t: "far above its 58 t typical miss." },
-    { b: "The tree doesn't move:", t: "none of its questions here is about SCR." },
-    { b: "For scale:", t: "5 % of Kentucky's power-plant NOₓ." },
-    { b: "Download:", t: "CSV, PNG, and metadata.json.", sub: "model, inputs, split years, commit, database snapshot" },
-  ], 8.55, 2.1, 4.2, 4.7, 14);
+  ], { x, y, w, colW: [2.9, 1.5, 1.5], fontSize: 13, rowH: 0.46 }), [["−59 %", "Ridge for SCR, far over its 58 t miss", K.ridge], ["ZIP", "CSV, PNG, metadata.json"]]);
 }
 
-// ── 17. Limitations ──────────────────────────────────────────────────────
+// ── 14. Limitations ──────────────────────────────────────────────────────
 pres.addSection({ title: "Wrap-up" });
 {
   const s = frame("Wrap-up", "What these results don't show", "Wrap-up", "Arnav", "Each one is said on the page where it applies.");
@@ -511,7 +448,7 @@ pres.addSection({ title: "Wrap-up" });
   cells.forEach(([h, t], i) => card(s, 0.6 + (i % 3) * 4.1, 2.15 + Math.floor(i / 3) * 2.3, 3.8, h, t));
 }
 
-// ── 18. The main bugs ────────────────────────────────────────────────────
+// ── 15. The main bugs ────────────────────────────────────────────────────
 {
   const s = frame("Wrap-up", "The main bugs", "Wrap-up", "Raaj", "Most were in the database; each has its fix.");
   const cells = [
@@ -523,7 +460,7 @@ pres.addSection({ title: "Wrap-up" });
   cells.forEach(([h, t, tag, fix], i) => card(s, 0.6 + (i % 2) * 6.2, 2.15 + Math.floor(i / 2) * 2.3, 5.9, h, t, tag, fix));
 }
 
-// ── 19. Questions ────────────────────────────────────────────────────────
+// ── 16. Questions ────────────────────────────────────────────────────────
 {
   const s = frame("Thank you", "Questions?", "Wrap-up", "Raaj + Arnav");
   s.addText("What we found", { x: 0.6, y: 1.95, w: 6, h: 0.4, fontSize: 18, bold: true, color: K.ink, margin: 0, isTextBox: true });
@@ -547,7 +484,10 @@ pres.addSection({ title: "Wrap-up" });
   s.addImage({ path: img("leaf").replace(/\.jpg$/, ".png"), x: 7.4, y: 4.75, w: 0.34, h: 0.34, altText: "epaData leaf icon" });
   s.addText("github.com/raajbanga/epaData", { x: 7.86, y: 4.73, w: 4.8, h: 0.38, fontFace: MONO, fontSize: 14, bold: true, color: K.ink, margin: 0, valign: "middle", hyperlink: { url: "https://github.com/raajbanga/epaData" }, isTextBox: true });
   code(s, 7.4, 5.27, 5.3, 0, ["$ npm install && npm run build && npm start", "$ npm test", "$ npm run ml:train      # retrain models", "$ npm run db:precompute # refresh stored results"], 11);
-  s.addText("Live: epadata.vercel.app · every step in README.md", { x: 0.6, y: 6.1, w: 6.5, h: 0.4, fontSize: 12, italic: true, color: K.muted, margin: 0, isTextBox: true });
+  s.addText([
+    { text: "Live at  ", options: { fontFace: SANS, bold: false, color: K.muted } },
+    { text: "epadata.vercel.app", options: { hyperlink: { url: "https://epadata.vercel.app" } } },
+  ], { x: 0.6, y: 6.05, w: 6.5, h: 0.4, fontFace: MONO, fontSize: 14, bold: true, color: K.ink, margin: 0, valign: "middle", isTextBox: true });
 }
 
 // ── Speaker notes: generated from slides-outline.md, so they always match ──
