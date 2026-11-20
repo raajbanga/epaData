@@ -1181,14 +1181,15 @@ list makes every impact value checkable by hand.
 \begin{lstlisting}[language={}, caption={\code{metadata.json} of an analytical-dataset export (shortened).}, label=lst:meta, numbers=none]
 {
   "title": "Analytical dataset",
-  "exportedAt": "2026-10-31T18:00:52.610Z",
-  "software": { "name": "epaData", "version": "0.1.0", "commit": "224f6f1" },
+  "page": "Analyze",
+  "exportedAt": "2026-11-20T01:35:05.412Z",
+  "software": { "name": "epaData", "version": "0.1.0", "commit": "9236927" },
   "database": { "unitYears": 57414, "datasets": 153,
                 "lastImport": "2026-10-11T04:38:52.000Z" },
   "filters": { "stateCode": "KY", "yearMin": "2024", "yearMax": "2024" },
   "unitYears": 90,
   "variables": [ { "key": "co2Intensity", "unit": "lb/MWh",
-      "definition": "CO2 mass x 2,000 / gross load. Missing when ...",
+      "definition": "CO2 mass x 2,000 / gross load. Missing when either ...",
       "aggregation": "ratio" }, ... ],
   "traciFactors": [ { "traciVersion": "2.2", "pollutant": "nox",
       "substance": "NITROGEN OXIDES", "impactCategory": "Smog formation",
