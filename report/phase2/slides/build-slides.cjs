@@ -190,12 +190,11 @@ const caption = (s, t, x, y, w) => s.addText(t, { x, y, w, h: 0.3, fontSize: 11,
 pres.addSection({ title: "Introduction" });
 {
   const s = addSlide({ masterName: "TITLE", sectionTitle: "Introduction" });
-  s.addText("CS396 · Database management · December 2026", { x: 0.6, y: 1.55, w: 5.8, h: 0.35, fontSize: 15, color: K.muted, margin: 0, isTextBox: true });
-  s.addText("epaData", { x: 0.6, y: 1.95, w: 5.6, h: 1.1, fontSize: 54, bold: true, color: K.ink, margin: 0, isTextBox: true });
-  s.addText("EPA power-plant emissions: stored, checked, analyzed, and predicted", {
-    x: 0.6, y: 3.1, w: 5.5, h: 1.0, fontSize: 18, color: K.ink2, margin: 0, valign: "top", isTextBox: true,
+  s.addText("epaData", { x: 0.6, y: 1.6, w: 5.6, h: 1.1, fontSize: 54, bold: true, color: K.ink, margin: 0, isTextBox: true });
+  s.addText("Phase 2: analysis, impact factors, and prediction over an EPA emissions database", {
+    x: 0.6, y: 2.75, w: 5.5, h: 1.0, fontSize: 18, color: K.ink2, margin: 0, valign: "top", isTextBox: true,
   });
-  [["RB", "Raaj Banga", "Back end and database", 4.45], ["AB", "Arnav Bawankule", "Front end and charts", 5.2]].forEach(([ini, name, role, y]) => {
+  [["RB", "Raaj Banga", "Back end and database", 4.15], ["AB", "Arnav Bawankule", "Front end and charts", 4.9]].forEach(([ini, name, role, y]) => {
     s.addShape(pres.shapes.OVAL, { x: 0.6, y, w: 0.52, h: 0.52, fill: { color: K.ink }, line: { color: K.ink } });
     s.addText(ini, { x: 0.6, y, w: 0.52, h: 0.52, fontSize: 12, bold: true, color: K.paper, align: "center", valign: "middle", margin: 0, isTextBox: true });
     s.addText([{ text: name, options: { bold: true, fontSize: 15, color: K.ink, breakLine: true } }, { text: role, options: { fontSize: 12, color: K.muted } }],
@@ -218,107 +217,82 @@ pres.addSection({ title: "Introduction" });
   stat(s, 7.4, 2.15, "57,414", "unit-years stored: one unit's record for one year");
   stat(s, 10.25, 2.15, "6,031", "units at 1,777 plants");
   stat(s, 7.4, 4.15, "45,441", "analyzed by default: 2015–2025, units that ran");
-  stat(s, 10.25, 4.15, "9 tables", "in one SQLite file", K.amber);
+  stat(s, 10.25, 4.15, "3 new tables", "traci_factors · models · result_cache", K.amber);
 }
 
-// ── 3. Architecture ──────────────────────────────────────────────────────
-pres.addSection({ title: "The database" });
+// ── 3. What Phase 2 added ────────────────────────────────────────────────
+pres.addSection({ title: "What Phase 2 added" });
 {
-  const s = frame("The database · architecture", "How it fits together", "The database", "Raaj", "One SQLite file holds everything; every write goes through one import path.");
-  node(s, 0.6, 2.15, 3.6, 1.05, "Retrieve · Upload", "EPA CAMPD API · CSV and Excel,\nchecked by Python first");
-  node(s, 4.85, 2.15, 3.6, 1.05, "Import path", "check → approve → one transaction", { fill: K.card });
-  node(s, 4.85, 3.85, 3.6, 1.35, "SQLite · db.sqlite (35 MB)", "records · provenance · TRACI factors\nmodels · stored results", { line: K.blue, lineW: 1.75, headSize: 15 });
-  node(s, 9.1, 3.85, 3.6, 1.35, "Next.js 16 · tRPC", "Drizzle ORM over libSQL;\nstatistics computed here");
-  node(s, 9.1, 2.15, 3.6, 1.05, "Browser", "gets results, never rows");
-  node(s, 0.6, 3.85, 3.6, 1.35, "Offline scripts", "ml/train.py → models\nimport_traci → traci_factors\ndb:precompute → result_cache", { dash: "dash", bodyMono: true, bodySize: 10 });
-  node(s, 4.85, 5.75, 3.6, 0.85, "Vercel", "read-only copy of the file", { dash: "dash" });
-  arrow(s, 4.2, 2.68, 4.85, 2.68);
-  arrow(s, 6.65, 3.2, 6.65, 3.85);
-  arrow(s, 8.45, 4.52, 9.1, 4.52);
-  arrow(s, 10.9, 3.85, 10.9, 3.2);
-  s.addText("rows", { x: 8.45, y: 4.16, w: 0.65, h: 0.3, fontFace: MONO, fontSize: 10, color: K.muted, align: "center", margin: 0, isTextBox: true });
-  s.addText("results", { x: 11.0, y: 3.38, w: 1.2, h: 0.3, fontFace: MONO, fontSize: 10, color: K.muted, margin: 0, isTextBox: true });
-  arrow(s, 4.2, 4.52, 4.85, 4.52, null, "dash");
-  arrow(s, 6.65, 5.2, 6.65, 5.75, null, "dash");
-  s.addText("Writes happen locally; the hosted copy only reads.", { x: 9.1, y: 5.85, w: 3.6, h: 0.6, fontSize: 13, color: K.muted, margin: 0, valign: "top", isTextBox: true });
+  const s = frame("Phase 2 · architecture", "What Phase 2 added", "What Phase 2 added", "Raaj", "Phase 1's tables stay as they are; Phase 2 reads them and adds three of its own.");
+  node(s, 0.6, 2.15, 3.3, 3.3, "Kept from Phase 1", "core tables and their keys\n17 indexes\nRetrieve and Upload\none-transaction imports\nread-only host on Vercel", { dash: "dash", bodySize: 13, headSize: 15 });
+  const blue = { line: K.blue, lineW: 1.75 };
+  node(s, 4.3, 2.15, 2.5, 1.2, "Core tables", "facilities · units\nannual_records", { dash: "dash" });
+  node(s, 7.2, 2.15, 2.7, 1.2, "Analysis query", "one join per selection\n(slide 5)", blue);
+  node(s, 10.3, 2.15, 2.4, 1.2, "Analyze · Predict", "statistics, TRACI, models;\nexports with provenance", blue);
+  node(s, 4.3, 4.25, 2.5, 1.2, "Offline scripts", "ml/train.py\nimport_traci · db:precompute", { ...blue, bodyMono: true, bodySize: 10 });
+  node(s, 7.2, 4.25, 2.7, 1.2, "Three new tables", "traci_factors · models\nresult_cache (slide 4)", { ...blue, fill: K.card });
+  arrow(s, 6.8, 2.75, 7.2, 2.75);
+  arrow(s, 9.9, 2.75, 10.3, 2.75);
+  arrow(s, 6.8, 4.85, 7.2, 4.85);
+  arrow(s, 8.55, 4.25, 8.55, 3.35);
+  arrow(s, 9.9, 4.85, 11.5, 4.85);
+  arrow(s, 11.5, 4.85, 11.5, 3.35);
+  s.addShape(pres.shapes.LINE, { x: 0.6, y: 5.95, w: 0.5, h: 0, line: { color: K.blue, width: 1.75 } });
+  s.addText("New in Phase 2. Everything is still one SQLite file, so the hosted copy needs no other service.", { x: 1.25, y: 5.8, w: 11.4, h: 0.3, fontSize: 14, color: K.ink2, margin: 0, valign: "middle", isTextBox: true });
 }
 
-// ── 4. Schema ────────────────────────────────────────────────────────────
+// ── 4. Three new tables ──────────────────────────────────────────────────
 {
-  const s = frame("The database · schema", "One row per unit per year", "The database", "Raaj", "Nine tables; the keys enforce what the data means.");
-  const box = (x, y, w, h, name, n, lines, opts = {}) => {
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h, rectRadius: 0.05, fill: { color: opts.fill ?? K.paper }, line: { color: opts.line ?? K.rule, width: opts.lineW ?? 1, dashType: opts.dash ?? "solid" } });
-    s.addText([{ text: name, options: { bold: true, fontFace: MONO, fontSize: 13, color: K.ink } }, { text: `  ${n}`, options: { fontSize: 11, color: K.muted, breakLine: true } }, ...lines.map((t, i) => ({ text: t, options: { fontSize: 11, color: K.ink2, breakLine: i < lines.length - 1 } }))],
-      { x: x + 0.1, y: y + 0.06, w: w - 0.2, h: h - 0.12, margin: 0, valign: "top", isTextBox: true });
-  };
-  box(0.6, 2.15, 2.75, 1.05, "facilities", "1,777", ["PK: the EPA facility ID", "state, county, location"]);
-  box(3.85, 2.15, 2.75, 1.05, "units", "6,031", ["unique (facility, unit ID)", "fuel, type, capacity"]);
-  box(7.1, 2.15, 2.95, 1.6, "annual_records", "57,414", ["unique (unit, year)", "→ unit, facility, dataset", "superseded_upload_id", "metrics: NULL, never 0"], { line: K.blue, lineW: 1.75 });
-  box(10.55, 2.15, 2.2, 1.05, "datasets", "153", ["one row per import", "counts, file or query"]);
-  box(7.1, 4.25, 2.95, 0.85, "data_audit_logs", "7,603", ["sanity flags on kept records"]);
-  box(10.55, 4.25, 2.2, 0.85, "import_issues", "", ["rejected, repeated rows"]);
-  s.addText("Analysis tables", { x: 0.6, y: 3.95, w: 6, h: 0.3, fontSize: 12, bold: true, color: K.muted, margin: 0, isTextBox: true });
-  box(0.6, 4.25, 1.95, 0.85, "traci_factors", "6", ["version, CAS, unit"], { dash: "dash" });
-  box(2.7, 4.25, 1.95, 0.85, "models", "3", ["each model as JSON"], { dash: "dash" });
-  box(4.8, 4.25, 1.95, 0.85, "result_cache", "67", ["stored results"], { dash: "dash" });
-  arrow(s, 3.35, 2.68, 3.85, 2.68);
-  arrow(s, 6.6, 2.68, 7.1, 2.68);
-  arrow(s, 10.55, 2.68, 10.05, 2.68);
-  arrow(s, 8.58, 3.75, 8.58, 4.25);
-  arrow(s, 11.65, 3.2, 11.65, 4.25);
-  card(s, 0.6, 5.45, 3.8, "Cascade", "Deleting a facility removes its units and their records.");
-  card(s, 4.75, 5.45, 3.8, "Set null", "Deleting an upload only clears superseded_upload_id.");
-  card(s, 8.9, 5.45, 3.8, "NULL, never 0", "A missing measurement stays missing, so averages stay honest.");
-}
-
-// ── 5. Imports ───────────────────────────────────────────────────────────
-{
-  const s = frame("The database · writing data", "Getting data in: one transaction per import", "The database", "Arnav", "Nothing is written until the report is approved; a failure leaves nothing behind.");
-  const w = 2.3, g = 0.15;
-  const steps = [
-    ["Parse and check", "Python reads CSV or Excel; rejects rows with a reason, lists repeats."],
-    ["Compare", "Each record vs what's stored: New, Updated, Unchanged. Reads 500 IDs at a time."],
-    ["Approve", "The report shows every count. Cancel writes nothing."],
-    ["One transaction", "dataset → issues → facilities, units → records (upsert on unit, year) → flags"],
-    ["New data version", "Stored results from older data stop being served."],
-  ];
-  steps.forEach(([h, b], i) => {
-    const x = 0.6 + i * (w + g);
-    step(s, x, 2.2, w, 2.0, i + 1, h, b, i === 3 ? { fill: K.card, line: K.blue, lineW: 1.5 } : {});
-    if (i < steps.length - 1) arrow(s, x + w, 3.2, x + w + g, 3.2);
+  const s = frame("Phase 2 · schema", "Three new tables", "What Phase 2 added", "Raaj", "Each is written by one script and read by the app, so the hosted copy never writes.");
+  [
+    ["traci_factors", "6 rows", ["traci_version · pollutant · medium", "impact_category · factor", "factor_unit · substance · cas", "source"], "UNIQUE (version, pollutant, medium, category)", "Factors are data", "A new TRACI version is new rows, not new code. source names the workbook column."],
+    ["models", "3 rows", ["id · kind · target · features", "params · metrics", "train / validation / test years", "artifact (JSON) · pipeline_version"], "PK id: nox-baseline, nox-ridge, nox-tree", "Models are rows", "The app replays the JSON in TypeScript, so What-if runs on the read-only host."],
+    ["result_cache", "90 rows · 3.8 MB", ["key · procedure · input", "data_version", "value (SuperJSON)", "computed_at"], "PK key = procedure + sorted input JSON", "Results are versioned", "Every import changes data_version, so an old result is never served."],
+  ].forEach(([name, n, cols, key, why, text], i) => {
+    const x = 0.6 + i * 4.1, w = 3.8;
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y: 2.15, w, h: 1.78, rectRadius: 0.05, fill: { color: K.paper }, line: { color: K.blue, width: 1.5 } });
+    s.addText([
+      { text: name, options: { bold: true, fontFace: MONO, fontSize: 15, color: K.ink } },
+      { text: `  ${n}`, options: { fontSize: 12, color: K.muted, breakLine: true } },
+      ...cols.map((c) => ({ text: c, options: { fontFace: MONO, fontSize: 11, color: K.ink2, breakLine: true } })),
+      { text: key, options: { fontSize: 11, bold: true, color: K.blue } },
+    ], { x: x + 0.18, y: 2.27, w: w - 0.3, h: 1.6, margin: 0, valign: "top", paraSpaceAfter: 3, isTextBox: true });
+    card(s, x, 4.3, w, why, text);
   });
-  card(s, 0.6, 4.65, 3.8, "Upsert, not reload", "ON CONFLICT (unit, year) DO UPDATE: only changed rows change.");
-  card(s, 4.75, 4.65, 3.8, "Chunks of 50 rows", "SQLite caps the values one statement can bind.");
-  card(s, 8.9, 4.65, 3.8, "Provenance per record", "dataset_id says which import last wrote each row.");
 }
 
-// ── 6. Indexes ───────────────────────────────────────────────────────────
+// ── 5. One query per selection ───────────────────────────────────────────
 {
-  const s = frame("The database · indexes", "Indexes chosen from query plans", "The database", "Raaj", "Read EXPLAIN QUERY PLAN for each slow query, then add the index it needs.");
-  table(s, [
-    [hdr("Query"), hdr("Index"), hdr("Without"), hdr("With")],
-    [strong("Each plant's CO₂ in 2024 (ranking, map)"), "annual_records (facility_id, year)", "2.67 s", { text: "3.8 ms", options: { bold: true, color: K.green } }],
-    [strong("Each record's previous year (year-over-year)"), "annual_records (unit, year), unique", "33 s", { text: "50 ms", options: { bold: true, color: K.green } }],
-    [strong("Every Analyze selection; CO₂ ranking"), "annual_records (year, co2_mass_tons)", "—", "range scan"],
-  ], { x: 0.6, y: 2.15, w: 12.1, colW: [4.6, 4.2, 1.6, 1.7], fontSize: 14, rowH: 0.55 });
-  code(s, 0.6, 4.55, 7.1, 1.95, [
-    "EXPLAIN QUERY PLAN … previous-year join",
-    "SEARCH a USING INDEX annual_record_year_co2_idx (year>? AND year<?)",
-    "SEARCH p USING INDEX annual_record_unit_year_idx",
-    "         (unit_internal_id=? AND year=?) LEFT-JOIN",
-  ], 11);
+  const s = frame("Phase 2 · queries", "One query per selection", "What Phase 2 added", "Raaj", "Every Analyze view starts from one join, served by indexes Phase 1 already had.");
+  const h = code(s, 0.6, 2.15, 7.3, 0, [
+    "SELECT r.*, u.primary_fuel, u.unit_type, f.state_code,",
+    "       p.nox_mass_tons AS prev_nox, …",
+    "FROM annual_records r",
+    "JOIN units u      ON u.id = r.unit_internal_id",
+    "JOIN facilities f ON f.id = r.facility_id",
+    "LEFT JOIN annual_records p",
+    "  ON p.unit_internal_id = r.unit_internal_id",
+    " AND p.year = r.year - 1",
+    "WHERE <Explore's filters, including Top N>",
+  ], 12);
+  caption(s, "EXPLAIN QUERY PLAN", 0.6, 2.15 + h + 0.12, 7.3);
+  code(s, 0.6, 2.15 + h + 0.45, 7.3, 0, [
+    "SEARCH r USING INDEX annual_record_year_co2_idx (year>? AND year<?)",
+    "SEARCH p USING INDEX annual_record_unit_year_idx (unit_internal_id=? AND year=?)",
+  ], 10);
+  stat(s, 8.3, 2.15, "33 s → 50 ms", "previous-year join, without and with the unique (unit, year) index", K.green, 4.4);
+  stat(s, 8.3, 3.75, "1.5 s → < 1 ms", "per view: caching the finished rows, not the lazy query", K.green, 4.4);
   bullets(s, [
-    { b: "17 indexes,", t: "each serving a query we can name." },
-    { b: "The unique (unit, year) index", t: "is a rule and a join index at once." },
-    { b: "Measured", t: "with sqlite3's timer on a copy with the index dropped." },
-  ], 8.1, 4.55, 4.6, 2.0, 15);
+    { b: "Same WHERE as Explore:", t: "every filter and Top N mean the same on every page." },
+    { b: "Previous year", t: "gives the 8 year-over-year variables." },
+  ], 8.3, 5.35, 4.4, 1.3, 14);
 }
 
-// ── 7. Stored results ────────────────────────────────────────────────────
+// ── 6. Stored results ────────────────────────────────────────────────────
 {
-  const s = frame("The database · reading data", "Read once, then store the result", "The database", "Arnav", "A tab's views share one read; finished results live in the database itself.");
+  const s = frame("Phase 2 · stored results", "Store the result in the database", "What Phase 2 added", "Arnav", "Each server starts empty on Vercel, so finished results live in the database itself.");
   const y = 2.25, w = 2.75, g = 0.4;
-  [["Memory", "this server's last results"], ["result_cache table", "key: procedure + input JSON\nstamped with the data version"], ["Compute", "one join per selection,\nshared by every view"], ["Store", "for every later visit\nand every server"]].forEach(([h, b], i) => {
+  [["Memory", "this server's last results"], ["result_cache table", "key: procedure + input JSON\nstamped with the data version"], ["Compute", "one query per selection\n(slide 5)"], ["Store", "for every later visit\nand every server"]].forEach(([h, b], i) => {
     const x = 0.6 + i * (w + g);
     node(s, x, y, w, 1.25, h, b, i === 1 ? { fill: K.card, line: K.blue, lineW: 1.5 } : {});
     if (i < 3) {
@@ -328,19 +302,19 @@ pres.addSection({ title: "The database" });
   });
   stat(s, 0.6, 4.05, "8 ms vs 1,100 ms", "a stored result vs computing it", K.green, 3.8);
   stat(s, 4.75, 4.05, "4.4 s → 0.25 s", "Analyze on a cold server, before and after", K.green, 3.8);
-  stat(s, 8.9, 4.05, "1.5 s → < 1 ms", "caching rows instead of a lazy query", K.amber, 3.8);
+  stat(s, 8.9, 4.05, "90 results", "3.8 MB, shipped in the committed file", K.ink, 3.8);
   s.addText([
     { text: "Never stale: ", options: { bold: true, color: K.ink } },
     { text: "every import changes the data version, so older results are never served. " },
     { text: "Shipped: ", options: { bold: true, color: K.ink } },
-    { text: "npm run db:precompute refreshes them, and the read-only host serves the committed file." },
+    { text: "npm run db:precompute refreshes them before each deploy." },
   ], { x: 0.6, y: 5.75, w: 12.1, h: 0.8, fontSize: 14, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
 }
 
-// ── 8. Prediction ────────────────────────────────────────────────────────
-pres.addSection({ title: "The analysis" });
+// ── 7. Prediction ────────────────────────────────────────────────────────
+pres.addSection({ title: "The models" });
 {
-  const s = frame("The analysis · prediction", "Predicting NOₓ on years the models never saw", "The analysis", "Raaj", "Split by year; models trained offline and stored as rows.");
+  const s = frame("Phase 2 · prediction", "Predicting NOₓ on years the models never saw", "The models", "Raaj", "Split by year; models trained offline and stored as rows.");
   const ty = 2.2;
   const seg = [["Train 2016–2021", 25116, K.ridge, 4.6], ["Validate 2022–23", 7970, K.base, 1.9], ["Test 2024–25", 7755, K.amber, 1.9]];
   let x = 0.6;
@@ -363,7 +337,7 @@ pres.addSection({ title: "The analysis" });
   });
 }
 
-// ── 9. Demo overview ────────────────────────────────────────────────────
+// ── 8. Demo overview ────────────────────────────────────────────────────
 pres.addSection({ title: "Demo" });
 {
   const s = frame("Demo", "Eight steps, four questions", "Demo", "Arnav", "One plant ties them together: Ghent, Kentucky.");
@@ -387,7 +361,7 @@ pres.addSection({ title: "Demo" });
 // ── Demo steps ───────────────────────────────────────────────────────────
 const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
 
-// 10. Step 1
+// 9. Step 1
 {
   const s = frame(kicker(1, "build a dataset"), "Filters from a sentence", "Demo", "Arnav", "“coal units in Kentucky” becomes two filter chips.");
   bullets(s, [
@@ -400,7 +374,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   shot(s, img("kycoal"), 6.2, 2.15, 6.5, 4.5, "right");
 }
 
-// 11. Step 2
+// 10. Step 2
 {
   const s = frame(kicker(2, "visualization 1 · Q1"), "Gas overtook coal in 2023; coal came back in 2025", "Demo", "Arnav", "CO₂ mass by year, one line per fuel class.");
   shot(s, fig("p2-trend"), 0.6, 2.0, 12.1, 3.2, "center");
@@ -411,7 +385,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
     { x: 9.9, y: 5.4, w: 2.85, h: 1.3, fontSize: 13, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
 }
 
-// 12. Step 3
+// 11. Step 3
 {
   const s = frame(kicker(3, "visualization 2 · statistics"), "NOₓ rate by fuel: typical values differ 17-fold", "Demo", "Arnav", "A box plot per fuel, on a log scale, with a key for reading a box.");
   shot(s, fig("p2-box"), 0.6, 2.0, 12.1, 3.3, "center");
@@ -422,7 +396,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
     { x: 8.2, y: 5.5, w: 4.55, h: 1.3, fontSize: 12, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
 }
 
-// 13. Step 4
+// 12. Step 4
 {
   const s = frame(kicker(4, "comparison · Q2"), "SCR units emit NOₓ at a fraction of the rate", "Demo", "Arnav", "Compare groups: SCR vs no NOₓ control, 2015–2025.");
   bullets(s, [
@@ -436,7 +410,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   stat(s, 9.4, 5.35, "p < 0.001", "Welch t and Mann–Whitney U", K.ink, 3.3);
 }
 
-// 14. Step 5
+// 13. Step 5
 {
   const s = frame(kicker(5, "TRACI impacts · Q3"), "Texas leads in total; Nebraska per MWh", "Demo", "Raaj", "2024, by state. Totals show where; per MWh shows how dirty each MWh is.");
   shot(s, img("impacts-mwh"), 0.6, 2.05, 7.3, 3.2, "left");
@@ -454,7 +428,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   ], { x: 0.85, y: 5.7, w: 11.7, h: 1.1, fontSize: 14, margin: 0, valign: "middle", isTextBox: true });
 }
 
-// 15. Step 6
+// 14. Step 6
 {
   const s = frame(kicker(6, "prediction · Q4"), "The tree beats the baseline; persistence beats both", "Demo", "Raaj", "Error per unit-year on 2024–25, years no model saw.");
   s.addText("Mean absolute error per unit-year (short tons NOx)", { x: 0.6, y: 2.1, w: 6.4, h: 0.35, fontSize: 13, bold: true, color: K.ink, margin: 0, isTextBox: true });
@@ -476,7 +450,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   ], 7.3, 2.15, 5.45, 4.6, 15);
 }
 
-// 16. Step 7
+// 15. Step 7
 {
   const s = frame(kicker(7, "sensitivity"), "Ghent unit 2: change heat input, hold the rest", "Demo", "Arnav", "± 50 % heat input; every other input stays as reported.");
   shot(s, fig("p2-sensitivity"), 0.6, 2.05, 7.6, 4.7, "left");
@@ -489,7 +463,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   ], 8.55, 2.1, 4.2, 4.6, 14);
 }
 
-// 17. Step 8
+// 16. Step 8
 {
   const s = frame(kicker(8, "what-if · export"), "The models agree on fuel use, not on controls", "Demo", "Raaj", "“What if Ghent unit 2 added SCR in 2024?”, then every other change.");
   s.addText("Predicted NOx, Ghent unit 2, 2024 (short tons): as it is → with SCR", { x: 0.6, y: 2.05, w: 7.6, h: 0.32, fontSize: 13, bold: true, color: K.ink, margin: 0, isTextBox: true });
@@ -522,7 +496,7 @@ const kicker = (n, what) => `Demo · step ${n} of 8 · ${what}`;
   ], 8.55, 2.1, 4.2, 4.7, 14);
 }
 
-// ── 18. Limitations ──────────────────────────────────────────────────────
+// ── 17. Limitations ──────────────────────────────────────────────────────
 pres.addSection({ title: "Wrap-up" });
 {
   const s = frame("Wrap-up", "What these results don't show", "Wrap-up", "Arnav", "Each one is said on the page where it applies.");
@@ -537,19 +511,19 @@ pres.addSection({ title: "Wrap-up" });
   cells.forEach(([h, t], i) => card(s, 0.6 + (i % 3) * 4.1, 2.15 + Math.floor(i / 3) * 2.3, 3.8, h, t));
 }
 
-// ── 19. The main bugs ────────────────────────────────────────────────────
+// ── 18. The main bugs ────────────────────────────────────────────────────
 {
   const s = frame("Wrap-up", "The main bugs", "Wrap-up", "Raaj", "Most were in the database; each has its fix.");
   const cells = [
-    ["A missing index", "The previous-year join took 33 s.", "Fix", "unique (unit, year) index: 50 ms"],
     ["A cache that didn't cache", "Drizzle queries are lazy: 1.5 s per view.", "Fix", "cache the finished rows: < 1 ms"],
     ["A read-only, cold host", "Each Vercel instance starts empty and can't write.", "Fix", "results stored in the committed file"],
     ["NOₓ vs NO₂ in TRACI", "Both are listed, with smog factors 24.79 vs 16.85.", "Fix", "read the workbook; map exactly"],
+    ["A tree in 32-bit floats", "The tree from the models table took wrong branches.", "Fix", "Math.fround; a test against scikit-learn"],
   ];
   cells.forEach(([h, t, tag, fix], i) => card(s, 0.6 + (i % 2) * 6.2, 2.15 + Math.floor(i / 2) * 2.3, 5.9, h, t, tag, fix));
 }
 
-// ── 20. Questions ────────────────────────────────────────────────────────
+// ── 19. Questions ────────────────────────────────────────────────────────
 {
   const s = frame("Thank you", "Questions?", "Wrap-up", "Raaj + Arnav");
   s.addText("What we found", { x: 0.6, y: 1.95, w: 6, h: 0.4, fontSize: 18, bold: true, color: K.ink, margin: 0, isTextBox: true });
@@ -562,7 +536,7 @@ pres.addSection({ title: "Wrap-up" });
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 7.4, y: 1.95, w: 5.3, h: 2.55, rectRadius: 0.06, fill: { color: K.paper }, line: { color: K.rule, width: 1 } });
   s.addText([
     { text: "Raaj", options: { bold: true, color: K.ink, breakLine: true } },
-    { text: "schema, indexes, imports, stored results, statistics, TRACI, models, report", options: { color: K.ink2, fontSize: 13, breakLine: true } },
+    { text: "new tables, analysis query, stored results, statistics, TRACI, models, report", options: { color: K.ink2, fontSize: 13, breakLine: true } },
     { text: " ", options: { fontSize: 6, breakLine: true } },
     { text: "Arnav", options: { bold: true, color: K.ink, breakLine: true } },
     { text: "Analyze and Predict pages, charts, zoom and export, filter chips, readings, this deck", options: { color: K.ink2, fontSize: 13, breakLine: true } },

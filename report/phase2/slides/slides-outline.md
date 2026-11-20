@@ -6,18 +6,18 @@ behind each one: why it's built that way, the numbers, and the answers to follow
 them before presenting; glance at them while presenting. Each slide's speaker notes are generated
 from its section here, so the two always match.
 
-- **Timing:** about 15:00 in total.
-  - Slides before the demo: about 6:55.
+- **Timing:** about 14:00 in total.
+  - Slides before the demo: about 6:05.
   - The demo: about 6:15.
   - Slides after the demo: about 1:55.
-  - If time is short, skip slide 9 (the demo overview) and slide 19 (the main bugs). That saves
+  - If time is short, skip slide 8 (the demo overview) and slide 18 (the main bugs). That saves
     about 0:50.
 - **Speakers, by role:**
 
   | Speaker | Slides | Time |
   |---|---|---|
-  | Raaj | 1, 3, 4, 6, 8, 14, 15, 17, 19, 20: intro, the architecture, schema, and indexes, the models, TRACI, what-if, and the main bugs | about 7:00 |
-  | Arnav | 2, 5, 7, 9, 10, 11, 12, 13, 16, 18, 20: the questions, imports, stored results, the first demo steps, sensitivity, and limitations | about 7:00 |
+  | Raaj | 1, 3, 4, 5, 7, 13, 14, 16, 18, 19: intro, what Phase 2 added, the new tables, the analysis query, the models, TRACI, what-if, and the main bugs | about 7:00 |
+  | Arnav | 2, 6, 8, 9, 10, 11, 12, 15, 17, 19: the questions, stored results, the first demo steps, sensitivity, and limitations | about 6:20 |
 
 - **Numbers** assume a fresh `db.sqlite`, the committed models, and the demo run in order. The
   page rounds (45.4K, 1.64B); these notes give the exact figures.
@@ -36,15 +36,17 @@ from its section here, so the two always match.
 
 ### 1. Title — Raaj (0:20)
 
-- epaData stores the EPA's yearly emissions records for U.S. power plants and answers questions
-  about them.
-- Phase 1 brought the data in: retrieval from the EPA, file uploads, validation, and search.
-- Phase 2 analyzes it: statistics, charts, the EPA's TRACI impact factors, and models that predict
-  a unit's NOₓ and answer what-if questions.
+- epaData stores the EPA's yearly emissions records for U.S. power plants. Phase 1 built that
+  database: retrieval, uploads, validation, and search.
+- This talk is about Phase 2: what we added to answer questions with it.
+  - an analysis layer over the database, with statistics and charts
+  - the EPA's TRACI impact factors
+  - models that predict a unit's NOₓ and answer what-if questions
+  - stored results, so every page loads in a fraction of a second.
 - Order of the talk:
   - the questions
-  - how the database is designed and kept fast
-  - how the analysis works
+  - what Phase 2 added to the database, and how it reads it
+  - the models
   - a live demo
   - what the results don't show.
 
@@ -57,113 +59,75 @@ from its section here, so the two always match.
   - Q2: how much lower is the NOₓ rate of units with SCR, a catalytic NOₓ control?
   - Q3: which states contribute most to each TRACI impact category?
   - Q4: how well can we predict a unit's NOₓ, and how does it respond to changes?
-- **What's stored:** 57,414 unit-years from 6,031 units at 1,777 plants.
+- **The data:** 57,414 unit-years from 6,031 units at 1,777 plants, all from Phase 1's tables.
   - A unit-year is one generating unit's record for one year.
   - By default the analysis uses 45,441 of them: the complete years 2015–2025, units that ran.
 - **Who it's for:** people who know the subject but not statistics software. Every chart opens
   with a plain sentence saying what it shows.
 
-## The database
+## What Phase 2 added
 
-### 3. How it fits together — Raaj (0:45)
+### 3. What Phase 2 added — Raaj (0:45)
 
-- **One SQLite file** (`db.sqlite`, 35 MB) holds everything: the records, where each came from,
-  the TRACI factors, the trained models, and stored analysis results.
-  - SQLite because the data is read far more than written, fits in one file, and ships with the
-    app. There's no database server to run.
-- **The server** is Next.js 16 with tRPC. Drizzle ORM writes the queries; the libSQL client runs
-  them.
-  - The browser never sees rows, only results: a chart gets its numbers, not 45,000 records.
-- **Writers** all go through the same import path (slide 5):
-  - Retrieve pulls from the EPA's CAMPD API.
-  - Upload reads CSV and Excel files; Python (`scripts/parse_import.py`) parses and checks them.
-- **Offline scripts** also write to it:
-  - `ml/train.py` stores the trained models as rows.
-  - `scripts/import_traci.ts` stores the six TRACI factors.
-  - `npm run db:precompute` refreshes the stored results (slide 7).
-- **Hosting:** Vercel serves a read-only copy of the committed file. Retrieve and Upload say they're
-  disabled there; everything else works.
+- **Kept from Phase 1, unchanged:** the core tables (facilities, units, annual records, datasets,
+  audit flags), their indexes, the one-transaction import, and the read-only host on Vercel.
+  Phase 2 reads those tables; it doesn't change them.
+- **Added in Phase 2** (blue on the slide):
+  - **An analysis layer** on the server: one query per selection, then 29 variables, the
+    statistics, TRACI, and the models, computed in TypeScript. The browser gets results, never
+    rows.
+  - **Three new tables:** `traci_factors`, `models`, and `result_cache` (next slide).
+  - **Offline scripts** that fill them: `ml/train.py` trains and stores the models,
+    `scripts/import_traci.ts` loads the factors, and `npm run db:precompute` refreshes the stored
+    results.
+  - **Analyze and Predict pages**, and exports with full provenance.
+- Everything still lives in the one SQLite file, so the hosted copy works with no other service.
 
-### 4. The schema: one row per unit per year — Raaj (0:50)
+### 4. Three new tables — Raaj (0:50)
 
-- **Nine tables.** The three core ones:
-  - `facilities` (1,777): the key is the EPA's own facility ID.
-  - `units` (6,031): unique on (facility, unit ID).
-  - `annual_records` (57,414): unique on (unit, year). This is the row everything counts.
-- **Provenance:**
-  - `datasets` (153): one row per import, with its counts and its parameters or file name.
-  - Every record points to the dataset that last wrote it.
-  - `superseded_upload_id` remembers an upload that a later EPA retrieval replaced, so the Upload
-    page can say "Replaced by API".
-- **Quality:**
-  - `data_audit_logs` (7,603): physical-sanity flags on records that are kept, such as power reported
-    from a unit that ran 0 hours.
-  - `import_issues`: rejected and repeated rows, with the reason.
-- **Analysis tables:**
-  - `traci_factors` (6): with version, substance, CAS number, and unit.
-  - `models` (3): each trained model as JSON.
-  - `result_cache` (67): stored analysis results (slide 7).
-- **Rules the schema enforces:**
-  - Deleting a facility cascades to its units and records.
-  - Deleting an upload only clears `superseded_upload_id`; the records stay.
-  - A missing measurement is NULL, never 0. Zero would drag every average down.
-
-### 5. Getting data in: one transaction per import — Arnav (0:50)
-
-- **Check before writing.** An upload is parsed and checked first; nothing is stored yet.
-  - Rejected rows come back with a reason; repeated rows are listed.
-  - Each record is compared with what's stored: New, Updated, or Unchanged.
-  - The stored records are read in chunks of 500 IDs, because SQLite limits how many values one
-    query can bind.
-- **Approve, then one transaction:**
-  - the dataset row
-  - the rejected rows (`import_issues`)
-  - facilities and units, upserted
-  - the records, upserted on (unit, year) in 50-row chunks
-  - the audit flags and the dataset's final counts.
-  - If any step fails, nothing is kept. The original file is archived only after the commit.
-- **Upsert, not delete and reload.** Re-importing a year updates the rows that changed and leaves
-  the rest alone, so each record's history stays correct.
-- **Retrieve** from the EPA uses the same transaction and upsert.
-- **Every import changes the data version** (the newest import time). Stored results from older
-  versions stop being used at once (slide 7).
-
-### 6. Indexes chosen from query plans — Raaj (0:50)
-
-- **Method:** for each slow query, read SQLite's `EXPLAIN QUERY PLAN`, then add the index it
-  needs. There are 17 indexes, and each one serves a query we can name.
-- **(facility_id, year) on annual_records:**
-  - Used by "each plant's CO₂ in 2024", which ranks plants and fills the map.
-  - With only a year index, SQLite scanned every 2024 record once per plant: 2.67 s.
-  - With the pair, it looks up one plant's year directly: 3.8 ms, about 700 times faster.
-- **(unit, year), unique, on annual_records:**
-  - It enforces one record per unit per year.
-  - It also serves the self-join that finds each record's previous year, which every
-    year-over-year change needs.
-  - Without it: 33 s for the default selection. With it: 50 ms.
-- **(year, co2_mass_tons):** the year range every Analyze selection starts from, and the CO₂ ranking
-  on Explore.
-- These timings were measured with `sqlite3`'s timer on a copy of the database with the index
-  dropped.
-- **Ranking stays in SQL too:** Explore's "top N per state" is one `ROW_NUMBER()` window function,
-  partitioned by state, added to the query as one more filter. So it works with paging, the map,
-  and Analyze.
-
-### 7. Read once, then store the result — Arnav (0:55)
-
-- **Read once:** each Analyze tab asks for several results about the same selection.
-  - The server loads the selection's rows once (one join with units, plants, and the previous
-    year), and every result is computed from that copy.
-  - The copy is kept for 5 minutes per (filters, data version).
-- **The bug that taught us this:** our first cache stored the query itself. Drizzle queries are
-  lazy, so each use ran it again: 1.5 s per view. Storing the finished rows: under 1 ms.
-- **Why that wasn't enough:** on Vercel each server instance starts empty, so Analyze took about
-  4.4 s on almost every visit.
-- **Store the result in the database:** the `result_cache` table.
+- **`traci_factors`** (6 rows): one row per pollutant and impact category.
+  - Unique on (TRACI version, pollutant, medium, category), so a factor can't be loaded twice.
+  - `source` records the workbook, sheet, and column each factor came from; `cas` and `substance`
+    record exactly which TRACI substance it is.
+  - Factors are data, not code: a new TRACI version is new rows, not a code change.
+- **`models`** (3 rows): one row per trained model.
+  - `artifact` holds the whole model as JSON: preprocessing plus coefficients or the tree.
+  - Train, validation, and test years, metrics, and `pipeline_version` (git commit and
+    scikit-learn version) make each model reproducible.
+  - The app predicts from the JSON in TypeScript, so What-if needs no Python server.
+- **`result_cache`** (90 rows, 3.8 MB): one finished result per question.
   - The key is the procedure plus its input as JSON with sorted keys, so equal questions get equal
     keys.
-  - Each result is stamped with the data version. After an import, old results are never served.
-  - A lookup tries memory, then the table, then computes and stores.
+  - `data_version` is the newest import time. Every import changes it, so old results are never
+    served.
+- Each table is written by one script and read by the app, so the read-only host never writes.
+
+### 5. One query per selection — Raaj (0:50)
+
+- **One join** loads a selection: annual records with their unit and plant, plus a self-join to
+  the same unit's previous year.
+  - The previous year gives the 8 year-over-year variables (change in CO₂, NOₓ, and so on).
+  - The WHERE clause is built by the same code as Explore's, so every filter, and Top N, means
+    the same thing on every page.
+- **Phase 1's indexes made it fast,** chosen by reading SQLite's `EXPLAIN QUERY PLAN`:
+  - the year range uses the (year, CO₂) index
+  - the previous-year join uses the unique (unit, year) index, Phase 1's rule against duplicate
+    records.
+  - Without that index the join took 33 s for the default selection; with it, 50 ms. Measured
+    with `sqlite3`'s timer on a copy with the index dropped.
+- **Read once:** each Analyze tab asks for several results about the same selection, so the rows
+  are kept in memory for 5 minutes per (filters, data version), and every result is computed from
+  that copy.
+  - **The bug:** our first cache stored the query itself. Drizzle queries are lazy, so each use
+    ran it again: 1.5 s per view. Storing the finished rows: under 1 ms.
+
+### 6. Store the result in the database — Arnav (0:55)
+
+- **Why the row cache wasn't enough:** on Vercel each server instance starts empty, so Analyze
+  took about 4.4 s on almost every visit.
+- **So results are stored in `result_cache`.** A lookup tries memory, then the table, then
+  computes and stores.
+- **Never stale:** each result carries the data version, and every import changes it.
 - **Shipping it:** `npm run db:precompute` recomputes every stored input for the current data,
   and the committed file carries the results to the read-only host.
 - **Result:** a stored result reads in about 8 ms instead of about 1,100 ms. Every page now shows
@@ -172,9 +136,9 @@ from its section here, so the two always match.
   charts arrive as HTML from the server; scatter plots draw on one canvas (Predict went from about
   9,700 page elements to about 680).
 
-## The analysis
+## The models
 
-### 8. Predicting NOₓ on years the models never saw — Raaj (0:45)
+### 7. Predicting NOₓ on years the models never saw — Raaj (0:45)
 
 - **Target:** a unit's yearly NOₓ, in short tons. NOₓ depends on controls, so "add SCR" means
   something. CO₂ is nearly a fixed multiple of fuel burned.
@@ -192,7 +156,7 @@ from its section here, so the two always match.
 
 ## Demo
 
-### 9. Eight steps, four questions — Arnav (0:15)
+### 8. Eight steps, four questions — Arnav (0:15)
 
 - Each step matches a requirement of the assignment and answers one of the questions.
 - One plant ties them together: Ghent, in Kentucky.
@@ -201,7 +165,7 @@ from its section here, so the two always match.
   - Its unit 2 is the one we change in steps 7 and 8.
 - Whoever built a part presents it.
 
-### 10. Step 1: build a dataset — Arnav (0:45)
+### 9. Step 1: build a dataset — Arnav (0:45)
 
 1. Analyze, Overview tab. The default chips are Reporting year 2015–2025 and Operating time > 0 hr.
 2. Type `coal units in Kentucky` in the search box and press Enter.
@@ -215,7 +179,7 @@ from its section here, so the two always match.
   load, and units with no previous year. Missing is never counted as 0.
 - The whole analysis is in the URL, so it can be reloaded or shared.
 
-### 11. Step 2: CO₂ trend by fuel — Arnav (0:40)
+### 10. Step 2: CO₂ trend by fuel — Arnav (0:40)
 
 1. Overview, showing CO₂ mass by year and fuel class.
 2. Hover 2015, 2023, and 2025.
@@ -229,7 +193,7 @@ from its section here, so the two always match.
   answers Q1.
 - Drag across the chart to zoom. **Download** gives a ZIP with the CSV, the PNG, and the metadata.
 
-### 12. Step 3: NOₓ rate by fuel — Arnav (0:40)
+### 11. Step 3: NOₓ rate by fuel — Arnav (0:40)
 
 1. Distribution tab: NOₓ emission rate, split by fuel class, box plot, log scale.
 
@@ -243,7 +207,7 @@ from its section here, so the two always match.
   intensity and heat rate they disagree (0.9998 vs 0.765), because a few units with almost no load
   drive Pearson.
 
-### 13. Step 4: SCR vs no control — Arnav (0:40)
+### 12. Step 4: SCR vs no control — Arnav (0:40)
 
 1. Compare groups tab. Click the example **SCR vs no NOₓ control**.
 
@@ -257,7 +221,7 @@ from its section here, so the two always match.
   combined-cycle gas; uncontrolled ones are mostly gas and oil peakers. So it's an association, not
   the effect of SCR alone. That answers Q2.
 
-### 14. Step 5: TRACI impacts — Raaj (0:50)
+### 13. Step 5: TRACI impacts — Raaj (0:50)
 
 1. TRACI impacts tab. Set the years to 2024–2024.
 2. Switch the question from "in total" to "per MWh of power".
@@ -276,7 +240,7 @@ from its section here, so the two always match.
   The page shows 12.74M. Divided by 11,580,029 MWh, that's 1.101 per MWh, which the page also shows.
 - Potential impacts, not measured harm. That answers Q3.
 
-### 15. Step 6: models vs the baseline — Raaj (0:50)
+### 14. Step 6: models vs the baseline — Raaj (0:50)
 
 1. Predict, Models tab.
 2. Scroll to **Average error by fuel**.
@@ -291,7 +255,7 @@ from its section here, so the two always match.
 - So the models aren't the best forecast. What they add is a response to load, controls, and fuel,
   which persistence can't give. That's the What-if tab.
 
-### 16. Step 7: sensitivity — Arnav (0:45)
+### 15. Step 7: sensitivity — Arnav (0:45)
 
 1. What-if tab. It opens on "What if Ghent unit 2 added SCR in 2024?".
 2. Scroll to **How the prediction responds to one input**: heat input, ± 50 %.
@@ -306,7 +270,7 @@ from its section here, so the two always match.
   its 8 thresholds.
 - Shaded areas are values the models never saw in training, so they're guesses.
 
-### 17. Step 8: what-if and export — Raaj (0:50)
+### 16. Step 8: what-if and export — Raaj (0:50)
 
 1. Scroll back up to the answer for "added SCR".
 2. Point at **What if they made a different change?**
@@ -335,7 +299,7 @@ from its section here, so the two always match.
 
 ## Wrap-up
 
-### 18. What these results don't show — Arnav (0:40)
+### 17. What these results don't show — Arnav (0:40)
 
 - **Potential, not actual harm:** TRACI doesn't know stack height, weather, or who lives nearby.
   It covers only the three pollutants CAMPD reports.
@@ -349,18 +313,19 @@ from its section here, so the two always match.
 - **A missing pollutant drops its categories:** 13.7 % lack CO₂ and 10.8 % lack SO₂, so group
   totals cover only complete unit-years.
 
-### 19. The main bugs — Raaj (0:35, skippable)
+### 18. The main bugs — Raaj (0:35, skippable)
 
-- **A missing index:** the previous-year join took 33 s until the unique (unit, year) index served
-  it (slide 6).
 - **A cache that didn't cache:** Drizzle queries are lazy, so storing the query re-ran it.
-  Storing the result fixed it: 1.5 s to under 1 ms (slide 7).
+  Storing the result fixed it: 1.5 s to under 1 ms (slide 5).
 - **A read-only host:** each Vercel instance starts cold and can't write. Results stored in the
-  committed database solved both (slide 7).
+  committed database solved both (slide 6).
 - **NOₓ vs NO₂ in TRACI:** both are listed, with different smog factors. Reading the workbook
-  itself got us the right one.
+  itself got us the right one, and `traci_factors` records its source.
+- **A tree in 32-bit floats:** the tree replayed from the `models` table took the wrong branch on
+  rare rows, because scikit-learn compares in 32-bit floats. `Math.fround` fixed it; a test checks
+  200 rows against scikit-learn.
 
-### 20. Thank you. Questions? — Raaj + Arnav (0:40)
+### 19. Thank you. Questions? — Raaj + Arnav (0:40)
 
 - **What we found:**
   - Q1: CO₂ fell 22 %; coal's intensity stayed flat, so the fall is the shift to gas.
@@ -368,7 +333,7 @@ from its section here, so the two always match.
   - Q3: Texas leads every category in total; Nebraska, North Dakota, and Missouri per MWh.
   - Q4: the tree cuts the baseline's error by 76 %, but last year's rate still forecasts best.
 - **Who built what:**
-  - Raaj: the database schema, indexes, imports, stored results, the variable list and
+  - Raaj: the new tables, the analysis query and stored results, the variable list and
     statistics, TRACI, the models, and the report.
   - Arnav: the Analyze and Predict pages, the charts, zoom and export, the filter chips and plain
     readings, and this presentation.
@@ -380,14 +345,14 @@ from its section here, so the two always match.
 
 | Question | Answer |
 |---|---|
-| Why SQLite and not Postgres? | One file, read far more than written, shipped with the app, no server to run; the indexes keep queries in milliseconds (slides 3 and 6). |
-| How do you know the indexes help? | `EXPLAIN QUERY PLAN` shows each one used; dropping them on a copy turns 3.8 ms into 2.67 s and 50 ms into 33 s (slide 6). |
-| What if an import fails halfway? | It's one transaction, so nothing is kept (slide 5). |
-| Can stored results go stale? | No: each carries the data version, and every import changes it (slide 7). |
-| Why not just use last year's value? | It is the better forecast. The models are for what-if (slide 15). |
-| Why do the models disagree? | The tree splits mostly on heat input and last year's rate, so it barely responds to SCR or fuel; Ridge gives every input a fixed effect (slide 17). |
-| How is Top N computed? | A `ROW_NUMBER()` window function per state, added as one more filter (slide 6). |
-| Is the SCR comparison causal? | No. The fleets differ, and the tests treat unit-years as independent (slide 13). |
+| Why SQLite and not Postgres? | One file, read far more than written, shipped with the app, no server to run; the indexes keep queries in milliseconds (slides 3 and 5). |
+| How do you know the indexes help? | `EXPLAIN QUERY PLAN` shows each one used; dropping them on a copy turns the previous-year join from 50 ms into 33 s (slide 5). |
+| What if an import fails halfway? | It's one transaction (from Phase 1), so nothing is kept, and the data version doesn't change. |
+| Can stored results go stale? | No: each carries the data version, and every import changes it (slide 6). |
+| Why not just use last year's value? | It is the better forecast. The models are for what-if (slide 14). |
+| Why do the models disagree? | The tree splits mostly on heat input and last year's rate, so it barely responds to SCR or fuel; Ridge gives every input a fixed effect (slide 16). |
+| How is Top N computed? | A `ROW_NUMBER()` window function per state, added as one more filter; the analysis query uses the same WHERE clause (slide 5). |
+| Is the SCR comparison causal? | No. The fleets differ, and the tests treat unit-years as independent (slide 12). |
 | Why not Flask? | We extended the Phase 1 app instead of rewriting it; Python still trains the models. |
 
 ## If something goes wrong
