@@ -13,10 +13,10 @@ from its section here, so the two always match.
   - If time is short, skip slide 15 (the main bugs). That saves about 0:35.
 - **Speakers, by role:**
 
-  | Speaker | Slides | Time |
-  |---|---|---|
+  | Speaker                           | Slides                                                                                                                                                                  | Time       |
+  | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
   | Raaj (back end, data, and models) | 1, 3–9, 12, 15, 16: intro, what Phase 2 added, the new tables, the analysis query, stored results, TRACI, the data split, the models, demo steps 5–6, and the main bugs | about 8:45 |
-  | Arnav (front end) | 2, 10, 11, 13, 14, 16: the questions, demo steps 1–4 and 7–8 (the Analyze and Predict pages), and limitations | about 5:50 |
+  | Arnav (front end)                 | 2, 10, 11, 13, 14, 16: the questions, demo steps 1–4 and 7–8 (the Analyze and Predict pages), and limitations                                                           | about 5:50 |
 
 - **Numbers** assume a fresh `db.sqlite`, the committed models, and the demo run in order. The
   page rounds (45.4K, 1.64B); these notes give the exact figures.
@@ -310,18 +310,18 @@ example in step 5, and its unit 2 is the one changed in steps 7 and 8.
 
 **Likely questions:**
 
-| Question | Answer |
-|---|---|
-| Why SQLite and not Postgres? | One file, read far more than written, shipped with the app, no server to run; the indexes keep queries in milliseconds (slides 3 and 5). |
-| How do you know the indexes help? | `EXPLAIN QUERY PLAN` shows each one used; dropping them on a copy turns the previous-year join from 50 ms into 33 s (slide 5). |
-| What if an import fails halfway? | It's one transaction (from Phase 1), so nothing is kept, and the data version doesn't change. |
-| Can stored results go stale? | No: each carries the data version, and every import changes it (slide 6). |
-| Why not just use last year's value? | It is the better forecast. The models are for what-if (slide 12). |
-| Why do the models disagree? | The tree splits mostly on heat input and last year's rate, so it barely responds to SCR or fuel; Ridge gives every input a fixed effect (slide 13). |
-| How is Top N computed? | A `ROW_NUMBER()` window function per state, added as one more filter; the analysis query uses the same WHERE clause (slide 5). |
-| Why not k-fold cross-validation? | Random folds would put a unit's neighbouring years on both sides, the same leak as a random split. Re-scoring year by year (a rolling split) would be the next step (slide 8). |
-| Is the SCR comparison causal? | No. The fleets differ, and the tests treat unit-years as independent (slide 11). |
-| Why not Flask? | We extended the Phase 1 app instead of rewriting it; Python still trains the models. |
+| Question                            | Answer                                                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Why SQLite and not Postgres?        | One file, read far more than written, shipped with the app, no server to run; the indexes keep queries in milliseconds (slides 3 and 5).                                       |
+| How do you know the indexes help?   | `EXPLAIN QUERY PLAN` shows each one used; dropping them on a copy turns the previous-year join from 50 ms into 33 s (slide 5).                                                 |
+| What if an import fails halfway?    | It's one transaction (from Phase 1), so nothing is kept, and the data version doesn't change.                                                                                  |
+| Can stored results go stale?        | No: each carries the data version, and every import changes it (slide 6).                                                                                                      |
+| Why not just use last year's value? | It is the better forecast. The models are for what-if (slide 12).                                                                                                              |
+| Why do the models disagree?         | The tree splits mostly on heat input and last year's rate, so it barely responds to SCR or fuel; Ridge gives every input a fixed effect (slide 13).                            |
+| How is Top N computed?              | A `ROW_NUMBER()` window function per state, added as one more filter; the analysis query uses the same WHERE clause (slide 5).                                                 |
+| Why not k-fold cross-validation?    | Random folds would put a unit's neighbouring years on both sides, the same leak as a random split. Re-scoring year by year (a rolling split) would be the next step (slide 8). |
+| Is the SCR comparison causal?       | No. The fleets differ, and the tests treat unit-years as independent (slide 11).                                                                                               |
+| Why not Flask?                      | We extended the Phase 1 app instead of rewriting it; Python still trains the models.                                                                                           |
 
 ## If something goes wrong
 

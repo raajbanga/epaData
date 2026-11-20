@@ -256,7 +256,10 @@ function YearControls({
   return (
     <Term
       className="block max-w-[10rem] truncate"
-      definition={[text, record.programCode && `Programs: ${record.programCode}`]
+      definition={[
+        text,
+        record.programCode && `Programs: ${record.programCode}`,
+      ]
         .filter(Boolean)
         .join("\n")}
     >

@@ -108,11 +108,7 @@ const BLANK = /^(—|-|baseline|)$/;
 /** A header with a plain definition on hover, focus, or tap (dotted underline), when the glossary has one. */
 function Glossed({ term }: { term: string }) {
   const definition = define(term);
-  return definition ? (
-    <Term definition={definition}>{term}</Term>
-  ) : (
-    term
-  );
+  return definition ? <Term definition={definition}>{term}</Term> : term;
 }
 
 /**
