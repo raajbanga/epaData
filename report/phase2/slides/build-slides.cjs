@@ -290,7 +290,7 @@ pres.addSection({ title: "What Phase 2 added" });
 
 // ── 6. Stored results ────────────────────────────────────────────────────
 {
-  const s = frame("Phase 2 · stored results", "Store the result in the database", "What Phase 2 added", "Arnav", "Each server starts empty on Vercel, so finished results live in the database itself.");
+  const s = frame("Phase 2 · stored results", "Store the result in the database", "What Phase 2 added", "Raaj", "Each server starts empty on Vercel, so finished results live in the database itself.");
   const y = 2.25, w = 2.75, g = 0.4;
   [["Memory", "this server's last results"], ["result_cache table", "key: procedure + input JSON\nstamped with the data version"], ["Compute", "one query per selection\n(slide 5)"], ["Store", "for every later visit\nand every server"]].forEach(([h, b], i) => {
     const x = 0.6 + i * (w + g);
@@ -341,7 +341,7 @@ pres.addSection({ title: "Impacts and models" });
 
 // ── 8. Data split ────────────────────────────────────────────────────────
 {
-  const s = frame("Phase 2 · prediction", "Splitting the data by year", "Impacts and models", "Arnav", "Train on earlier years, tune on the next two, and score once on the newest two.");
+  const s = frame("Phase 2 · prediction", "Splitting the data by year", "Impacts and models", "Raaj", "Train on earlier years, tune on the next two, and score once on the newest two.");
   const yrs = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
   const cw = 12.1 / yrs.length;
   const role = (y) => (y === 2015 || y === 2026 ? null : y <= 2021 ? K.ridge : y <= 2023 ? K.base : K.amber);

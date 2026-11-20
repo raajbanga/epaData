@@ -15,8 +15,8 @@ from its section here, so the two always match.
 
   | Speaker | Slides | Time |
   |---|---|---|
-  | Raaj | 1, 3, 4, 5, 7, 9, 12, 15, 16: intro, what Phase 2 added, the new tables, the analysis query, TRACI, the models, demo steps 5–6, and the main bugs | about 7:00 |
-  | Arnav | 2, 6, 8, 10, 11, 13, 14, 16: the questions, stored results, the data split, demo steps 1–4 and 7–8, and limitations | about 7:30 |
+  | Raaj (back end, data, and models) | 1, 3–9, 12, 15, 16: intro, what Phase 2 added, the new tables, the analysis query, stored results, TRACI, the data split, the models, demo steps 5–6, and the main bugs | about 8:45 |
+  | Arnav (front end) | 2, 10, 11, 13, 14, 16: the questions, demo steps 1–4 and 7–8 (the Analyze and Predict pages), and limitations | about 5:50 |
 
 - **Numbers** assume a fresh `db.sqlite`, the committed models, and the demo run in order. The
   page rounds (45.4K, 1.64B); these notes give the exact figures.
@@ -120,7 +120,7 @@ from its section here, so the two always match.
   - **The bug:** our first cache stored the query itself. Drizzle queries are lazy, so each use
     ran it again: 1.5 s per view. Storing the finished rows: under 1 ms.
 
-### 6. Store the result in the database — Arnav (0:55)
+### 6. Store the result in the database — Raaj (0:55)
 
 - **Why the row cache wasn't enough:** on Vercel each server instance starts empty, so Analyze
   took about 4.4 s on almost every visit.
@@ -161,7 +161,7 @@ from its section here, so the two always match.
     units, so they're never added together.
 - Potential impacts for comparison, not measured harm; the page says so.
 
-### 8. Splitting the data by year — Arnav (0:50)
+### 8. Splitting the data by year — Raaj (0:50)
 
 - **The rows:** every unit-year from 2016 to 2025 with a reported NOₓ mass.
   - 2016 is the first year with a previous year in the CAMPD data, and last year's NOₓ rate is an
