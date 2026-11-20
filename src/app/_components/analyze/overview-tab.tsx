@@ -6,7 +6,7 @@ import { ProgressBar } from "~/components/ui/metric-bar";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
 import type { VariableInfo } from "~/lib/analysis";
-import { GLOSS_CLASS } from "~/components/ui/glossed-text";
+import { Term } from "~/components/ui/term";
 import { QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
 import { formatStat } from "~/lib/analysis";
@@ -234,13 +234,13 @@ function DataQuality({ catalog, summary }: TabProps) {
                   </span>,
                   v.unit,
                   combinedLabel(v),
-                  <span
-                    key="n"
-                    title={whyMissing(v, summary.reasons)}
-                    className={n ? GLOSS_CLASS : undefined}
-                  >
-                    {formatNumber(n)}
-                  </span>,
+                  n ? (
+                    <Term key="n" definition={whyMissing(v, summary.reasons)}>
+                      {formatNumber(n)}
+                    </Term>
+                  ) : (
+                    formatNumber(n)
+                  ),
                   <div key="m" className="flex w-28 items-center gap-2">
                     <ProgressBar percent={share} className="w-16" />
                     <span className="text-fg-muted">{share.toFixed(1)} %</span>

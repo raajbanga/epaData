@@ -1,17 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import { glossSegments } from "~/lib/glossary";
+import { Term } from "./term";
 
-/** The dotted underline that says "hover for a definition", shared with table headers. */
-export const GLOSS_CLASS =
-  "decoration-fg-muted/60 cursor-help underline decoration-dotted underline-offset-4";
-
-/** Renders `glossSegments` output: terms underlined with their definition as the tooltip. */
+/** Renders `glossSegments` output: terms underlined, with their definition on hover, focus, or tap. */
 export function renderGloss(parts: ReturnType<typeof glossSegments>) {
   return parts.map((part, i) =>
     part.definition ? (
-      <span key={i} title={part.definition} className={GLOSS_CLASS}>
+      <Term key={i} definition={part.definition}>
         {part.text}
-      </span>
+      </Term>
     ) : (
       part.text
     ),

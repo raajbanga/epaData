@@ -686,7 +686,7 @@ function FilterChip({
 /** What the description search made of the text: anything it didn't understand, and how. */
 function DescribeNote({ result }: { result: DescribeResult }) {
   return (
-    <p className="text-fg-muted text-sm" title={result.notes.join("\n")}>
+    <p className="text-fg-muted text-sm">
       {result.unrecognized.length > 0 && (
         <span className="text-warn">
           Not understood: {result.unrecognized.join(", ")}.{" "}

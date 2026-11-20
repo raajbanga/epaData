@@ -3,6 +3,7 @@
 import { Fragment, use, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { Badge, FuelBadge } from "~/components/ui/badge";
+import { Term } from "~/components/ui/term";
 import { DataPanel } from "~/components/ui/data-panel";
 import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
 import { DialogHeader } from "~/components/ui/dialog";
@@ -339,13 +340,13 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
                           Unit {rec.unit?.unitId ?? "—"}
                         </span>
                         {rec.dataset && (
-                          <span
+                          <Term
                             className="text-fg-muted ml-2"
-                            title={`${rec.dataset.name}${rec.supersededUpload ? `\nReplaced upload: ${rec.supersededUpload.originalFilename}` : ""}`}
+                            definition={`${rec.dataset.name}${rec.supersededUpload ? `\nReplaced upload: ${rec.supersededUpload.originalFilename}` : ""}`}
                           >
                             {datasetOriginLabel(rec.dataset)}
                             {rec.supersededUpload && " · replaced upload"}
-                          </span>
+                          </Term>
                         )}
                       </TableCell>
                       <EmissionCells

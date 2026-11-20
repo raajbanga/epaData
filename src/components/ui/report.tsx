@@ -15,7 +15,8 @@ import {
 } from "~/components/ui/table";
 import type { SortDirection } from "~/lib/facility-filters";
 import { define } from "~/lib/glossary";
-import { GLOSS_CLASS, GlossedText } from "~/components/ui/glossed-text";
+import { GlossedText } from "~/components/ui/glossed-text";
+import { Term } from "~/components/ui/term";
 import { cn, isNumericValue, sortRows, type SortValue } from "~/lib/utils";
 
 /** Caption above a form control or group of controls. */
@@ -104,13 +105,11 @@ const NUMERIC_TEXT =
   /^[<>≤≥]?\s*[-+−]?[\d,]*\.?\d+(e[-+]?\d+)?[KMBT]?\s*[%×]?(\s*–\s*[-+−]?[\d,]*\.?\d+[KMBT]?)?$/i;
 const BLANK = /^(—|-|baseline|)$/;
 
-/** A header with a plain definition on hover (dotted underline), when the glossary has one. */
+/** A header with a plain definition on hover, focus, or tap (dotted underline), when the glossary has one. */
 function Glossed({ term }: { term: string }) {
   const definition = define(term);
   return definition ? (
-    <span title={definition} className={GLOSS_CLASS}>
-      {term}
-    </span>
+    <Term definition={definition}>{term}</Term>
   ) : (
     term
   );

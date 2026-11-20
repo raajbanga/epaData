@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { Badge, FuelBadge } from "~/components/ui/badge";
+import { Term } from "~/components/ui/term";
 import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
 import { DialogHeader } from "~/components/ui/dialog";
 import { DetailList, ReportTable, Section } from "~/components/ui/report";
@@ -192,13 +193,13 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
               <span key="y" className="text-fg">
                 {r.year}
                 {r.auditLogs.length > 0 && (
-                  <Badge
-                    variant="warning"
+                  <Term
+                    bare
                     className="ml-1.5"
-                    title={r.auditLogs.map((l) => l.details).join("\n")}
+                    definition={r.auditLogs.map((l) => l.details).join("\n")}
                   >
-                    {r.auditLogs.length}
-                  </Badge>
+                    <Badge variant="warning">{r.auditLogs.length}</Badge>
+                  </Term>
                 )}
               </span>,
               formatNumber(r.operatingHours),
@@ -211,18 +212,16 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
               formatNumber(r.co2IntensityLbsMWh),
               formatQuantity(r.heatRateMMBtuMWh, "", { digits: 2 }),
               <YearControls key="c" record={r} />,
-              <span
-                key="s"
-                title={
-                  r.dataset
-                    ? `${datasetOriginLabel(r.dataset)}\n${r.dataset.name}${r.supersededUpload ? `\nReplaced upload: ${r.supersededUpload.originalFilename}` : ""}`
-                    : undefined
-                }
-              >
-                {r.dataset
-                  ? `${r.dataset.source === "API" ? "API" : "Upload"}, ${r.dataset.importedAt.toLocaleDateString()}${r.supersededUpload ? " (replaced upload)" : ""}`
-                  : "—"}
-              </span>,
+              r.dataset ? (
+                <Term
+                  key="s"
+                  definition={`${datasetOriginLabel(r.dataset)}\n${r.dataset.name}${r.supersededUpload ? `\nReplaced upload: ${r.supersededUpload.originalFilename}` : ""}`}
+                >
+                  {`${r.dataset.source === "API" ? "API" : "Upload"}, ${r.dataset.importedAt.toLocaleDateString()}${r.supersededUpload ? " (replaced upload)" : ""}`}
+                </Term>
+              ) : (
+                "—"
+              ),
             ])}
           />
         )}
@@ -255,9 +254,9 @@ function YearControls({
   ].filter((p): p is [string, string] => Boolean(p[1]));
   const text = parts.map(([k, v]) => `${k}: ${v}`).join("\n");
   return (
-    <span
+    <Term
       className="block max-w-[10rem] truncate"
-      title={[text, record.programCode && `Programs: ${record.programCode}`]
+      definition={[text, record.programCode && `Programs: ${record.programCode}`]
         .filter(Boolean)
         .join("\n")}
     >
@@ -265,6 +264,6 @@ function YearControls({
       {record.programCode && (
         <span className="text-fg-muted"> · {record.programCode}</span>
       )}
-    </span>
+    </Term>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "~/components/ui/badge";
+import { Term } from "~/components/ui/term";
 import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
 import { ReportTable, Section } from "~/components/ui/report";
 import { describeCampdFilters } from "~/lib/facility-filters";
@@ -29,19 +30,19 @@ const STATUS_BADGES = {
 
 function DatasetStatus({ row }: { row: DatasetRow }) {
   const status = datasetStatus(row);
-  return (
-    <Badge
-      variant={STATUS_BADGES[status]}
-      title={
-        status === "Error"
-          ? (row.notes ?? undefined)
-          : row.replacedByApi
-            ? `${formatNumber(row.replacedByApi)} of this file's unit-years were later replaced by records pulled from the EPA`
-            : undefined
-      }
-    >
-      {status}
-    </Badge>
+  const why =
+    status === "Error"
+      ? row.notes
+      : row.replacedByApi
+        ? `${formatNumber(row.replacedByApi)} of this file's unit-years were later replaced by records pulled from the EPA`
+        : null;
+  const badge = <Badge variant={STATUS_BADGES[status]}>{status}</Badge>;
+  return why ? (
+    <Term bare definition={why}>
+      {badge}
+    </Term>
+  ) : (
+    badge
   );
 }
 
