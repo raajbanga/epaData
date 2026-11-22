@@ -539,3 +539,9 @@ export const formatPct = (v: number | null | undefined) => {
   const r = Number(v.toFixed(1)) || 0;
   return `${r > 0 ? "+" : ""}${r.toFixed(1)} %`;
 };
+
+/** A signed amount with its unit: "+12 t", "-3,400 MWh", "+10 %"; "—" when undefined. */
+export const formatSigned = (v: number | null | undefined, unit = "") => {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return `${v > 0 ? "+" : ""}${formatStat(v)}${unit ? ` ${unit}` : ""}`;
+};

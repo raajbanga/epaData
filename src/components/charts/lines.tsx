@@ -70,7 +70,7 @@ export function Lines({
     ? data
         .map((d) => d.x)
         .filter((x) => !zoom || (x >= zoom.x[0] && x <= zoom.x[1]))
-        .filter((x, i, xs) => xs.length <= 12 || i % 2 === 0)
+        .filter((_x, i, xs) => xs.length <= 12 || i % 2 === 0)
     : undefined;
   return (
     <div>

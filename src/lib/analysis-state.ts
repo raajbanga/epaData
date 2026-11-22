@@ -11,14 +11,14 @@ import {
  */
 
 /** One tab per question: what's selected, how one variable is spread, what moves together, how groups differ, and the TRACI impacts. */
-export const ANALYSIS_TABS = [
+const ANALYSIS_TABS = [
   "overview",
   "distribution",
   "relationships",
   "compare",
   "impacts",
 ] as const;
-export type AnalysisTab = (typeof ANALYSIS_TABS)[number];
+type AnalysisTab = (typeof ANALYSIS_TABS)[number];
 
 /** Where the tabs and chart types before the 11/11 regroup now live, so old links keep working. */
 const MOVED: Record<string, AnalysisTab> = {
@@ -45,7 +45,6 @@ export const DEFAULT_VIEW = {
   log: "", // "1" = log axis
   order: "desc", // ranking: "desc" = highest first
   rankBy: "facility",
-  method: "pearson",
   compareBy: "noxControl",
   groups: "SCR|None",
   impactBy: "state",
@@ -85,7 +84,7 @@ function readView<T extends Record<string, string>>(
 }
 
 /** The view's non-default values written into `params`. */
-export function writeView<T extends Record<string, string>>(
+function writeView<T extends Record<string, string>>(
   defaults: T,
   view: T,
   params = new URLSearchParams(),
@@ -147,10 +146,10 @@ export function analysisSearchParams(
 }
 
 /** Predict page state: tab, model (Models tab), and the what-if question. */
-export const PREDICT_TABS = ["models", "whatif"] as const;
+const PREDICT_TABS = ["models", "whatif"] as const;
 /** What a what-if covers: one unit, every unit at a plant, in a state, or in the US. */
-export const PREDICT_SCOPES = ["unit", "plant", "state", "us"] as const;
-export const DEFAULT_PREDICT_VIEW = {
+const PREDICT_SCOPES = ["unit", "plant", "state", "us"] as const;
+const DEFAULT_PREDICT_VIEW = {
   tab: "models" as (typeof PREDICT_TABS)[number],
   model: "both", // Models tab: "ridge" | "tree" | "both"
   scope: "unit" as (typeof PREDICT_SCOPES)[number],
@@ -165,7 +164,12 @@ export const DEFAULT_PREDICT_VIEW = {
   scr: "add", // "" unchanged | "add" | "remove"
   fuel: "", // "" unchanged, else the primary fuel every unit switches to
   input: "heat_input_mmbtu", // one input varied
-  range: "50", // ± this % of each unit's value
+  // Its range: from, to, and step, as a % change of each unit's value ("pct") or, for one
+  // unit, in the input's own unit ("unit").
+  by: "pct",
+  from: "-50",
+  to: "50",
+  step: "5",
 };
 export type PredictView = typeof DEFAULT_PREDICT_VIEW;
 
@@ -176,6 +180,13 @@ export function parsePredictParams(params: Params) {
   if (tab === "sensitivity" || tab === "scenarios") view.tab = "whatif";
   if (!PREDICT_TABS.includes(view.tab)) view.tab = DEFAULT_PREDICT_VIEW.tab;
   if (!PREDICT_SCOPES.includes(view.scope)) view.scope = "unit";
+  // Before 11/22 a sensitivity was "± range %"; such links keep their range.
+  const range = first(params, "range");
+  if (range && first(params, "from") === undefined) {
+    view.from = `-${range}`;
+    view.to = range;
+  }
+  if (view.by !== "unit" || view.scope !== "unit") view.by = "pct";
   return view;
 }
 

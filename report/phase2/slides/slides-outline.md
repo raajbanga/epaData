@@ -97,8 +97,8 @@ from its section here, so the two always match.
 - **`result_cache`** (90 rows, 3.8 MB): one finished result per question.
   - The key is the procedure plus its input as JSON with sorted keys, so equal questions get equal
     keys.
-  - `data_version` is the newest import time. Every import changes it, so old results are never
-    served.
+  - `data_version` is the newest import time, a hash of the TRACI factors, and a code version.
+    Every import or factor change alters it, so old results are never served.
 - Each table is written by one script and read by the app, so the read-only host never writes.
 
 ### 5. One query per selection — Raaj (0:50)
@@ -126,7 +126,8 @@ from its section here, so the two always match.
   took about 4.4 s on almost every visit.
 - **So results are stored in `result_cache`.** A lookup tries memory, then the table, then
   computes and stores.
-- **Never stale:** each result carries the data version, and every import changes it.
+- **Never stale:** each result carries the data version, and every import or factor change
+  alters it.
 - **Shipping it:** `npm run db:precompute` recomputes every stored input for the current data,
   and the committed file carries the results to the read-only host.
 - **Result:** a stored result reads in about 8 ms instead of about 1,100 ms. Every page now shows
@@ -315,7 +316,7 @@ example in step 5, and its unit 2 is the one changed in steps 7 and 8.
 | Why SQLite and not Postgres?        | One file, read far more than written, shipped with the app, no server to run; the indexes keep queries in milliseconds (slides 3 and 5).                                       |
 | How do you know the indexes help?   | `EXPLAIN QUERY PLAN` shows each one used; dropping them on a copy turns the previous-year join from 50 ms into 33 s (slide 5).                                                 |
 | What if an import fails halfway?    | It's one transaction (from Phase 1), so nothing is kept, and the data version doesn't change.                                                                                  |
-| Can stored results go stale?        | No: each carries the data version, and every import changes it (slide 6).                                                                                                      |
+| Can stored results go stale?        | No: each carries the data version, which every import or factor change alters (slide 6).                                                                                       |
 | Why not just use last year's value? | It is the better forecast. The models are for what-if (slide 12).                                                                                                              |
 | Why do the models disagree?         | The tree splits mostly on heat input and last year's rate, so it barely responds to SCR or fuel; Ridge gives every input a fixed effect (slide 13).                            |
 | How is Top N computed?              | A `ROW_NUMBER()` window function per state, added as one more filter; the analysis query uses the same WHERE clause (slide 5).                                                 |

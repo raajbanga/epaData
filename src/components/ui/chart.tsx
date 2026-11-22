@@ -6,7 +6,7 @@ import { ResponsiveContainer } from "recharts";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportButton } from "~/components/ui/export-button";
 import type { ExportMetadata, ExportTable } from "~/lib/export-bundle";
-import { cn } from "~/lib/utils";
+import { cn, compactNumber } from "~/lib/utils";
 import { Swatch } from "~/components/ui/swatch";
 
 /**
@@ -40,7 +40,7 @@ export function ChartGrid({
   );
 }
 
-export const PALETTE = [
+const PALETTE = [
   "var(--chart-slate)",
   "var(--chart-ochre)",
   "var(--chart-teal)",
@@ -61,17 +61,13 @@ export interface Series {
   color: string;
 }
 
-const compact = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumSignificantDigits: 3,
-});
 const plain = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 });
 
 /** Axis ticks: "1.4B", "250K", "0.05". */
 export const formatTick = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v)
     ? Math.abs(v) >= 1e4
-      ? compact.format(v)
+      ? compactNumber.format(v)
       : plain.format(v)
     : typeof v === "string"
       ? v
@@ -164,7 +160,7 @@ export function TooltipCard({
 }
 
 /** Small color chips naming the series, above a chart with more than one. */
-export function SeriesLegend({ series }: { series: Series[] }) {
+function SeriesLegend({ series }: { series: Series[] }) {
   if (series.length < 2) return null;
   return (
     <ul className="text-fg-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -178,67 +174,65 @@ export function SeriesLegend({ series }: { series: Series[] }) {
   );
 }
 
-/** SVG presentation properties a standalone image needs, read from the live chart. */
-const INLINE_STYLES = [
-  "fill",
-  "fill-opacity",
-  "stroke",
-  "stroke-width",
-  "stroke-opacity",
-  "stroke-dasharray",
-  "opacity",
-  "font-family",
-  "font-size",
-  "font-weight",
-  "text-anchor",
-  "dominant-baseline",
-];
+/** Every computed style of `el` as an inline style string, so a copy looks the same anywhere. */
+function inlineStyle(el: Element) {
+  const css = getComputedStyle(el);
+  return Array.from(
+    css,
+    (prop) => `${prop}:${css.getPropertyValue(prop)};`,
+  ).join("");
+}
 
 /**
- * The chart's SVG as a PNG (2×): computed styles are inlined, since CSS variables and classes
- * don't travel with the image, and the panel color fills the background.
+ * The chart area as a PNG (2×), whatever draws it: SVG (Recharts, D3), plain HTML (bar lists,
+ * arrows), or a canvas (scatter points). The area is copied with its computed styles inlined, since
+ * CSS variables and classes don't travel with an image, canvases become images of their pixels,
+ * and the copy is drawn through an SVG `foreignObject` on the panel color. Undefined when the
+ * browser can't render it (the download then holds the data and metadata only).
  */
 async function chartPng(root: HTMLElement | null) {
-  const svg = [...(root?.querySelectorAll("svg") ?? [])].sort(
-    (a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight,
-  )[0];
-  if (!svg) return undefined;
-  const { width, height } = svg.getBoundingClientRect();
-  const copy = svg.cloneNode(true) as SVGSVGElement;
-  const live = [svg, ...svg.querySelectorAll("*")];
-  const cloned = [copy, ...copy.querySelectorAll("*")];
-  live.forEach((el, i) => {
-    const css = getComputedStyle(el);
-    const target = cloned[i] as SVGElement;
-    for (const prop of INLINE_STYLES)
-      target.style.setProperty(prop, css.getPropertyValue(prop));
-  });
-  copy.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  copy.setAttribute("width", String(width));
-  copy.setAttribute("height", String(height));
-  const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-  bg.setAttribute("width", "100%");
-  bg.setAttribute("height", "100%");
-  bg.setAttribute(
-    "fill",
-    getComputedStyle(document.documentElement).getPropertyValue("--surface"),
-  );
-  copy.insertBefore(bg, copy.firstChild);
-
-  const img = new Image();
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
-  await img.decode();
-  const canvas = document.createElement("canvas");
-  canvas.width = width * 2;
-  canvas.height = height * 2;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return undefined;
-  ctx.scale(2, 2);
-  ctx.drawImage(img, 0, 0, width, height);
-  const blob = await new Promise<Blob | null>((r) =>
-    canvas.toBlob(r, "image/png"),
-  );
-  return blob ? new Uint8Array(await blob.arrayBuffer()) : undefined;
+  if (!root) return undefined;
+  try {
+    const { width, height } = root.getBoundingClientRect();
+    if (!width || !height) return undefined;
+    const copy = root.cloneNode(true) as HTMLElement;
+    const live = [root, ...root.querySelectorAll("*")];
+    const cloned = [copy, ...copy.querySelectorAll("*")];
+    live.forEach((el, i) => {
+      const target = cloned[i]!;
+      if (el instanceof HTMLCanvasElement) {
+        const img = document.createElement("img");
+        img.src = el.toDataURL("image/png");
+        img.setAttribute("style", inlineStyle(el));
+        target.replaceWith(img);
+      } else {
+        target.setAttribute("style", inlineStyle(el));
+      }
+    });
+    copy.style.margin = "0";
+    const surface = getComputedStyle(document.documentElement).getPropertyValue(
+      "--surface",
+    );
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="${surface}"/><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(copy)}</foreignObject></svg>`;
+    const img = new Image();
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+    ctx.scale(2, 2);
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((r) =>
+      canvas.toBlob(r, "image/png"),
+    );
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : undefined;
+  } catch {
+    // A browser that refuses to export a foreignObject drawing (a tainted canvas) still gets
+    // the data and metadata.
+    return undefined;
+  }
 }
 
 /** A query's state as ChartFrame props: loading, error, and retry. */

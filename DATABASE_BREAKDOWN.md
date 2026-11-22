@@ -71,7 +71,7 @@ flowchart TD
 
 ## 2. Relational Database Schema
 
-Our relational database is stored in SQLite (through the libSQL client) and managed with Drizzle ORM. It consists of 8 tables: the 6 normalized Phase 1 tables in the diagram below, plus `traci_factors` and `models` from Phase 2, which stand alone (Tables 7 and 8):
+Our relational database is stored in SQLite (through the libSQL client) and managed with Drizzle ORM. It consists of 9 tables: the 6 normalized Phase 1 tables in the diagram below, plus `traci_factors`, `models`, and `result_cache` from Phase 2, which stand alone (Tables 7–9):
 
 ```mermaid
 erDiagram
@@ -335,6 +335,19 @@ Prediction models trained by `ml/train.py` (`npm run ml:train`), which writes on
 | `artifactPath`                                 | `TEXT`             | `ml/models/<id>.joblib`.                                                                                                                                                        | **Reproducibility**.                                    |
 | `pipelineVersion`                              | `TEXT`             | Git commit and scikit-learn, NumPy, pandas versions.                                                                                                                            | **Reproducibility**.                                    |
 | `trainedAt`                                    | `INTEGER`          | Unix time.                                                                                                                                                                      | **Model record**.                                       |
+
+### Table 9: `result_cache` (Phase 2)
+
+Finished results of the slower Analyze procedures (summary, describe, aggregate, distribution, scatter, correlation, compare), read instead of recomputed (`src/server/result-cache.ts`). `npm run db:precompute` recomputes every stored input for the current data; the committed database ships 90 rows.
+
+| Column        | Type               | What It Means                                                                                                   | Where and How It Is Used                                 |
+| :------------ | :----------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------- |
+| `key`         | `TEXT PRIMARY KEY` | Procedure plus its input as JSON with sorted keys, so equal questions get equal keys.                           | **Lookup**.                                              |
+| `procedure`   | `TEXT`             | tRPC procedure, e.g. `analysis.summary`.                                                                        | **Precompute script**.                                   |
+| `input`       | `TEXT` (JSON)      | The procedure's input.                                                                                          | **Precompute script** recomputes it.                     |
+| `dataVersion` | `TEXT`             | Time of the latest import, a hash of the TRACI factors, and the analysis-code version the result was made from. | **Freshness**: a row from another version is recomputed. |
+| `value`       | `TEXT` (SuperJSON) | The result.                                                                                                     | **Analyze page**.                                        |
+| `computedAt`  | `INTEGER`          | Unix time.                                                                                                      | **Diagnostics**.                                         |
 
 ---
 
@@ -634,4 +647,4 @@ The commit fetches again rather than reusing the preview, as the upload re-posts
 
 ## 8. Conclusion
 
-Eight tables, on-demand multi-resolution temporal slicing (Hourly, Daily, Weekly, Monthly, Yearly), ingestion-time physics audits, and per-view server aggregations keep the UI fast on a lightweight SQLite/LibSQL database — even with ~1,800 facilities and ~6,000 units.
+Nine tables, on-demand multi-resolution temporal slicing (Hourly, Daily, Weekly, Monthly, Yearly), ingestion-time physics audits, and per-view server aggregations keep the UI fast on a lightweight SQLite/LibSQL database — even with ~1,800 facilities and ~6,000 units.

@@ -247,9 +247,8 @@ void test("a what-if answer reads as plain sentences", () => {
 void test("a sensitivity reads as plain sentences", () => {
   assert.deepEqual(
     sensitivitySentences({
-      range: 50,
-      less: "less fuel burned",
-      more: "more fuel burned",
+      low: "50 % less fuel burned",
+      high: "50 % more fuel burned",
       results: [
         { model: "Ridge", low: -35.8, high: 29.3 },
         { model: "the tree", low: -51.8, high: 0.2 },

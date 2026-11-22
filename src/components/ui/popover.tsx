@@ -7,7 +7,6 @@ import { cn } from "~/lib/utils";
 /** shadcn/ui popover: a floating panel anchored to its trigger (filter editors, menus). */
 export const Popover = PopoverPrimitive.Root;
 export const PopoverTrigger = PopoverPrimitive.Trigger;
-export const PopoverClose = PopoverPrimitive.Close;
 
 export function PopoverContent({
   className,

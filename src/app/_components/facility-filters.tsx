@@ -42,7 +42,7 @@ type DescribeResult = Pick<
  * on submit, falling back to a name search when nothing in it is recognized. Omitted where only
  * name search applies (the box then filters by name as you type).
  */
-export interface DescribeProps {
+interface DescribeProps {
   text: string;
   onTextChange: (text: string) => void;
   onSubmit: () => void;

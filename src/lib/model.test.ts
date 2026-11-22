@@ -16,6 +16,7 @@ import {
   scopeCategory,
   scopeSensitivity,
   scopeTotals,
+  sensitivityGrid,
   treeBreakpoints,
   treePath,
   type ModelArtifact,
@@ -216,4 +217,27 @@ void test("treePath: ends at the tree's own prediction, in words", () => {
   assert.ok(path.steps.length > 0);
   assert.ok(path.steps.every((s) => !s.text.includes("=")));
   assert.equal(treePath(models.ridge!, base), null);
+});
+
+void test("sensitivityGrid: min to max by step, the baseline once, bad input corrected", () => {
+  assert.deepEqual(
+    sensitivityGrid(-50, 50, 25, { include: 0 }).values,
+    [-50, -25, 0, 25, 50],
+  );
+  // The baseline is added when the steps miss it, and the maximum is always drawn.
+  assert.deepEqual(
+    sensitivityGrid(0, 10, 4, { include: 5 }).values,
+    [0, 4, 5, 8, 10],
+  );
+  const reversed = sensitivityGrid(50, -50, 50);
+  assert.deepEqual(reversed.values, [-50, 0, 50]);
+  assert.equal(reversed.notes.length, 1);
+  for (const step of [0, -5, Number.NaN]) {
+    const g = sensitivityGrid(0, 100, step);
+    assert.equal(g.values.length, 21);
+    assert.match(g.notes[0]!, /above zero/);
+  }
+  const capped = sensitivityGrid(0, 1000, 0.001, { limit: 100 });
+  assert.equal(capped.values.length, 101);
+  assert.match(capped.notes[0]!, /more than 100 points/);
 });

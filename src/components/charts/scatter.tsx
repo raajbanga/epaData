@@ -25,7 +25,7 @@ import {
 import { HoverCard, powersOfTen } from "./svg";
 import { useZoom, ZoomHint, type Zoom } from "./zoom";
 
-export interface PointGroup {
+interface PointGroup {
   label: string;
   color: string;
   points: { x: number; y: number; label: string }[];

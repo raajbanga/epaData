@@ -25,7 +25,8 @@ const sortable = (v: SortValue) => {
     : v;
 };
 
-const compact = new Intl.NumberFormat("en-US", {
+/** "19.5B", "497K", "0.05": compact notation, 3 significant digits. */
+export const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumSignificantDigits: 3,
 });
@@ -35,7 +36,7 @@ const compact = new Intl.NumberFormat("en-US", {
  * ("9,193"), where the short form saves nothing. Downloads keep full precision.
  */
 export const shortNumber = (value: number) =>
-  Math.abs(value) >= 10_000 ? compact.format(value) : null;
+  Math.abs(value) >= 10_000 ? compactNumber.format(value) : null;
 
 /** Whether a value sorts as a number (so its column starts highest-first). */
 export const isNumericValue = (v: SortValue) => typeof sortable(v) === "number";

@@ -6,7 +6,7 @@ import { ArrowRows, DivergingRows } from "~/components/charts/change-rows";
 import { ChartGrid, ChartFrame } from "~/components/ui/chart";
 import { Disclosure } from "~/components/ui/report";
 import { Takeaways } from "~/components/ui/takeaways";
-import { formatPct, formatStat } from "~/lib/analysis";
+import { formatPct, formatSigned, formatStat } from "~/lib/analysis";
 import {
   applyScenario,
   AS_REPORTED,
@@ -28,8 +28,13 @@ import {
   whatIfAnswer,
 } from "~/lib/takeaways";
 import { IMPACT_DISCLAIMER } from "~/lib/traci";
-import { capitalize, formatNumber } from "~/lib/utils";
-import { modelName, type Model, type WhatIfProps } from "./predict-view";
+import { capitalize, formatNumber, plural } from "~/lib/utils";
+import {
+  modelName,
+  modelSeries,
+  type Model,
+  type WhatIfProps,
+} from "./predict-view";
 import { SensitivitySection } from "./sensitivity";
 
 type Totals = { model: Model } & ScopeTotals;
@@ -240,7 +245,7 @@ function Breakdown({ totals }: { totals: Totals[] }) {
             {l.rows.length ? (
               <BarList
                 unit="t"
-                format={(v) => `${v > 0 ? "+" : ""}${formatStat(v)} t`}
+                format={(v) => formatSigned(v, "t")}
                 rows={l.rows.slice(0, TOP).map(([label, value]) => ({
                   label,
                   value,
@@ -342,7 +347,14 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
   return (
     <ChartFrame
       title="What if they made a different change?"
-      subtitle="The same units under each change the models can test. Bars show how much predicted NOₓ would go down (left) or up (right); one bar per model."
+      subtitle={`The same units under each change the models can test. As reported, ${chosen
+        .map(
+          (m, i) =>
+            `${i ? modelName(m) : capitalize(modelName(m))} predicts ${formatStat(results[0]?.byModel[m.kind]?.base ?? null)} t`,
+        )
+        .join(
+          " and ",
+        )}; bars show how much that would go down (left) or up (right), one per model. ⚠ marks a change that takes units outside the training data.`}
       reading={otherChangesReading(
         results.map((r) => ({
           label: r.change.label,
@@ -350,27 +362,26 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
         })),
         results.find((r) => sameScenario(r.change.spec, spec))?.change.label,
       )}
-      legend={chosen.map((m) => ({
-        key: m.kind,
-        label: `${shortName(m)} model`,
-        color: MODEL_COLORS[m.kind] ?? "var(--chart-slate)",
-      }))}
+      legend={modelSeries(chosen)}
       filename="whatif-other-changes"
       height={list.length * 56}
       table={{
         head: [
           "change",
           ...chosen.flatMap((m) => [
+            `${m.kind}_baseline_nox_tons`,
             `${m.kind}_nox_tons`,
+            `${m.kind}_change_tons`,
             `${m.kind}_change_pct`,
+            `${m.kind}_units_outside_training_range`,
           ]),
         ],
         rows: results.map((r) => [
           r.change.label,
-          ...chosen.flatMap((m) => [
-            r.byModel[m.kind]!.scenario,
-            r.byModel[m.kind]!.diffPct,
-          ]),
+          ...chosen.flatMap((m) => {
+            const t = r.byModel[m.kind]!;
+            return [t.base, t.scenario, t.diff, t.diffPct, t.outside];
+          }),
         ]),
       }}
     >
@@ -380,7 +391,14 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
         format={(v) => formatPct(v)}
         rows={results.map((r) => ({
           label: r.change.label,
-          description: r.change.explain,
+          description: (() => {
+            const out = Math.max(
+              ...chosen.map((m) => r.byModel[m.kind]!.outside),
+            );
+            return out
+              ? `${r.change.explain} ⚠ ${plural(out, "unit")} outside the training data: treat as extrapolation.`
+              : r.change.explain;
+          })(),
           highlight: sameScenario(r.change.spec, spec),
           bars: chosen.map((m) => {
             const t = r.byModel[m.kind]!;
@@ -388,7 +406,7 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
               key: m.kind,
               value: t.diffPct ?? 0,
               color: MODEL_COLORS[m.kind] ?? "var(--chart-slate)",
-              title: `${shortName(m)} model: ${t.diff > 0 ? "+" : ""}${formatStat(t.diff)} t a year`,
+              title: `${shortName(m)} model: ${formatStat(t.base)} → ${formatStat(t.scenario)} t a year (${formatSigned(t.diff, "t")}, ${formatPct(t.diffPct)})`,
             };
           }),
         }))}

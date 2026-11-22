@@ -25,7 +25,7 @@ export const POLLUTANTS = [
   },
 ] as const;
 
-export type PollutantKey = (typeof POLLUTANTS)[number]["key"];
+type PollutantKey = (typeof POLLUTANTS)[number]["key"];
 type YearTotals = { year: number; records: number } & Record<
   PollutantKey,
   number

@@ -25,7 +25,7 @@ import { quantile } from "~/lib/stats";
 import { HoverCard, powersOfTen, useHover, useWidth, YGrid } from "./svg";
 
 /** One group's values and color. */
-export interface ValueGroup {
+interface ValueGroup {
   label: string;
   values: number[];
   color: string;

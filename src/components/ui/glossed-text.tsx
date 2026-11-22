@@ -3,7 +3,7 @@ import { glossSegments } from "~/lib/glossary";
 import { Term } from "./term";
 
 /** Renders `glossSegments` output: terms underlined, with their definition on hover, focus, or tap. */
-export function renderGloss(parts: ReturnType<typeof glossSegments>) {
+function renderGloss(parts: ReturnType<typeof glossSegments>) {
   return parts.map((part, i) =>
     part.definition ? (
       <Term key={i} definition={part.definition}>
@@ -30,9 +30,6 @@ export function renderRich(text: string, seen?: Set<string>): ReactNode {
     ),
   );
 }
-
-/** "**bold**" markers removed, for plain-text uses (exports, titles, aria labels). */
-export const plainText = (text: string) => text.replace(/\*\*(.+?)\*\*/g, "$1");
 
 /**
  * Running text with its jargon explained on hover and "**…**" in bold: each glossary term's first mention gets a

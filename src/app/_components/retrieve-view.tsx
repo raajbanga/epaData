@@ -21,9 +21,8 @@ import {
   DEFAULT_RETRIEVAL,
   type CampdRetrieval as RetrievalInput,
   parseFacilityIds,
-  UNIT_METRICS,
 } from "~/lib/facility-filters";
-import type { FieldChange } from "~/lib/record-diff";
+import { describeChanges, type FieldChange } from "~/lib/record-diff";
 import { datasetOriginLabel, formatNumber } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { DatasetHistory } from "./dataset-history";
@@ -34,29 +33,8 @@ type PreviewTab = "new" | "changed" | "unchanged" | "dropped";
 const FIRST_CAMPD_YEAR = 1995;
 const LAST_YEAR = new Date().getFullYear() - 1;
 
-const METRIC_LABELS: Record<FieldChange["field"], string> = {
-  ...(Object.fromEntries(UNIT_METRICS.map((m) => [m.key, m.label])) as Record<
-    (typeof UNIT_METRICS)[number]["key"],
-    string
-  >),
-  steamLoadKlb: "Steam load",
-  so2Controls: "SO₂ controls",
-  noxControls: "NOₓ controls",
-  pmControls: "PM controls",
-  hgControls: "Hg controls",
-  programCode: "Programs",
-};
-
-const changeValue = (v: FieldChange["database"]) =>
-  typeof v === "string" ? v : formatNumber(v, 2);
-
 const changeText = (changes: FieldChange[]) =>
-  changes
-    .map(
-      (c) =>
-        `${METRIC_LABELS[c.field]}: ${changeValue(c.database)} → ${changeValue(c.incoming)}`,
-    )
-    .join(" · ");
+  describeChanges(changes, (v) => formatNumber(v, 2));
 
 /** Sample retrievals for the demo: a state and fuel, one facility's history, a unit type, a control. */
 const RETRIEVE_EXAMPLES: ({

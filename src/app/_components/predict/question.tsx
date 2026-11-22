@@ -40,25 +40,25 @@ const CUSTOM = "custom";
 const EXAMPLES: { label: string; view: Partial<PredictView> }[] = [
   {
     label: "Texas coal plants add SCR",
-    view: { scope: "state", st: "TX", burns: "Coal", ...spec(0) },
+    view: { scope: "state", st: "TX", burns: "Coal", ...spec("scr") },
   },
   {
     label: "Ghent unit 2 runs 10 % more",
-    view: { scope: "unit", fid: "1356", uid: "2", burns: "", ...spec(2) },
+    view: { scope: "unit", fid: "1356", uid: "2", burns: "", ...spec("more") },
   },
   {
     label: "every US gas unit burns 5 % less fuel",
-    view: { scope: "us", burns: "Gas", ...spec(4) },
+    view: { scope: "us", burns: "Gas", ...spec("efficient") },
   },
   {
     label: "Kentucky coal plants switch to gas",
-    view: { scope: "state", st: "KY", burns: "Coal", ...spec(5) },
+    view: { scope: "state", st: "KY", burns: "Coal", ...spec("gas") },
   },
 ];
 
-/** A change's scenario as view fields. */
-function spec(i: number) {
-  return toView(WHAT_IF_CHANGES[i]!.spec);
+/** A named change's scenario as view fields. */
+function spec(key: string) {
+  return toView(WHAT_IF_CHANGES.find((c) => c.key === key)!.spec);
 }
 function toView(s: ScenarioSpec): Partial<PredictView> {
   return {

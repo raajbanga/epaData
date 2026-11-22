@@ -57,10 +57,11 @@ exports.
 | `import_issues`   |      0 | Filled by uploads and retrievals that reject or skip rows                                                                                                                           |
 | `traci_factors`   |      6 | TRACI 2.2 factors for CO₂, SO₂, and NOₓ to air (`npm run traci:import`)                                                                                                             |
 | `models`          |      3 | The NOₓ baseline, Ridge, and decision-tree models with metrics and parameters (`npm run ml:train`)                                                                                  |
+| `result_cache`    |     90 | Stored Analyze results, keyed by procedure and input and stamped with the data version (`npm run db:precompute`)                                                                    |
 
 ## Database
 
-Eight tables in SQLite, defined with Drizzle ORM in `src/server/db/schema.ts`, migrations in
+Nine tables in SQLite, defined with Drizzle ORM in `src/server/db/schema.ts`, migrations in
 `drizzle/`. Facility, unit, and unit-year uniqueness is enforced by the primary key on
 `facilities.id` and unique indexes on `units(facility_id, unit_id)` and
 `annual_records(unit_internal_id, year)`. Foreign keys cascade on delete, except `annual_records.superseded_upload_id`, which is set to

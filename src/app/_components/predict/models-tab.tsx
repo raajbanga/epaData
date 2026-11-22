@@ -13,7 +13,7 @@ import { Download } from "lucide-react";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { QuestionSentence } from "~/components/ui/question-sentence";
 import { SegmentedControl } from "~/components/ui/segmented-control";
-import { formatStat } from "~/lib/analysis";
+import { formatSigned, formatStat } from "~/lib/analysis";
 import { modelMetadata } from "~/lib/export-bundle";
 import type { PredictView } from "~/lib/analysis-state";
 import { getFuelTheme } from "~/lib/map-utils";
@@ -475,7 +475,7 @@ export function ModelsTab({
           >
             <BarList
               unit="t"
-              format={(v) => `${v > 0 ? "+" : ""}${formatStat(v)} t`}
+              format={(v) => formatSigned(v, "t")}
               rows={residuals.map((r) => ({
                 label: r.group,
                 value: r.bias,

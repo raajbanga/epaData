@@ -257,7 +257,7 @@ Seven chart types are drawn over the same selection, each on the tab whose quest
 on Overview, a trend of any variable per year with one line per group, a state choropleth, and
 the top or bottom fifteen facilities or units; on Distribution, histograms and box plots,
 optionally on a log scale and split by group; on Relationships, scatter plots of any two
-variables, colored by group, and a Pearson or Spearman correlation heat map of eleven variables;
+variables, colored by group, and Pearson and Spearman correlation heat maps of eleven variables side by side;
 and on Compare groups, bars for every group. Lines, bars, histograms, box plots, and scatter
 plots are drawn with Recharts~\cite{recharts}; the state map and the heat map with
 D3~\cite{bostock2011d3}, from U.S.\ state outlines bundled with the application. The Phase~1 Map
@@ -335,38 +335,52 @@ training date.
 
 \subsection{Sensitivity and scenario analysis}
 
-The What-if tab starts from a baseline unit-year, chosen with the search box, a year, and a
-unit, and shows its inputs, its actual \NOx{}, and each model's prediction. The model control
-selects Ridge, the tree, or both, which are then drawn side by side. Below the baseline, the
-sensitivity analysis varies one input from a minimum to a
-maximum with a chosen step, given in the input's own unit or as a percentage of its baseline
-value, and holds all other inputs fixed. It draws the prediction as a curve with the baseline
-marked by a dot and dashed reference lines, and the region outside the training data shaded
-(Figure~\ref{fig:sensitivity}); a reading states each model's range over the curve, and a
-collapsed table gives each input value with its prediction and the absolute and percentage
-change. The varied input can also be a category (primary fuel, unit type, or one of the five
-\NOx{} controls): each model's prediction is then drawn as bars, one per value seen in training,
-with the unit's own value marked, and the reading says when a model barely responds
-(Figure~\ref{fig:category}).
+The What-if tab asks one question as a sentence: \emph{What if} a baseline (one unit-year,
+every unit at a plant, the units of a state, or of the whole country, chosen with the search box,
+narrowed to a fuel if wanted) \emph{made} a change \emph{in} a year. The change is one of nine
+named scenarios or any combination of power output, fuel burned, SCR, and primary fuel. Both
+models, Ridge and the tree, are always shown side by side, each against its own baseline
+prediction. The first chart draws one arrow per model from the prediction as reported to the
+prediction after the change, next to the \NOx{} actually reported (Figure~\ref{fig:whatif}); a
+group adds the units whose prediction changes most, and a single unit the tree's path in words.
+The reading gives each model's change in tons and percent, whether it exceeds the model's typical
+error, its share of the state's or nation's \NOx{}, and that the TRACI impacts of \NOx{} (smog,
+acidification, particulate) change by the same share, since each is \NOx{} times a fixed factor.
+A collapsed note lists every input the change sets, with its new and baseline value.
 
-The scenario analysis on the same page compares the baseline with five named changes: gross load
-$+10\,\%$ and heat input $-5\,\%$ (both percentages editable), adding or removing SCR, switching
-the primary fuel, and a combined high-efficiency case with less heat input for the same load plus
-SCR (Figure~\ref{fig:scenarios}). Bars are labeled with the change from each model's baseline;
-the tooltip lists every input the scenario changed, with its new and baseline value, and each
-model's change in tons and percent. A reading names the largest change and the scenario on which
-the models disagree most. Because the models predict \NOx{} mass, a collapsed table also converts
-each predicted \NOx{} into its TRACI potential impacts (acidification, particulate human health,
-and smog formation), so a scenario can be read in impact units too (Figure~\ref{fig:scenimpacts}).
+The scenario analysis compares the baseline with the nine named changes on the same units
+(Figure~\ref{fig:scenarios}): add or remove SCR, run 10\,\% more or less (load and fuel together),
+gross load $+10\,\%$ with heat input as reported, 5\,\% less fuel for the same power, a combined
+high-efficiency case (5\,\% less fuel plus SCR), and a switch to gas or to coal. The subtitle
+gives each model's baseline prediction in tons, each model's bar is labeled with its percentage
+change from that baseline, the tooltip gives the baseline and scenario predictions with the
+absolute and percentage change, and a reading names the change that cuts \NOx{} most, the one
+that raises it most, and the rank of the user's question. A change that takes any unit outside
+the training data is marked with a warning and the number of such units, and the CSV has the
+baseline, prediction, absolute and percentage change, and that count for every scenario and
+model.
+
+The sensitivity analysis below varies one input and holds all others as reported. The user
+chooses the input, a minimum, a maximum, and a step, as a percentage of the baseline value or,
+for one unit, in the input's own unit (Figure~\ref{fig:sensitivity}). The curve marks the
+baseline with a dot and dashed reference lines at the baseline input and at each model's baseline
+prediction, and shades values outside the training data; the tooltip gives each input value
+with its prediction and its absolute and percentage change and says when it is out of range, and
+the exported CSV has the same columns. For a group, every unit's input is changed by the same
+percentage and the totals are drawn, shaded wherever some unit's value leaves the training
+range, with the number of such units in the reading and the CSV. The varied input can also be a category (primary fuel, unit type, or a \NOx{} control):
+each model's prediction is then drawn as bars, one per value seen in training, with the unit's
+own value marked (Figure~\ref{fig:category}).
 
 \subsection{Saving and exporting results}
 \label{sec:exports}
 
 Every chart and the statistics, impact, and model-comparison tables have a \emph{Download}
-button. Each downloads a ZIP file with the data as CSV, the chart as PNG
-when there is one, and a \code{metadata.json} file. The comparison, sensitivity, scenario, and
-predicted-against-actual results are exported through their charts; the scenario CSV includes the
-TRACI impacts of each predicted \NOx{}, and \emph{All test predictions} exports every one of the
+button. Each downloads a ZIP file with the data as CSV, the chart as a PNG image (SVG, HTML, and
+canvas charts alike), and a \code{metadata.json} file. The comparison, sensitivity, scenario, and
+predicted-against-actual results are exported through their charts; the sensitivity CSV has the
+absolute and percentage change and an out-of-range flag for every point, and \emph{All test
+predictions} exports every one of the
 7{,}755 test unit-years, not the chart's sample. The metadata records the export time and page URL; the
 software version and Git commit; a snapshot of the database (unit-years, datasets, and time of
 the last import), which serves as the dataset identifier; the filters and tab choices; the
@@ -389,9 +403,9 @@ distribution as its middle half, its median, and whether the mean is pulled up b
 values; a correlation as a strength in words; a comparison as a difference with both tests and
 their caveats; a model result as its error relative to the actual value and to the baseline; and
 a scenario set as the largest change and the largest disagreement between models. Each function
-returns nothing when there is nothing worth saying, and seven unit tests cover them.
+returns nothing when there is nothing worth saying, and twelve unit tests cover them.
 
-\paragraph{Definitions.} A glossary of 26 terms (\code{src/lib/glossary.ts}) marks the first
+\paragraph{Definitions.} A glossary of 38 terms (\code{src/lib/glossary.ts}) marks the first
 use of each term in a reading, subtitle, or note and in table headers, and shows its definition on
 hover. Every variable's definition, unit, and missing-value rule is one click away.
 
@@ -399,9 +413,10 @@ hover. Every variable's definition, unit, and missing-value rule is one click aw
 dropped. On Analyze, an empty selection offers \emph{Clear filters}, a backwards year range offers
 \emph{Swap years}, and \emph{Download all} is disabled when there is nothing to export; an unknown
 variable sent to the server is answered with HTTP~400. On What-if, a minimum above the maximum is
-read low to high, a step that is zero, negative, or empty is replaced by its size or 1, negative
-values of a physical input are dropped and counted (a range down to $-150\,\%$ of the baseline would otherwise ask for a negative heat
-input), a scenario change below $-100\,\%$ is capped, and a message under the inputs says what
+read low to high, a step that is zero, negative, or empty becomes a twentieth of the range, a
+range of more than 200 points is drawn with a wider step, negative values of a physical input are
+dropped and counted (a range down to $-150\,\%$ of the baseline would otherwise ask for a negative
+heat input), a scenario never sets an input below zero, and a message under the inputs says what
 was drawn instead. A facility or unit ID that does not exist returns an empty result rather than
 an error page.
 
@@ -438,20 +453,20 @@ meets it.
 \S5.2 Candidate features; no target leakage & Section~\ref{sec:prediction}; ablation & Met\\
 \S5.3 Baseline and at least two models & Median baseline, Ridge, decision tree; persistence as a reference (Q4) & Met\\
 \S5.4 Chronological split; MAE, RMSE, $R^2$, MAPE & 2016--21 / 2022--23 / 2024--25; 95\,\% bootstrap intervals on test metrics & Met\\
-\S6.2 Model, baseline unit, input, minimum, maximum, step; value, prediction, changes, curve & What-if tab & Met\\
-\S6.3 Named scenarios with range warnings & What-if tab & Met\\
-\S6.4 Curve, baseline marks, scenario bars, labels, out-of-range shading & What-if tab & Met\\
+\S6.2 Model, baseline unit, input, minimum, maximum, step; value, prediction, changes, curve & What-if tab; both models shown side by side rather than picked (Table~\ref{tab:changes}) & Met\\
+\S6.3 Baseline, load $+10\,\%$, heat input $-5\,\%$, fuel or control change, combined high efficiency; range warnings & Nine named changes on the What-if tab, each flagged when it leaves the training range & Met\\
+\S6.4 Curve, baseline point and input and prediction reference lines, scenario bars, labels, out-of-range shading & What-if tab & Met\\
 \S6.4 Same units; image or data export & Shared \code{Chart} component & Met\\
-\S6.4 Response of impact indicators & TRACI impacts of each scenario's predicted \NOx{} (the \NOx{} share of each category) & Met\\
+\S6.4 Response of impact indicators & The reading states the change in \NOx{}'s TRACI impacts, which move by the same share as predicted \NOx{} & Met\\
 \S7 Export filtered dataset & \code{/api/export?type=analysis} & Met\\
 \S7 Export statistics and comparison results & Statistics table; comparison chart & Met\\
 \S7 Export model evaluation and predictions & Model-comparison table; predicted-against-actual chart; every test prediction & Met\\
 \S7 Export sensitivity and scenario results & Sensitivity and scenario charts & Met\\
-\S7 Export chart images or data & PNG and CSV in every chart's ZIP & Met\\
+\S7 Export chart images or data & PNG (including HTML and canvas charts) and CSV in every chart's ZIP & Met\\
 \S7 Metadata for reproducibility & \code{metadata.json} in every ZIP; a unit test checks each of the six items & Met\\
 \S8 Steps 5 and 10: pandas analysis; Flask pages or JSON & Statistics in TypeScript, checked against NumPy and SciPy; tRPC procedures (Section~\ref{sec:design}) & Changed\\
 \S8.1 Flask, Jinja2, SQLAlchemy, pandas, scikit-learn, joblib, pytest & Next.js, React, Drizzle; pandas, scikit-learn, joblib, and pytest offline & Changed\\
-\S12.3 Instructions, migrations, environment template, tests, fixtures, no keys & README, migration 0009, \code{.env.example}, 113 + 10 tests, 100~KB fixture & Met\\
+\S12.3 Instructions, migrations, environment template, tests, fixtures, no keys & README, migrations 0009--0010, \code{.env.example}, 116 + 10 tests, 120~KB fixture & Met\\
 \bottomrule
 \end{longtable}}
 
@@ -476,6 +491,7 @@ why.
 \S8.1: Plotly.js for interactive charts & Recharts and D3 & Plotly charts did not match the interface and its theme; zoom and image export were rebuilt (Section~\ref{sec:discussion}).\\
 \S8.1: models stored with joblib, metadata in the database & joblib files kept; each model also stored as JSON with its metadata & The browser replays the JSON, so What-if needs no Python server (Section~\ref{sec:design}).\\
 \S5.2: state as a candidate feature & Not used & State is sparse within many fuel and unit-type combinations.\\
+\S6.2: the user selects a trained model for sensitivity & What-if always shows Ridge and the tree side by side & Their disagreement is the main finding of Q4, and a single model would hide it; the Models tab still picks one model for its detail charts.\\
 \bottomrule
 \end{longtable}}
 
@@ -506,7 +522,7 @@ and also run on the hosted build, where Python is not available.
   \begin{tikzpicture}[node distance=7mm and 9mm]
     \node[box, minimum width=4.4cm] (pages) {\textbf{Browser}\\Analyze, Predict pages\\Recharts and D3 charts, ZIP exports\\\code{model.ts}: sensitivity, scenarios};
     \node[box, right=14mm of pages, minimum width=4.6cm] (server) {\textbf{Next.js server}\\tRPC \code{analysis}, \code{prediction}\\\code{analysis.ts}: rows, statistics,\\indicators, TRACI; \code{/api/export}};
-    \node[store, below=of server, minimum width=4.6cm] (db) {\textbf{SQLite}\\\code{annual\_records}, \code{units}, \code{facilities}\\\code{traci\_factors}, \code{models}};
+    \node[store, below=of server, minimum width=4.6cm] (db) {\textbf{SQLite}\\\code{annual\_records}, \code{units}, \code{facilities}\\\code{traci\_factors}, \code{models},\\\code{result\_cache}};
     \node[ext, left=14mm of db, minimum width=4.4cm] (train) {\textbf{Offline (Python)}\\\code{ml/train.py}: pandas,\\scikit-learn, joblib};
     \node[ext, below=of db, minimum width=4.6cm] (traci) {\textbf{EPA TRACI 2.2 workbook}\\extract \code{data/traci/*.csv}};
     \draw[flow] (pages) -- node[lbl, above] {filters, choices} (server);
@@ -530,11 +546,12 @@ their unit, their facility, and the same unit's previous year, which the year-ov
 variables need. The rows are cached for five minutes, keyed by the filters and the time of the
 latest import, because one page usually asks for several views of the same selection. The
 variables are evaluated in memory and only the result (a table, chart points, or a matrix) is
-returned. Section~\ref{sec:perf} gives the measured times.
+returned. Slower results are first looked up in \code{result\_cache}, so a view opened before
+on the same data is read rather than recomputed. Section~\ref{sec:perf} gives the measured times.
 
 \subsection{Database additions}
 
-Migration 0009 adds two tables. \code{traci\_factors} holds one row per TRACI version,
+Phase~2 adds three tables. Migration 0009 adds two. \code{traci\_factors} holds one row per TRACI version,
 pollutant, medium, and impact category, with the TRACI substance name, CAS number, factor, unit,
 and the workbook column it was read from; a unique index prevents duplicates. It is loaded from
 a six-row extract of the EPA workbook (\code{data/traci/traci\_2\_2\_air.csv}), whose source,
@@ -542,7 +559,13 @@ download date, and checksum are recorded next to it. \code{models} holds one row
 model: name and kind, target, inputs, tuned settings, training, validation, and test years,
 metrics, the JSON artifact used for prediction, the path of the saved scikit-learn object, and
 the software versions and Git commit that produced it. The committed database contains six
-factors and three models. Column-level documentation is in \code{DATABASE\_BREAKDOWN.md}.
+factors and three models. Migration 0010 adds \code{result\_cache}, which stores the results of
+the slower analyses (summary, statistics, aggregates, distributions, scatter plots,
+correlations, and comparisons) keyed by procedure and input, with the version of the data they
+were computed from: the time of the latest import, a hash of the TRACI factors, and a version of
+the analysis code. An import or a factor change makes old results unreachable at once, and
+\code{npm run db:precompute} recomputes the stored ones; the committed database ships 90.
+Column-level documentation is in \code{DATABASE\_BREAKDOWN.md}.
 
 \subsection{Data flow and reproducibility}
 
@@ -622,7 +645,7 @@ Table~\ref{tab:scripts} lists the scripts added in Phase~2. The Phase~1 scripts 
 \code{npm run traci:import} & Loads \code{data/traci/traci\_2\_2\_air.csv} into \code{traci\_factors}.\\
 \code{npm run ml:train} & Trains, tunes, and evaluates the models; writes \code{ml/models/}, the \code{models} rows, and the parity fixture.\\
 \code{npm run test:py} & Runs the pytest tests of the training pipeline.\\
-\code{npm test} & Runs all 114 TypeScript tests, including the Phase~2 ones.\\
+\code{npm test} & Runs all 116 TypeScript tests, including the Phase~2 ones.\\
 \code{npm run report} & Builds this report with Tectonic.\\
 \bottomrule
 \end{tabularx}
@@ -1000,8 +1023,8 @@ heat input by 50\,\% raises Ridge's prediction to 3{,}827 tons (29\,\%), an elas
 (about 3{,}500 tons), well inside the training range. A tree's prediction is a step function:
 along this unit's path no split separates larger heat inputs, so more heat input changes
 nothing. Beyond 85.8 million MMBtu, the largest heat input in the training years, the last five
-of the 61 points enter the shaded region, and a warning above the chart says the prediction is an
-extrapolation.
+of the 61 points enter the shaded region, and the reading above the chart says those predictions are
+extrapolations.
 
 \begin{figure}[!htbp]
   \centering
@@ -1029,10 +1052,14 @@ responds'').
 \end{figure}
 
 \paragraph{Scenarios.} Figure~\ref{fig:scenarios} applies the named scenarios to the same unit.
-The models move in the same direction when heat input falls by 5\,\% (Ridge $-3.2\,\%$, tree
-$-9.1\,\%$), and neither responds to a 10\,\% rise in gross load once heat input is held fixed.
-They disagree on controls and fuel. Ridge predicts that adding SCR would cut \NOx{} by 59\,\% and
-switching to pipeline gas by 69\,\%; the tree predicts no change for either. The tree splits
+The models move in the same direction when the unit runs 10\,\% more or less (Ridge $+6.2$ and
+$-6.4\,\%$, tree $+10.1$ and $-9.1\,\%$) and when it makes the same power from 5\,\% less fuel
+(Ridge $-3.2\,\%$, tree $-9.1\,\%$). Raising gross load by 10\,\% with heat input held fixed
+changes neither prediction (Ridge $+0.03\,\%$, tree $0\,\%$): \NOx{} follows fuel burned, not
+power sold. They disagree on controls and fuel. Ridge predicts that
+adding SCR would cut \NOx{} by 59\,\%, the combined high-efficiency change by 60\,\%, and
+switching to gas by 69\,\%; the tree predicts no change for SCR or gas, and for the combined
+change only the 9\,\% of its lower fuel. The tree splits
 mostly on heat input and the previous year's \NOx{} rate, which still describes the unit as it
 was, so a changed control flag rarely changes its path. Ridge applies one average SCR
 coefficient to every unit. Neither number is a causal estimate. When two reasonable models
@@ -1041,25 +1068,28 @@ disagree this much, the data do not determine the effect, and the page says so.
 \begin{figure}[!htbp]
   \centering
   \includegraphics[width=\linewidth]{p2-scenarios.jpg}
-  \caption{Scenarios for Ghent unit~2, 2024, under Ridge and the decision tree; labels give the
-  change from each model's baseline prediction.}
+  \caption{The nine named scenarios for Ghent unit~2, 2024, under Ridge and the decision tree;
+  labels give the change from each model's baseline prediction.}
   \label{fig:scenarios}
 \end{figure}
 
-\paragraph{Scenario impacts.} Figure~\ref{fig:scenimpacts} converts each predicted \NOx{} into
-TRACI potential impacts. Ridge's baseline of 2{,}972 tons is $6.68 \times 10^{7}$~kg O\textsubscript{3}~eq
-of smog-formation potential, $1.89 \times 10^{6}$~kg \SOtwo{}~eq of acidification, and 19{,}500~kg
-\PMtwofive{}~eq of particulate human health; adding SCR lowers these to $2.75 \times 10^{7}$,
-776{,}000, and 8{,}007. These are \NOx{}'s share of each category only, since the models do not
-predict \COtwo{} or \SOtwo{}, and they inherit the models' disagreement: under the tree, adding SCR
+\paragraph{Scenario impacts.} Each TRACI category of \NOx{} is the predicted mass times a fixed
+factor, so a scenario changes \NOx{}'s impacts by the same share as its \NOx{}, and the page says
+so instead of repeating the table. Ridge's baseline of 2{,}972 tons is $6.68 \times 10^{7}$~kg
+O\textsubscript{3}~eq of smog-formation potential, $1.89 \times 10^{6}$~kg \SOtwo{}~eq of
+acidification, and 19{,}500~kg \PMtwofive{}~eq of particulate human health; adding SCR
+($-58.9\,\%$, Figure~\ref{fig:whatif}) lowers these to $2.75 \times 10^{7}$, 776{,}000, and
+8{,}007. These are \NOx{}'s share of each category only, since the models do not predict
+\COtwo{} or \SOtwo{}, and they inherit the models' disagreement: under the tree, adding SCR
 changes no impact at all.
 
 \begin{figure}[!htbp]
   \centering
-  \includegraphics[width=\linewidth]{p2-scenario-impacts.jpg}
-  \caption{TRACI~2.2 potential impacts of each scenario's predicted \NOx{} for Ghent unit~2, 2024,
-  under both models.}
-  \label{fig:scenimpacts}
+  \includegraphics[width=\linewidth]{p2-whatif.jpg}
+  \caption{What-if for Ghent unit~2, 2024, ``Add SCR'': each arrow runs from a model's prediction
+  as reported to its prediction after the change; the dotted line is the \NOx{} actually
+  reported.}
+  \label{fig:whatif}
 \end{figure}
 
 % ------------------------------------------------------------------------
@@ -1217,7 +1247,7 @@ passes.
 
 \subsection{Unit tests}
 
-\code{npm test} runs 114 TypeScript tests in thirteen files: 113 pass and one is skipped because it
+\code{npm test} runs 116 TypeScript tests in fourteen files: 115 pass and one is skipped because it
 needs a folder of raw CAMPD files that is not committed. Sixty-five tests in eight files cover
 Phase~2:
 \begin{itemize}
@@ -1227,38 +1257,38 @@ Phase~2:
         and $10^{-6}$ for $p$-values; pairwise-complete correlation; constant inputs; and the
         heat map's correlation matrix, identical to the pair-by-pair values on columns with
         missing values and ties.
-  \item \code{analysis.test.ts} (15 tests): each derived rate, and its missing value when an input
+  \item \code{analysis.test.ts} (16 tests): each derived rate, and its missing value when an input
         is missing or a denominator is zero; capacity factor in leap and ordinary years;
         year-over-year changes with a missing or zero previous year; pooled rates as a ratio of
         sums; TRACI impacts against hand calculation, with categories kept apart and a missing
         pollutant affecting only its own categories; the factor extract (six factors, nitrogen
         oxides rather than nitrogen dioxide); the control classes; percentage formatting; the URL
-        state (default year range, unknown fields); and \code{findVariable}, which
+        state (default year range, unknown fields, old tab links, a What-if question); and \code{findVariable}, which
         rejects an unknown variable key so that the server answers with an error (HTTP 400)
         instead of an empty result; the counts of each cause of missing values; and the TRACI
         impacts of a predicted \NOx{} mass, through the \NOx{} factors only.
-  \item \code{model.test.ts} (19 tests): the parity test (all three models on 200 test
+  \item \code{model.test.ts} (13 tests): the parity test (all three models on 200 test
         unit-years, within $10^{-6}$); input derivation (unit age, control flags, and a previous
         rate that is missing when the previous heat input is zero); out-of-range detection; the
         direction of the response to heat input; readable feature names; and the What-if
-        calculations: percentage change (undefined from zero), the sensitivity grid (baseline
-        included once, a reversed range and a zero, negative, or empty step, each reported to the
-        page, the point limit), the curve (only the
-        varied input changes; absolute and percentage changes from the baseline prediction;
-        values past the training maximum flagged), and the scenarios (each changes only what it
-        names; coal and gas units get the opposite fuel and control changes; an unseen fuel is
-        flagged; high efficiency always cuts heat input; each changed input is named with its
-        new and baseline value); impossible negative values dropped and counted; the category
-        sensitivity (every training fuel, the baseline's at zero change); and the signed and
-        absolute error per fuel.
+        calculations: percentage change (undefined from zero); the sensitivity grid (minimum to
+        maximum by the step, the baseline included once, a reversed range and a zero, negative,
+        or empty step corrected and reported, the point limit); scenarios (scaled load and heat
+        input, SCR and fuel set, never below zero, described in words) and the inputs each
+        changes, named with their new and baseline values; group totals, as reported and under a
+        scenario, equal to the sum of the units' predictions, and the group sensitivity and
+        category curves; the tree's thresholds, between which its prediction is flat, and its
+        path in words; and the signed and absolute error per fuel.
   \item \code{export-bundle.test.ts} (6 tests): a ZIP reads back as the CSV, \code{metadata.json},
         and PNG that went in; and the metadata of every kind of export (Analyze charts, the
         analytical dataset, and Predict) contains each of the six reproducibility items of
         \S7, while metadata missing any one of them is reported with that item's name.
-  \item \code{takeaways.test.ts} (7 tests): the plain-language readings: a trend as a rise or
+  \item \code{takeaways.test.ts} (12 tests): the plain-language readings: a trend as a rise or
         fall, the largest group and its share, spread and outliers in words, a correlation's
-        strength (skipping pairs that measure one quantity twice), the model verdict against the
-        baseline, the impact leaders, and the scenario with the largest change and disagreement.
+        strength (skipping pairs that measure one quantity twice) and the two measures compared,
+        a comparison, the model verdict against the baseline, the impact leaders, a What-if
+        answer, a sensitivity from its minimum to its maximum, the chart readings, and the tree's
+        path.
   \item \code{glossary.test.ts} (3 tests): table headers find their definition, and each term is
         marked once per block of text.
   \item \code{top-selection.test.ts} (5 tests): a Top~N selection (overall, per state, lowest
@@ -1304,6 +1334,8 @@ Persistence, 7{,}648 test unit-years with a previous rate & MAE 18.286~t (SQL) &
 Analyze request with an unknown variable & HTTP 400, ``Unknown variable'' (tRPC error contract) & Same & \checkmark\\
 TypeScript vs scikit-learn, 200 unit-years & Equal within $10^{-6}$ (parity fixture) & Equal & \checkmark\\
 Ghent unit~2, 2024, heat input $+250\,\%$ & Outside training range (max 85.8 million MMBtu) & Warned, shaded & \checkmark\\
+Sensitivity from $+80$ to $-20\,\%$, step 0 & Read low to high with a step of 5, both reported (\code{sensitivityGrid}) & Same & \checkmark\\
+Scenarios, Ghent unit~2, 5\,\% less fuel + SCR & Ridge $-60.2\,\%$, tree $-9.1\,\%$ (direct model call) & Same & \checkmark\\
 Scenarios, Ghent unit~2, add SCR & Ridge $-58.9\,\%$, tree $0.0\,\%$ (direct model call) & Same & \checkmark\\
 Export dataset, KY, 2024 & 90 rows; metadata with filters, 29 variables, 6 factors; no \S7 item missing & Same & \checkmark\\
 Upload or retrieve on the hosted build & Refused with a ``run locally'' notice & Refused & \checkmark\\
@@ -1340,7 +1372,8 @@ Analytical-dataset export, 2015--2025 (ZIP, through the server) & 0.75\,s\\
 \end{tabularx}
 \end{table}
 
-Every operation in the table takes under a second. The Spearman heat map took 1.9~s until 11/12: it sorted
+Every operation in the table takes under a second, and a result already in \code{result\_cache}
+is read in a few milliseconds instead. The Spearman heat map took 1.9~s until 11/12: it sorted
 both variables again for each pair, because the pairwise-complete subset differs from pair to
 pair, and computed both halves of the symmetric matrix. It now sorts each variable once, ranks a
 pair's complete rows in one pass over that order, and computes each of the 55 pairs once, which
@@ -1547,7 +1580,7 @@ the comparison mixes different fleets and is an association (Q2). TRACI totals a
 rank states differently, and both views are needed to read them (Q3). The models beat the
 baseline by a wide margin but not a simple persistence rule, so they are presented as tools for
 exploring responses to load, fuel, and controls rather than as forecasts (Q4). Every result is
-reproducible from its URL or its exported metadata, and the calculations are checked by 123
+reproducible from its URL or its exported metadata, and the calculations are checked by 126
 automated tests against NumPy, SciPy, scikit-learn, and hand-worked examples.
 
 % ------------------------------------------------------------------------

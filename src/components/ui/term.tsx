@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
 /** The dotted underline that says "this word has a definition", shared with table headers. */
-export const TERM_CLASS =
+const TERM_CLASS =
   "decoration-fg-muted/60 underline decoration-dotted underline-offset-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
 
 /**

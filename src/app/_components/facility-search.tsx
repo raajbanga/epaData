@@ -48,7 +48,7 @@ function useDebounced<T>(value: T, ms = 200) {
 }
 
 /** Filter values a page offers as suggestions; picking one adds it as a chip. */
-export interface SearchFilters {
+interface SearchFilters {
   vocab?: FilterVocab;
   active: FacilityFilters;
   onPick: (s: FilterSuggestion) => void;

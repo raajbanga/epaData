@@ -28,7 +28,7 @@ import { Question } from "./question";
 import { WhatIfResults } from "./whatif-results";
 
 export type Model = RouterOutputs["prediction"]["models"][number];
-export type Scope = RouterOutputs["prediction"]["scope"];
+type Scope = RouterOutputs["prediction"]["scope"];
 
 /** What the What-if sections receive: both models, the scope's unit-years, and the scenario. */
 export interface WhatIfProps {
@@ -75,8 +75,9 @@ export function PredictView({
   const [models] = api.prediction.models.useSuspenseQuery();
   const { data: source } = api.analysis.provenance.useQuery();
   const trained = models.filter((m) => m.kind !== "baseline");
+  // The model picker is the Models tab's; What-if always answers with both models.
   const chosen =
-    view.model === "ridge" || view.model === "tree"
+    view.tab === "models" && (view.model === "ridge" || view.model === "tree")
       ? trained.filter((m) => m.kind === view.model)
       : trained;
 

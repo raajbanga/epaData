@@ -1,5 +1,6 @@
 import type { BadgeVariant } from "~/components/ui/badge";
 import { isZeroCarbonFuel } from "~/lib/map-utils";
+import { shortNumber } from "~/lib/utils";
 
 /** Plain-English plant summaries: grid role, carbon-intensity tier, and EPA equivalencies. */
 
@@ -72,11 +73,9 @@ export function getPlantRole(params: {
 }
 
 function formatLargeNumber(num: number, suffix: string) {
-  if (num <= 0) return `0${suffix}`;
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M${suffix}`;
-  if (num >= 1_000)
-    return `${Math.round(num / 1_000).toLocaleString()}K${suffix}`;
-  return `${num.toLocaleString()}${suffix}`;
+  return num <= 0
+    ? `0${suffix}`
+    : `${shortNumber(num) ?? Math.round(num).toLocaleString()}${suffix}`;
 }
 
 /** CO₂ rate tier (lbs/MWh); `typicalOf` names the plants such a rate usually comes from. */

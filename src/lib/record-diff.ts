@@ -1,3 +1,4 @@
+import { UNIT_METRICS } from "./facility-filters";
 import {
   TOTAL_KEYS,
   type EmissionTotals,
@@ -86,4 +87,39 @@ export function countDiff(counts: DiffCounts, status: DiffStatus) {
   else if (status === "changed") counts.updated++;
   else counts.unchanged++;
   return counts;
+}
+
+/** Each compared field in words, for every page that lists changes. */
+const FIELD_LABELS: Record<FieldChange["field"], string> = {
+  ...(Object.fromEntries(UNIT_METRICS.map((m) => [m.key, m.label])) as Record<
+    (typeof UNIT_METRICS)[number]["key"],
+    string
+  >),
+  steamLoadKlb: "Steam load",
+  so2Controls: "SO₂ controls",
+  noxControls: "NOₓ controls",
+  pmControls: "PM controls",
+  hgControls: "Hg controls",
+  programCode: "Programs",
+};
+
+/**
+ * The changes in words, "CO₂: 1,200 → 1,250 · NOₓ controls: — → SCR", with numbers written by
+ * `number`; with `values: false`, only the fields ("CO₂, NOₓ controls").
+ */
+export function describeChanges(
+  changes: FieldChange[],
+  number: (v: number | null) => string,
+  { values = true } = {},
+) {
+  const show = (v: FieldChange["database"]) =>
+    typeof v === "string" ? v : number(v);
+  return values
+    ? changes
+        .map(
+          (c) =>
+            `${FIELD_LABELS[c.field]}: ${show(c.database)} → ${show(c.incoming)}`,
+        )
+        .join(" · ")
+    : changes.map((c) => FIELD_LABELS[c.field]).join(", ");
 }

@@ -1,28 +1,55 @@
+import { createHash } from "node:crypto";
 import { eq, max } from "drizzle-orm";
 import SuperJSON from "superjson";
 import { db } from "~/server/db";
-import { datasets, resultCache } from "~/server/db/schema";
+import { datasets, resultCache, traciFactors } from "~/server/db/schema";
 
 /**
  * Results of slow analyses, read instead of recomputed. A result is looked up in memory, then in
- * the `result_cache` table, and only then computed. Every entry carries the data version (when
- * the data last changed), so an import makes old results unreachable at once.
+ * the `result_cache` table, and only then computed. Every entry carries the version of the data,
+ * factors, and logic it was computed from (`dataVersion`), so an import makes old results
+ * unreachable at once.
  *
  * Locally every computed result is stored; `npm run db:precompute` drops old versions and
  * recomputes the rest, and the committed database ships them. The hosted database is read-only,
  * so there a miss is computed and kept in memory only.
  */
 
-/** When the data last changed: every retrieval, upload, and sync records a dataset. */
+/**
+ * Bump when a change to the analysis code changes its results, so stored results computed by the
+ * old code are not served (then run `npm run db:precompute`).
+ */
+const LOGIC_VERSION = 1;
+
+/**
+ * The version every stored result carries: when the data last changed (every retrieval, upload,
+ * and sync records a dataset), the TRACI factors in use, and LOGIC_VERSION. A change to any of
+ * them makes old results unreachable at once.
+ */
 export async function dataVersion() {
-  const at = (
-    await db.select({ at: max(datasets.importedAt) }).from(datasets)
-  )[0]?.at;
-  return at ? String(at instanceof Date ? at.getTime() : at) : "none";
+  const [[d], factors] = await Promise.all([
+    db.select({ at: max(datasets.importedAt) }).from(datasets),
+    db
+      .select({
+        v: traciFactors.traciVersion,
+        p: traciFactors.pollutant,
+        c: traciFactors.impactCategory,
+        f: traciFactors.factor,
+      })
+      .from(traciFactors)
+      .orderBy(traciFactors.id),
+  ]);
+  const at = d?.at;
+  const imported = at ? String(at instanceof Date ? at.getTime() : at) : "none";
+  const traci = createHash("sha256")
+    .update(JSON.stringify(factors))
+    .digest("hex")
+    .slice(0, 12);
+  return `${imported}|traci:${traci}|v${LOGIC_VERSION}`;
 }
 
 /** JSON with object keys sorted and undefined dropped, so equal inputs give equal keys. */
-export function stableJson(value: unknown): string {
+function stableJson(value: unknown): string {
   return JSON.stringify(value, (_, v: unknown) =>
     v && typeof v === "object" && !Array.isArray(v)
       ? Object.fromEntries(

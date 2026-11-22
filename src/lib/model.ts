@@ -4,6 +4,7 @@
  * predictions exactly (checked against ml/fixtures/parity.json by model.test.ts). Keep
  * `modelInputs` and `designRow` in step with `model_inputs` and `design_matrix` in ml/train.py.
  */
+import { formatSigned } from "./analysis";
 import { shortNumber } from "./utils";
 
 /** A unit-year as ml/train.py's query reads it (snake_case, as stored). */
@@ -98,7 +99,7 @@ export const NUMERIC_INPUTS = {
 } as const;
 export type NumericInput = keyof typeof NUMERIC_INPUTS;
 
-export type ModelInputs = Record<NumericInput, number | null> &
+type ModelInputs = Record<NumericInput, number | null> &
   Record<Control, number> & { primary_fuel: string; unit_type: string };
 
 export function modelInputs(raw: ModelRaw): ModelInputs {
@@ -379,11 +380,27 @@ export const WHAT_IF_CHANGES: {
     spec: { ...AS_REPORTED, load: -10, heat: -10 },
   },
   {
+    key: "load",
+    label: "10 % more load",
+    phrase: "made 10 % more power from the same fuel",
+    explain:
+      "Gross load up 10 %, heat input as reported: more power from the same fuel.",
+    spec: { ...AS_REPORTED, load: 10 },
+  },
+  {
     key: "efficient",
     label: "5 % less fuel",
     phrase: "burned 5 % less fuel for the same power",
     explain: "Make the same power from 5 % less fuel (a more efficient unit).",
     spec: { ...AS_REPORTED, heat: -5 },
+  },
+  {
+    key: "highefficiency",
+    label: "5 % less fuel + SCR",
+    phrase: "burned 5 % less fuel and added SCR",
+    explain:
+      "A combined high-efficiency upgrade: the same power from 5 % less fuel, plus SCR.",
+    spec: { ...AS_REPORTED, heat: -5, scr: "add" },
   },
   {
     key: "gas",
@@ -420,7 +437,7 @@ export function applyScenario(base: ModelInputs, s: ScenarioSpec): ModelInputs {
 
 /** The scenario in a few words: "Power output +10 %, add SCR". */
 export function describeScenario(s: ScenarioSpec) {
-  const signed = (p: number) => `${p > 0 ? "+" : ""}${p} %`;
+  const signed = (p: number) => formatSigned(p, "%");
   const parts = [
     s.load && `power output ${signed(s.load)}`,
     s.heat && `fuel burned ${signed(s.heat)}`,
@@ -488,6 +505,48 @@ export function scopeTotals(
 }
 export type ScopeTotals = ReturnType<typeof scopeTotals>;
 
+/**
+ * The values a sensitivity steps through, from `from` to `to` by `step`, with `include` (the
+ * baseline) added. Inputs it can't use are corrected and said in `notes`: a range entered high to
+ * low is read low to high, a missing or non-positive step becomes a twentieth of the range, and a
+ * step too small for `limit` points is widened.
+ */
+export function sensitivityGrid(
+  from: number,
+  to: number,
+  step: number,
+  { include, limit = 200 }: { include?: number; limit?: number } = {},
+) {
+  const notes: string[] = [];
+  let [lo, hi] = [from, to];
+  if (!Number.isFinite(lo) || !Number.isFinite(hi))
+    return { values: include === undefined ? [] : [include], notes };
+  if (lo > hi) {
+    [lo, hi] = [hi, lo];
+    notes.push("The range was entered high to low, so it is read low to high.");
+  }
+  const span = hi - lo;
+  if (!(step > 0)) {
+    step = span / 20 || 1;
+    notes.push(
+      `The step must be above zero, so it is ${Number(step.toPrecision(3))}.`,
+    );
+  }
+  if (span / step > limit) {
+    step = span / limit;
+    notes.push(
+      `That step would draw more than ${limit} points, so it is ${Number(step.toPrecision(3))}.`,
+    );
+  }
+  const values = new Set<number>();
+  const n = Math.floor(span / step + 1e-9);
+  for (let i = 0; i <= n; i++)
+    values.add(Number((lo + i * step).toPrecision(12)));
+  values.add(hi);
+  if (include !== undefined && Number.isFinite(include)) values.add(include);
+  return { values: [...values].sort((a, b) => a - b), notes };
+}
+
 /** A scope's summed prediction with each unit's inputs changed by `change`. */
 const scopePrediction = (
   model: ModelArtifact,
@@ -507,16 +566,22 @@ export function scopeSensitivity(
   percents: readonly number[],
 ) {
   const base = scopePrediction(model, rows, (x) => x);
+  const [min, max] = model.ranges.numeric[input];
   return percents.map((pct) => {
     const prediction = scopePrediction(model, rows, (x) => ({
       ...x,
       [input]: scaleBy(x[input], pct),
     }));
+    const outside = rows.filter((r) => {
+      const v = scaleBy(r.inputs[input], pct);
+      return v !== null && (v < min || v > max);
+    }).length;
     return {
       pct,
       prediction,
       diff: prediction - base,
       diffPct: percentChange(prediction, base),
+      outside,
     };
   });
 }

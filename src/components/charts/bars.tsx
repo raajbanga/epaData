@@ -11,7 +11,7 @@ import {
 } from "~/components/ui/chart";
 
 /** One bar of a BarList: its name, value, and optionally an interval, color, and tooltip extras. */
-export interface BarRow {
+interface BarRow {
   label: string;
   value: number | null;
   low?: number | null;

@@ -133,7 +133,7 @@ void test("parser rejects invalid rows, skips duplicates, and reports audit flag
     report.existing.map((e) => [e.rowNumber, e.status]),
     [[6, "changed"]],
   );
-  assert.match(report.existing[0]?.reason ?? "", /update co2MassTons/);
+  assert.equal(report.existing[0]?.reason, "Will update CO₂: 201 → 200");
   // In-file repeats and database matches are reported separately.
   assert.deepEqual(
     report.duplicates.map((d) => d.rowNumber),

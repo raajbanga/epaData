@@ -16,7 +16,7 @@ import { inSentence } from "~/lib/utils";
 
 export { inSentence };
 
-export type Catalog = RouterOutputs["analysis"]["catalog"];
+type Catalog = RouterOutputs["analysis"]["catalog"];
 
 /** What every Analyze tab receives: the selection, the tab choices, and the catalog. */
 export interface TabProps {

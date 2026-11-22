@@ -32,16 +32,6 @@ const POLLUTANT_LABELS: Record<string, string> = {
 const TOP = 15;
 
 /** "2.23T", "915M": impact totals run to 13 digits, which no one reads. */
-const compact = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumSignificantDigits: 3,
-});
-const formatImpact = (v: number | null | undefined) =>
-  v === null || v === undefined
-    ? "—"
-    : Math.abs(v) >= 1e4
-      ? compact.format(v)
-      : formatStat(v);
 
 /** CAMPD emissions × TRACI factors, one result per impact category in its own unit. */
 export function ImpactsTab(props: TabProps) {
@@ -238,7 +228,7 @@ function ResultsTable({
         rows={table.map(([group, n, ...values]) => [
           group,
           formatNumber(n as number),
-          ...values.map((x) => formatImpact(x as number | null)),
+          ...values.map((x) => formatStat(x as number | null)),
         ])}
         sortKeys={table.map((r) => r.map((c) => c))}
       />

@@ -9,7 +9,7 @@ import { Swatch } from "~/components/ui/swatch";
 type Story = NonNullable<ReturnType<typeof emissionsStory>>;
 
 /** One color per pollutant, shared by the chart's lines and the explainers beside it. */
-export const POLLUTANT_COLORS = {
+const POLLUTANT_COLORS = {
   so2: "var(--chart-ochre)",
   nox: "var(--chart-plum)",
   co2: "var(--chart-slate)",

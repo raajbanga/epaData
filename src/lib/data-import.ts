@@ -5,6 +5,7 @@ import {
 } from "./emissions-metrics";
 import {
   countDiff,
+  describeChanges,
   diffRecord,
   emptyDiffCounts,
   recordKey,
@@ -12,6 +13,7 @@ import {
   type DiffCounts,
   type RecordAttributes,
 } from "./record-diff";
+import { formatNumber } from "./utils";
 
 /** Upload contract shared by the import dialog, `/api/upload`, and `scripts/parse_import.py`. */
 
@@ -197,7 +199,7 @@ export function buildImportReport(
               reason:
                 status === "unchanged"
                   ? "Same values as stored; nothing changes"
-                  : `Will update ${changes.map((c) => c.field).join(", ")}`,
+                  : `Will update ${describeChanges(changes, (v) => formatNumber(v, 2))}`,
             },
           ],
     ),

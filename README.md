@@ -84,7 +84,7 @@ in [docs/features.md](docs/features.md#prediction-results-test-years-20242025-re
 
 ## Database
 
-Eight SQLite tables, defined with Drizzle ORM in
+Nine SQLite tables, defined with Drizzle ORM in
 [`src/server/db/schema.ts`](src/server/db/schema.ts) with versioned migrations in
 [`drizzle/`](drizzle). Each facility, unit, and unit-year is stored once, enforced by unique
 keys, and every unit-year records the dataset that last wrote it, so you can trace each value

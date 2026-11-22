@@ -305,7 +305,7 @@ pres.addSection({ title: "What Phase 2 added" });
   stat(s, 8.9, 4.05, "90 results", "3.8 MB, shipped in the committed file", K.ink, 3.8);
   s.addText([
     { text: "Never stale: ", options: { bold: true, color: K.ink } },
-    { text: "every import changes the data version, so older results are never served. " },
+    { text: "every import or factor change alters the data version, so older results are never served. " },
     { text: "Shipped: ", options: { bold: true, color: K.ink } },
     { text: "npm run db:precompute refreshes them before each deploy." },
   ], { x: 0.6, y: 5.75, w: 12.1, h: 0.8, fontSize: 14, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
@@ -423,7 +423,7 @@ const demo = (n, title, speaker, subtitle) => frame(`Demo · steps ${n}–${n + 
 // 13. Steps 7–8
 {
   const s = demo(7, "Change one input, then ask what-if", "Arnav", "Q4: how does Ghent unit 2's predicted NOₓ respond to changes?");
-  half(s, 0.6, 7, "sensitivity", "Heat input ± 50 %", fig("p2-sensitivity"), [["−35 · −57 %", "Ridge, tree at half the fuel"], ["8 steps", "the tree is a staircase"]]);
+  half(s, 0.6, 7, "sensitivity", "Heat input −50 to +250 %", fig("p2-sensitivity"), [["−35 · −57 %", "Ridge, tree at half the fuel"], ["8 steps", "the tree is a staircase"]]);
   half(s, 6.8, 8, "what-if and export", "The models disagree on controls", (x, y, w) => table(s, [
     [hdr("Change"), hdr("Ridge"), hdr("Tree")],
     [strong("Add SCR"), { text: "−58.9 %", options: { bold: true, color: K.ridge } }, "0.0 %"],

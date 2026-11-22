@@ -18,7 +18,7 @@ const times = (x: number) =>
   `${x >= 10 ? Math.round(x).toLocaleString() : x.toFixed(1)}×`;
 
 /** "Total CO₂ mass", "The average heat rate", "The pooled NOₓ rate". */
-export function measureName(label: string, aggregation: Aggregation) {
+function measureName(label: string, aggregation: Aggregation) {
   const lower = inSentence(label);
   return aggregation === "sum"
     ? `Total ${lower}`
@@ -247,7 +247,7 @@ export function leadersSentence(
 }
 
 /** One model's answer to a what-if, summed over its unit-years. */
-export interface WhatIfResult {
+interface WhatIfResult {
   /** In a sentence: "Ridge", "the tree". */
   model: string;
   /** Predicted NOₓ as reported (short tons). */
@@ -415,20 +415,23 @@ export function whatIfAnswer({
  * burned"); each result is a model's change at −range % and +range %.
  */
 export function sensitivitySentences({
-  range,
-  less,
-  more,
+  low,
+  high,
   results,
 }: {
-  range: number;
-  less: string;
-  more: string;
+  /** Each end of the range in words ("50 % less fuel burned"), null when it is the baseline. */
+  low: string | null;
+  high: string | null;
   results: { model: string; low: number | null; high: number | null }[];
 }) {
-  return [
-    `With ${range} % ${less}, predicted NOₓ would ${moves(results.map((r) => ({ model: r.model, pct: r.low })))}.`,
-    `With ${range} % ${more}, it would ${moves(results.map((r) => ({ model: r.model, pct: r.high })))}.`,
-  ];
+  const ends = [
+    low && { at: low, key: "low" as const },
+    high && { at: high, key: "high" as const },
+  ].filter((e): e is { at: string; key: "low" | "high" } => Boolean(e));
+  return ends.map(
+    (e, i) =>
+      `With ${e.at}, ${i ? "it" : "predicted NOₓ"} would ${moves(results.map((r) => ({ model: r.model, pct: r[e.key] })))}.`,
+  );
 }
 
 /**
