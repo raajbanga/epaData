@@ -1203,7 +1203,7 @@ return t.value[node]!;
 \subsection{Exports that can be reproduced}
 \label{sec:feat-export}
 
-Exporting Kentucky, 2024 with Analyze's \emph{Download all} gives a ZIP with a CSV of 90 unit-years (one
+Exporting Kentucky, 2024 with Analyze's \emph{Download all} gives a ZIP with a CSV of 88 unit-years (one
 column per variable) and the \code{metadata.json} shown, shortened, in
 Listing~\ref{lst:meta}. The database snapshot and commit identify the data and code; the filters
 and variable definitions say what was selected and how each column was computed; the factor
@@ -1214,12 +1214,13 @@ list makes every impact value checkable by hand.
 {
   "title": "Analytical dataset",
   "page": "Analyze",
-  "exportedAt": "2026-11-20T01:35:05.412Z",
-  "software": { "name": "epaData", "version": "0.1.0", "commit": "9236927" },
+  "exportedAt": "2026-11-22T18:31:54.654Z",
+  "software": { "name": "epaData", "version": "0.1.0", "commit": "3e7482e" },
   "database": { "unitYears": 57414, "datasets": 153,
                 "lastImport": "2026-10-11T04:38:52.000Z" },
-  "filters": { "stateCode": "KY", "yearMin": "2024", "yearMax": "2024" },
-  "unitYears": 90,
+  "filters": { "stateCode": "KY", "yearMin": "2024", "yearMax": "2024",
+               "operatingHoursMin": "0", "operatingHoursMinStrict": "1" },
+  "unitYears": 88,
   "variables": [ { "key": "co2Intensity", "unit": "lb/MWh",
       "definition": "CO2 mass x 2,000 / gross load. Missing when either ...",
       "aggregation": "ratio" }, ... ],
