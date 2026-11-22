@@ -363,6 +363,7 @@ def main():
         "features": [*NUMERIC, *CATEGORICAL, *CONTROLS],
         "train_years": span(TRAIN),
         "validation_years": span(VALIDATION),
+        "fit_years": span((TRAIN[0], VALIDATION[1])),
         "test_years": span(TEST),
         "pipeline_version": pipeline_version(),
         "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -418,7 +419,7 @@ def main():
             (
                 model_id, name, kind, common["target"], json.dumps(common["features"]),
                 json.dumps(tuned[kind][0]), common["train_years"], common["validation_years"],
-                common["test_years"],
+                common["fit_years"], common["test_years"],
                 # The persistence reference rides along so the app can state it beside each model.
                 json.dumps({
                     **model_metrics,
@@ -464,8 +465,8 @@ def main():
     with sqlite3.connect(DB) as conn:
         conn.executemany(
             "INSERT OR REPLACE INTO models (id, name, kind, target, features, params, train_years,"
-            " validation_years, test_years, metrics, artifact, artifact_path, pipeline_version, trained_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " validation_years, fit_years, test_years, metrics, artifact, artifact_path, pipeline_version,"
+            " trained_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
 

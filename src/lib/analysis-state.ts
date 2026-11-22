@@ -1,9 +1,5 @@
 import { DIMENSION_KEYS } from "~/lib/analysis";
-import {
-  DEFAULT_FILTERS,
-  filterSearchParams,
-  type FacilityFilters,
-} from "~/lib/facility-filters";
+import { DEFAULT_FILTERS, type FacilityFilters } from "~/lib/facility-filters";
 
 /**
  * Analyze page state (reproducible through URL parameters): the Explore filters
@@ -96,12 +92,10 @@ function writeView<T extends Record<string, string>>(
 }
 
 export function parseAnalysisParams(params: Params) {
-  // Without any filter in the URL (a tab link, say), start from the complete API years.
-  const unfiltered = !Object.keys(params).some((k) => k in DEFAULT_FILTERS);
-  const filters = readView(
-    unfiltered ? DEFAULT_ANALYSIS_FILTERS : DEFAULT_FILTERS,
-    params,
-  );
+  // The URL holds the filters that differ from the page's defaults (the complete API years, units
+  // that ran), so a link that sets only a state still gets them; a removed default is written
+  // empty ("operatingHoursMin=").
+  const filters = readView(DEFAULT_ANALYSIS_FILTERS, params);
   const view = readView(DEFAULT_VIEW, params);
   const tab: string = view.tab;
   view.tab =
@@ -132,18 +126,20 @@ export function parseAnalysisParams(params: Params) {
   return { filters, view };
 }
 
-/** The inverse of parseAnalysisParams: active filters plus the non-default view choices. */
-export function analysisSearchParams(
+/** The filters that differ from Analyze's defaults, a removed default as an empty value. */
+export const analysisFilterParams = (filters: FacilityFilters) =>
+  writeView(
+    DEFAULT_ANALYSIS_FILTERS,
+    Object.fromEntries(
+      Object.entries(filters).map(([k, v]) => [k, v.trim()]),
+    ) as FacilityFilters,
+  );
+
+/** The inverse of parseAnalysisParams: the filters and view choices that differ from the defaults. */
+export const analysisSearchParams = (
   filters: FacilityFilters,
   view: AnalysisView,
-) {
-  const params = writeView(DEFAULT_VIEW, view, filterSearchParams(filters));
-  // With no filters left, keep the year range explicit so a reload doesn't restore the default.
-  if (![...params.keys()].some((k) => k in DEFAULT_FILTERS)) {
-    params.set("yearMin", "");
-  }
-  return params.toString();
-}
+) => writeView(DEFAULT_VIEW, view, analysisFilterParams(filters)).toString();
 
 /** Predict page state: tab, model (Models tab), and the what-if question. */
 const PREDICT_TABS = ["models", "whatif"] as const;

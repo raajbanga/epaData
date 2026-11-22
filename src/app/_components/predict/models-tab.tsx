@@ -19,7 +19,6 @@ import type { PredictView } from "~/lib/analysis-state";
 import { getFuelTheme } from "~/lib/map-utils";
 import {
   featureLabel,
-  fitYears,
   MODEL_COLORS,
   residualsByGroup,
   shortName,
@@ -508,7 +507,7 @@ export function ModelsTab({
           rows={[
             ["Model ID", chosen.id],
             ["Inputs", chosen.features.map(featureLabel).join(", ")],
-            ["Fit on / tested on", `${fitYears(chosen)} / ${chosen.testYears}`],
+            ["Fit on / tested on", `${chosen.fitYears} / ${chosen.testYears}`],
             [
               "Tuning: trained / validated on",
               `${chosen.trainYears} / ${chosen.validationYears}`,

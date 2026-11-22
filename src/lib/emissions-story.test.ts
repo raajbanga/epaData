@@ -21,7 +21,7 @@ void test("the story uses fully covered years and drops a year still being repor
   assert.equal(s.from, 2015);
   assert.equal(s.to, 2017);
   assert.equal(s.partial, 2018);
-  assert.equal(Math.round(s.pollutants[2]!.pct), -25);
+  assert.equal(Math.round(s.pollutants[2]!.pct!), -25);
   assert.deepEqual(
     s.rows.map((r) => Math.round(r.co2!)),
     [100, 90, 75],

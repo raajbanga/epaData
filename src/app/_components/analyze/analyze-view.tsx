@@ -7,6 +7,7 @@ import { EmptyState } from "~/components/ui/empty-state";
 import { PageTitle } from "~/components/ui/page";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import {
+  analysisFilterParams,
   analysisSearchParams,
   DEFAULT_ANALYSIS_FILTERS,
   DEFAULT_VIEW,
@@ -142,7 +143,7 @@ export function AnalyzeView({
                 href={exportUrl(
                   "analysis",
                   {},
-                  filterQuery.toString() || "yearMin=",
+                  analysisFilterParams(deferredFilters).toString(),
                 )}
                 download
                 className={buttonClass({

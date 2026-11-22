@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { CloudDownload, Database } from "lucide-react";
 import { getFuelTheme } from "~/lib/map-utils";
 import { getCarbonIntensityTier } from "~/lib/plant-narrative";
-import { cn, datasetOriginLabel } from "~/lib/utils";
+import { cn, datasetOriginLabel, formatNumber } from "~/lib/utils";
 import { Swatch } from "~/components/ui/swatch";
 
 /** Flat outlined tags; color only where the tag carries a status. */
@@ -140,7 +140,7 @@ export function CarbonIntensityBadge({
     <Badge variant={tier.variant} title={tier.description}>
       {showValue && (
         <span className="tabular-nums">
-          {Math.round(intensity).toLocaleString()} lbs/MWh ·
+          {formatNumber(Math.round(intensity))} lbs/MWh ·
         </span>
       )}
       {tier.label}

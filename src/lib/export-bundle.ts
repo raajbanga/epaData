@@ -2,7 +2,6 @@ import { strToU8, zipSync } from "fflate";
 
 import type { VariableInfo } from "~/lib/analysis";
 import { toCsv, type CsvColumn, type CsvValue } from "~/lib/csv";
-import { fitYears } from "~/lib/model";
 import type { TraciFactor } from "~/lib/traci";
 
 /**
@@ -38,6 +37,7 @@ export interface ModelRecord {
   params: Record<string, unknown>;
   trainYears: string;
   validationYears: string;
+  fitYears: string;
   testYears: string;
   metrics: Record<string, Record<string, number>>;
   artifactPath: string;
@@ -52,7 +52,7 @@ export const modelMetadata = (m: ModelRecord) => ({
   target: m.target,
   features: m.features,
   settings: m.params,
-  fitYears: fitYears(m),
+  fitYears: m.fitYears,
   tuningTrainYears: m.trainYears,
   tuningValidationYears: m.validationYears,
   testYears: m.testYears,

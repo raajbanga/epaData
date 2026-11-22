@@ -22,7 +22,7 @@ import { EmptyState } from "~/components/ui/empty-state";
 import { Input } from "~/components/ui/input";
 import { Select, toOptions } from "~/components/ui/select";
 import { nextSort, type SortDirection } from "~/lib/facility-filters";
-import { cn } from "~/lib/utils";
+import { cn, exactCount } from "~/lib/utils";
 
 export function Table({ className, ...props }: ComponentProps<"table">) {
   return (
@@ -209,12 +209,10 @@ export function TablePagination({
         <span>
           Showing{" "}
           <strong className="text-fg">
-            {totalCount === 0
-              ? 0
-              : ((page - 1) * pageSize + 1).toLocaleString()}
-            –{Math.min(page * pageSize, totalCount).toLocaleString()}
+            {totalCount === 0 ? 0 : exactCount((page - 1) * pageSize + 1)}–
+            {exactCount(Math.min(page * pageSize, totalCount))}
           </strong>{" "}
-          of <strong className="text-fg">{totalCount.toLocaleString()}</strong>{" "}
+          of <strong className="text-fg">{exactCount(totalCount)}</strong>{" "}
           <span className="hidden sm:inline">{itemLabel}</span>
         </span>
         <div className="sm:border-edge flex items-center gap-1.5 sm:border-l sm:pl-3">

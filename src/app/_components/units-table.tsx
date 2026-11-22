@@ -18,6 +18,7 @@ import {
   formatCountyShort,
   getCarbonIntensityTier,
 } from "~/lib/plant-narrative";
+import { METRICS } from "~/lib/metrics";
 import { cn, formatNumber, formatQuantity } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 import { DetailLink } from "./detail-link";
@@ -36,37 +37,37 @@ const METRIC_COLUMNS: {
   render: (r: UnitYearRow) => string;
 }[] = [
   {
-    label: "MW",
+    label: METRICS.nameplateCapacityMW.column,
     sort: "capacity",
     render: (r) => formatQuantity(r.nameplateCapacityMW, "", { digits: 1 }),
   },
   {
-    label: "Op. hrs",
+    label: METRICS.operatingHours.column,
     sort: "operatingHours",
     render: (r) => formatNumber(r.operatingHours),
   },
   {
-    label: "Gross MWh",
+    label: METRICS.grossGenerationMWh.column,
     sort: "grossGenerationMWh",
     render: (r) => formatNumber(r.grossGenerationMWh),
   },
   {
-    label: "Heat MMBtu",
+    label: METRICS.heatInputMMBtu.column,
     sort: "heatInputMMBtu",
     render: (r) => formatNumber(r.heatInputMMBtu),
   },
   {
-    label: "CO₂ t",
+    label: METRICS.co2MassTons.column,
     sort: "co2MassTons",
     render: (r) => formatNumber(r.co2MassTons),
   },
   {
-    label: "SO₂ t",
+    label: METRICS.so2MassTons.column,
     sort: "so2MassTons",
     render: (r) => formatNumber(r.so2MassTons, 1),
   },
   {
-    label: "NOₓ t",
+    label: METRICS.noxMassTons.column,
     sort: "noxMassTons",
     render: (r) => formatNumber(r.noxMassTons, 1),
   },

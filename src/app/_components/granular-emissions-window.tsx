@@ -28,6 +28,7 @@ import {
 import type { SortDirection } from "~/lib/facility-filters";
 import { cn, formatNumber, formatQuantity, sortRows } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
+import { METRICS } from "~/lib/metrics";
 
 interface GranularPlant {
   id: number;
@@ -216,14 +217,18 @@ export function GranularEmissionsWindow({
       {summary && items.length > 0 && (
         <KpiStrip className="lg:grid-cols-4">
           <StatTile
-            label="Gross load"
-            value={formatQuantity(summary.grossGenerationMWh, "MWh", {
-              fallback: "0 MWh",
-            })}
+            label={METRICS.grossGenerationMWh.label}
+            value={formatQuantity(
+              summary.grossGenerationMWh,
+              METRICS.grossGenerationMWh.unit,
+              {
+                fallback: `0 ${METRICS.grossGenerationMWh.unit}`,
+              },
+            )}
             subtext={`${formatNumber(summary.operatingHours)} operating hours`}
           />
           <StatTile
-            label="CO₂"
+            label={METRICS.co2MassTons.short}
             value={formatQuantity(summary.co2MassTons, "t", {
               fallback: "0 t",
             })}
@@ -233,7 +238,7 @@ export function GranularEmissionsWindow({
             label="CO₂ rate"
             value={
               summary.co2IntensityLbsMWh !== null
-                ? `${summary.co2IntensityLbsMWh.toLocaleString()} lbs/MWh`
+                ? `${formatNumber(summary.co2IntensityLbsMWh)} lbs/MWh`
                 : "—"
             }
           />
@@ -325,7 +330,7 @@ export function GranularEmissionsWindow({
                       </TableCell>
                     ))}
                     <TableCell className="text-fg-2 px-2 py-1 text-right whitespace-nowrap">
-                      {item.co2IntensityLbsMWh?.toLocaleString() ?? "—"}
+                      {formatNumber(item.co2IntensityLbsMWh)}
                     </TableCell>
                   </TableRow>
                 ))}

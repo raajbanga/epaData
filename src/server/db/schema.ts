@@ -296,9 +296,12 @@ export const models = sqliteTable("models", {
   params: text("params", { mode: "json" })
     .$type<Record<string, unknown>>()
     .notNull(),
+  // Tuning fits on trainYears and scores validationYears; the saved model is then refit on both
+  // (fitYears) and scored once on testYears.
   trainYears: text("train_years").notNull(), // "2016-2021"
-  validationYears: text("validation_years").notNull(),
-  testYears: text("test_years").notNull(),
+  validationYears: text("validation_years").notNull(), // "2022-2023"
+  fitYears: text("fit_years").notNull().default(""), // "2016-2023"
+  testYears: text("test_years").notNull(), // "2024-2025"
   metrics: text("metrics", { mode: "json" })
     .$type<Record<string, Record<string, number>>>()
     .notNull(),

@@ -30,6 +30,7 @@ import { formatQuantity } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { SelectionContext, selectionLabel } from "./selection-context";
 import { GranularEmissionsWindow } from "./granular-emissions-window";
+import { METRICS } from "~/lib/metrics";
 
 type ComparedPlant = RouterOutputs["facilities"]["compareFacilities"][number];
 type CompareTab = "overview" | "emissions" | "fleet" | "granular";
@@ -111,14 +112,20 @@ function matrixSections(
           [
             barRow(
               plants,
-              "Nameplate capacity",
+              METRICS.nameplateCapacityMW.label,
               "totalCapacityMW",
-              "MW",
+              METRICS.nameplateCapacityMW.unit,
               "Largest",
             ),
-            barRow(plants, "Gross load", "totalGenerationMWh", "MWh", "Most"),
+            barRow(
+              plants,
+              METRICS.grossGenerationMWh.label,
+              "totalGenerationMWh",
+              METRICS.grossGenerationMWh.unit,
+              "Most",
+            ),
             {
-              label: "Operating time, busiest unit",
+              label: `${METRICS.operatingHours.label}, busiest unit`,
               render: (p) => mono(formatQuantity(p.peakUnitHours, "hr")),
             },
             {
@@ -389,6 +396,9 @@ export function CompareView() {
     compareBy: byUnit ? "unit" : "facility",
     groups: groups.join("|"),
     variable: "co2MassTons",
+    // Every year, as the comparison above shows them.
+    yearMin: "",
+    yearMax: "",
   }).toString()}`;
 
   return (

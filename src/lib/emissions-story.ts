@@ -1,3 +1,5 @@
+import { METRICS } from "./metrics";
+
 /**
  * The home page's story: how much each pollutant changed over the years the database covers in
  * full. Thinly covered years (a few hundred records) and a year still being reported (its totals
@@ -7,19 +9,19 @@
 export const POLLUTANTS = [
   {
     key: "so2",
-    label: "SO₂",
+    label: METRICS.so2MassTons.short,
     name: "sulfur dioxide",
     what: "Comes mostly from burning coal. It causes acid rain and fine particles that harm lungs.",
   },
   {
     key: "nox",
-    label: "NOₓ",
+    label: METRICS.noxMassTons.short,
     name: "nitrogen oxides",
     what: "Forms when fuel burns very hot. It makes smog and ground-level ozone.",
   },
   {
     key: "co2",
-    label: "CO₂",
+    label: METRICS.co2MassTons.short,
     name: "carbon dioxide",
     what: "Made by burning any fossil fuel. It is the main gas warming the climate.",
   },
@@ -56,7 +58,8 @@ export function emissionsStory(coverage: YearTotals[]) {
       ...p,
       first: first[p.key],
       last: end[p.key],
-      pct: first[p.key] ? (end[p.key] / first[p.key] - 1) * 100 : 0,
+      /** Null when the first year had none: no percentage of zero. */
+      pct: first[p.key] ? (end[p.key] / first[p.key] - 1) * 100 : null,
     })),
     /** Each year as a share of the first year's amount, 100 = the same. */
     rows: years.map((y) => ({

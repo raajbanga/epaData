@@ -385,8 +385,9 @@ predictions} exports every one of the
 software version and Git commit; a snapshot of the database (unit-years, datasets, and time of
 the last import), which serves as the dataset identifier; the filters and tab choices; the
 definition, unit, and aggregation of each variable shown; the TRACI factors for impact results;
-and, on the Predict page, the model's inputs, settings, fit and tuning years, metrics, saved file,
-software versions, and the baseline unit-year. The full analytical dataset is exported by the
+and, on the Predict page, each model shown (on the Models tab including the median baseline): its
+inputs, settings, fit and tuning years, metrics, saved file, software versions, and the baseline
+unit-year. The full analytical dataset is exported by the
 server (\code{/api/export?type=analysis}) in the same format, with the filters in place of the
 URL. Section~\ref{sec:feat-export} shows an example.
 
@@ -405,7 +406,7 @@ their caveats; a model result as its error relative to the actual value and to t
 a scenario set as the largest change and the largest disagreement between models. Each function
 returns nothing when there is nothing worth saying, and twelve unit tests cover them.
 
-\paragraph{Definitions.} A glossary of 38 terms (\code{src/lib/glossary.ts}) marks the first
+\paragraph{Definitions.} A glossary of 34 terms (\code{src/lib/glossary.ts}) marks the first
 use of each term in a reading, subtitle, or note and in table headers, and shows its definition on
 hover. Every variable's definition, unit, and missing-value rule is one click away.
 
@@ -466,7 +467,7 @@ meets it.
 \S7 Metadata for reproducibility & \code{metadata.json} in every ZIP; a unit test checks each of the six items & Met\\
 \S8 Steps 5 and 10: pandas analysis; Flask pages or JSON & Statistics in TypeScript, checked against NumPy and SciPy; tRPC procedures (Section~\ref{sec:design}) & Changed\\
 \S8.1 Flask, Jinja2, SQLAlchemy, pandas, scikit-learn, joblib, pytest & Next.js, React, Drizzle; pandas, scikit-learn, joblib, and pytest offline & Changed\\
-\S12.3 Instructions, migrations, environment template, tests, fixtures, no keys & README, migrations 0009--0010, \code{.env.example}, 116 + 10 tests, 120~KB fixture & Met\\
+\S12.3 Instructions, migrations, environment template, tests, fixtures, no keys & README, migrations 0009--0011, \code{.env.example}, 115 + 10 tests, 120~KB fixture & Met\\
 \bottomrule
 \end{longtable}}
 
@@ -556,7 +557,8 @@ pollutant, medium, and impact category, with the TRACI substance name, CAS numbe
 and the workbook column it was read from; a unique index prevents duplicates. It is loaded from
 a six-row extract of the EPA workbook (\code{data/traci/traci\_2\_2\_air.csv}), whose source,
 download date, and checksum are recorded next to it. \code{models} holds one row per trained
-model: name and kind, target, inputs, tuned settings, training, validation, and test years,
+model: name and kind, target, inputs, tuned settings, the tuning training and validation years,
+the years the saved model was refit on (2016--2023, a column added by migration 0011), the test years,
 metrics, the JSON artifact used for prediction, the path of the saved scikit-learn object, and
 the software versions and Git commit that produced it. The committed database contains six
 factors and three models. Migration 0010 adds \code{result\_cache}, which stores the results of
@@ -645,7 +647,7 @@ Table~\ref{tab:scripts} lists the scripts added in Phase~2. The Phase~1 scripts 
 \code{npm run traci:import} & Loads \code{data/traci/traci\_2\_2\_air.csv} into \code{traci\_factors}.\\
 \code{npm run ml:train} & Trains, tunes, and evaluates the models; writes \code{ml/models/}, the \code{models} rows, and the parity fixture.\\
 \code{npm run test:py} & Runs the pytest tests of the training pipeline.\\
-\code{npm test} & Runs all 116 TypeScript tests, including the Phase~2 ones.\\
+\code{npm test} & Runs all 115 TypeScript tests, including the Phase~2 ones.\\
 \code{npm run report} & Builds this report with Tectonic.\\
 \bottomrule
 \end{tabularx}
@@ -1247,8 +1249,8 @@ passes.
 
 \subsection{Unit tests}
 
-\code{npm test} runs 116 TypeScript tests in fourteen files: 115 pass and one is skipped because it
-needs a folder of raw CAMPD files that is not committed. Sixty-five tests in eight files cover
+\code{npm test} runs 115 TypeScript tests in fourteen files: 114 pass and one is skipped because it
+needs a folder of raw CAMPD files that is not committed. Sixty-four tests in eight files cover
 Phase~2:
 \begin{itemize}
   \item \code{stats.test.ts} (5 tests): quantiles and standard deviation against NumPy; Pearson
@@ -1257,7 +1259,7 @@ Phase~2:
         and $10^{-6}$ for $p$-values; pairwise-complete correlation; constant inputs; and the
         heat map's correlation matrix, identical to the pair-by-pair values on columns with
         missing values and ties.
-  \item \code{analysis.test.ts} (16 tests): each derived rate, and its missing value when an input
+  \item \code{analysis.test.ts} (15 tests): each derived rate, and its missing value when an input
         is missing or a denominator is zero; capacity factor in leap and ordinary years;
         year-over-year changes with a missing or zero previous year; pooled rates as a ratio of
         sums; TRACI impacts against hand calculation, with categories kept apart and a missing
@@ -1265,8 +1267,7 @@ Phase~2:
         oxides rather than nitrogen dioxide); the control classes; percentage formatting; the URL
         state (default year range, unknown fields, old tab links, a What-if question); and \code{findVariable}, which
         rejects an unknown variable key so that the server answers with an error (HTTP 400)
-        instead of an empty result; the counts of each cause of missing values; and the TRACI
-        impacts of a predicted \NOx{} mass, through the \NOx{} factors only.
+        instead of an empty result; and the counts of each cause of missing values.
   \item \code{model.test.ts} (13 tests): the parity test (all three models on 200 test
         unit-years, within $10^{-6}$); input derivation (unit age, control flags, and a previous
         rate that is missing when the previous heat input is zero); out-of-range detection; the
@@ -1404,6 +1405,18 @@ HTML \code{label} passed a click on the caption to the first button, which chang
 such captions are now plain groups. Sorting groups whose value was missing used an inconsistent
 comparison.
 
+The last review found a few more. A link that set any filter (a state, say) dropped the default
+year range and operating-time filter, so it selected more unit-years than the same choice made on
+the page; an Analyze URL now records only how the filters differ from the defaults, a removed
+default as an empty value, and a unit test checks the round trip. HTML bar charts exported no
+image and scatter plots exported their axes without points; the image is now drawn from the
+chart area with its styles inlined, whatever draws it. Stored results were keyed by the last
+import only, so new TRACI factors or changed analysis code could serve old results; their
+version now includes both. The models table recorded the tuning years but not the years the
+saved models were refit on, which a new \code{fit\_years} column (migration 0011) now holds.
+A percentage change from zero (a unit with no operating time, say) was written as 0~\%; it
+is now left blank in downloads and explained in words.
+
 \subsection{Known issues}
 \label{sec:known}
 
@@ -1412,9 +1425,6 @@ comparison.
         an even sample of 3{,}000 test unit-years, so their numbers differ slightly from the full
         test set (Section~\ref{sec:results}); the metrics and \emph{All test predictions} use
         every unit-year.
-  \item A link that sets any filter in the URL (for example a year) does not add the default
-        operating-time filter, so it can select a few more unit-years than the same choice made
-        on the page.
   \item Histograms, box plots, and scatter plots of very large selections draw a sample, as the
         chart states. Statistics are always computed on every value.
   \item Fuel and unit type are stored once per unit (Section~\ref{sec:limitations}).
@@ -1580,7 +1590,7 @@ the comparison mixes different fleets and is an association (Q2). TRACI totals a
 rank states differently, and both views are needed to read them (Q3). The models beat the
 baseline by a wide margin but not a simple persistence rule, so they are presented as tools for
 exploring responses to load, fuel, and controls rather than as forecasts (Q4). Every result is
-reproducible from its URL or its exported metadata, and the calculations are checked by 126
+reproducible from its URL or its exported metadata, and the calculations are checked by 125
 automated tests against NumPy, SciPy, scikit-learn, and hand-worked examples.
 
 % ------------------------------------------------------------------------

@@ -25,7 +25,7 @@ import {
   type FilterChangeHandler,
   type SortDirection,
 } from "~/lib/facility-filters";
-import { replaceUrlQuery } from "~/lib/utils";
+import { formatNumber, replaceUrlQuery } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { SelectionContext } from "./selection-context";
 import { AuditLogsTable } from "./audit-logs-table";
@@ -216,7 +216,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
                 Audit flags
                 {stats?.totalAnomalies ? (
                   <span className="text-fg-muted font-normal tabular-nums">
-                    {stats.totalAnomalies.toLocaleString()}
+                    {formatNumber(stats.totalAnomalies)}
                   </span>
                 ) : null}
               </>

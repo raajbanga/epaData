@@ -21,7 +21,13 @@ import {
   type MapFocus,
   type MetricMode,
 } from "~/lib/map-utils";
-import { cn, formatQuantity, plural, replaceUrlQuery } from "~/lib/utils";
+import {
+  cn,
+  formatNumber,
+  formatQuantity,
+  plural,
+  replaceUrlQuery,
+} from "~/lib/utils";
 import { FacilityFilterBar, useDescribeSearch } from "./facility-filters";
 import type { FacilitySuggestion } from "./facility-search";
 import { api } from "~/trpc/react";
@@ -175,7 +181,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
           >
             All fuels
             <span className="text-fg-muted tabular-nums">
-              {mapQuery.isLoading ? "…" : allFacilities.length.toLocaleString()}
+              {mapQuery.isLoading ? "…" : formatNumber(allFacilities.length)}
             </span>
           </button>
           {FUEL_CATEGORIES.map((cat) => {
@@ -194,7 +200,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
                 <Swatch color={cat.color} />
                 {cat.name}
                 <span className="text-fg-muted tabular-nums">
-                  {(fuelCounts[cat.name] ?? 0).toLocaleString()}
+                  {formatNumber(fuelCounts[cat.name] ?? 0)}
                 </span>
               </button>
             );
@@ -236,7 +242,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
 
       <p className="text-fg-2 text-sm">
         <strong className="text-fg font-medium tabular-nums">
-          {facilities.length.toLocaleString()}
+          {formatNumber(facilities.length)}
         </strong>{" "}
         facilities on the map,{" "}
         <strong className="text-fg font-medium tabular-nums">

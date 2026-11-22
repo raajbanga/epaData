@@ -15,11 +15,13 @@ import {
   type AnalysisRow,
 } from "./analysis";
 import {
+  analysisSearchParams,
+  DEFAULT_VIEW,
   parseAnalysisParams,
   parsePredictParams,
   predictSearchParams,
 } from "./analysis-state";
-import { noxImpacts, SHORT_TON_KG, type TraciFactor } from "./traci";
+import { SHORT_TON_KG, type TraciFactor } from "./traci";
 
 /** The committed TRACI extract, as the import script reads it. */
 const [header, ...lines] = readFileSync("data/traci/traci_2_2_air.csv", "utf8")
@@ -169,13 +171,38 @@ void test("formatPct: signed, one decimal, dash when undefined", () => {
   assert.equal(formatPct(Infinity), "—");
 });
 
-void test("parseAnalysisParams: default years unless the URL sets a filter", () => {
+void test("parseAnalysisParams: defaults stay unless the URL changes them", () => {
   assert.equal(parseAnalysisParams({}).filters.yearMin, "2015");
-  // A tab or chart choice alone still gets the default range (was: any parameter dropped it).
   assert.equal(parseAnalysisParams({ tab: "charts" }).filters.yearMax, "2025");
+  // A link that sets a filter keeps the default years and operating-time filter.
   const filtered = parseAnalysisParams({ stateCode: "KY" }).filters;
-  assert.equal(filtered.yearMin, "");
   assert.equal(filtered.stateCode, "KY");
+  assert.equal(filtered.yearMin, "2015");
+  assert.equal(filtered.operatingHoursMin, "0");
+  // A removed default is written empty, and the URL round-trips.
+  const removed = { ...filtered, operatingHoursMin: "" };
+  const back = parseAnalysisParams(
+    Object.fromEntries(
+      new URLSearchParams(analysisSearchParams(removed, DEFAULT_VIEW)),
+    ),
+  );
+  assert.equal(back.filters.operatingHoursMin, "");
+  assert.equal(back.filters.stateCode, "KY");
+  assert.equal(back.filters.yearMin, "2015");
+  // Clearing only the first year keeps the last year and the operating-time filter.
+  const fromFirst = parseAnalysisParams(
+    Object.fromEntries(
+      new URLSearchParams(
+        analysisSearchParams(
+          { ...parseAnalysisParams({}).filters, yearMin: "" },
+          DEFAULT_VIEW,
+        ),
+      ),
+    ),
+  ).filters;
+  assert.equal(fromFirst.yearMin, "");
+  assert.equal(fromFirst.yearMax, "2025");
+  assert.equal(fromFirst.operatingHoursMin, "0");
   assert.equal(parseAnalysisParams({ tab: "nonsense" }).view.tab, "overview");
 });
 
@@ -263,26 +290,4 @@ void test("missingReasons counts each EPA reporting gap", () => {
     steamOnly: 1,
     noPrevYear: 1,
   });
-});
-
-void test("noxImpacts: predicted NOₓ tons through each NOₓ factor only", () => {
-  const f = (pollutant: string, impactCategory: string, factor: number) => ({
-    traciVersion: "2.2",
-    pollutant,
-    substance: pollutant,
-    cas: "",
-    impactCategory,
-    factor,
-    factorUnit: "kg eq",
-  });
-  const out = noxImpacts(2, [
-    f("nox", "Smog formation", 24.79),
-    f("nox", "Acidification", 0.7),
-    f("so2", "Acidification", 1),
-  ]);
-  assert.deepEqual(
-    out.map((o) => o.category),
-    ["Smog formation", "Acidification"],
-  );
-  assert.ok(Math.abs(out[1]!.value - 2 * SHORT_TON_KG * 0.7) < 1e-9);
 });

@@ -45,6 +45,7 @@ import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
 import { AuditPanel, flagsOfRecords } from "./audit-logs-table";
 import { GranularEmissionsWindow } from "./granular-emissions-window";
+import { METRICS } from "~/lib/metrics";
 
 type FacilityDetail = NonNullable<RouterOutputs["facilities"]["getFacility"]>;
 type PlantStory = ReturnType<typeof generatePlantStory>;
@@ -273,11 +274,17 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
             />
             {(
               [
-                ["Gross load (MWh)", "generation"],
-                ["CO₂ (tons)", "co2"],
+                [
+                  `${METRICS.grossGenerationMWh.label} (${METRICS.grossGenerationMWh.unit})`,
+                  "generation",
+                ],
+                [`${METRICS.co2MassTons.short} (tons)`, "co2"],
                 ["CO₂ rate (lbs/MWh)", "intensity"],
                 ["Heat rate (MMBtu/MWh)", "heatRate"],
-                ["Operating time (hr)", "hours"],
+                [
+                  `${METRICS.operatingHours.label} (${METRICS.operatingHours.unit})`,
+                  "hours",
+                ],
               ] as const
             ).map(([label, key]) => (
               <SortableTableHead
@@ -475,7 +482,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
             links={[
               [
                 "Analyze",
-                `/analyze?facilityId=${facility.id}`,
+                `/analyze?facilityId=${facility.id}&yearMin=&yearMax=`,
                 "Trends, distributions, and TRACI impacts for this facility's units",
               ],
             ]}
@@ -494,19 +501,25 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
         <KpiStrip>
           <StatTile
             variant="card"
-            label="Gross load"
-            value={formatQuantity(latest?.grossGenerationMWh, "MWh")}
+            label={METRICS.grossGenerationMWh.label}
+            value={formatQuantity(
+              latest?.grossGenerationMWh,
+              METRICS.grossGenerationMWh.unit,
+            )}
             subtext={`${formatQuantity(latest?.maxOperatingHours, "hr")} operating, busiest unit`}
           />
           <StatTile
             variant="card"
-            label="Heat input"
-            value={formatQuantity(latest?.heatInputMMBtu, "MMBtu")}
+            label={METRICS.heatInputMMBtu.label}
+            value={formatQuantity(
+              latest?.heatInputMMBtu,
+              METRICS.heatInputMMBtu.unit,
+            )}
             subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, "MMBtu/MWh", { digits: 2 })} heat rate`}
           />
           <StatTile
             variant="card"
-            label="CO₂"
+            label={METRICS.co2MassTons.short}
             value={formatQuantity(latest?.co2MassTons, "t")}
             subtext={`${formatQuantity(latest?.co2IntensityLbsMWh, "lbs/MWh")}`}
           />

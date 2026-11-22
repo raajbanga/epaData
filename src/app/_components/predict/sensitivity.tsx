@@ -140,7 +140,7 @@ function VaryControls({
           {field("from", "Minimum")}
           <span>to</span>
           {field("to", "Maximum")}
-          {unit && value0 ? (
+          {unit ? (
             <Select
               aria-label="Range in"
               value={own ? "unit" : "pct"}
@@ -264,6 +264,10 @@ function UnitCurve({
     const all = g.values.map(toValue);
     const grid = all.filter((x) => x >= 0);
     const notes = [...g.notes];
+    if (!range.own && value0 === 0)
+      notes.push(
+        `This unit's ${inSentence(meta.label)} is 0, and a percentage of 0 is still 0: choose ${meta.unit} to vary it.`,
+      );
     if (grid.length < all.length)
       notes.push(
         `${plural(all.length - grid.length, "value")} below zero ${all.length - grid.length === 1 ? "was" : "were"} left out: ${inSentence(meta.label)} can't be negative.`,
@@ -304,14 +308,16 @@ function UnitCurve({
     range.step,
     tree,
     meta.label,
+    meta.unit,
   ]);
 
   const at0 = (m: Model) => predict(m.artifact, base);
-  const pctOf = (x: number) => (value0 ? (x / value0 - 1) * 100 : 0);
+  // Null (no percentage) when the unit's value is 0.
+  const pctOf = (x: number) => percentChange(x, value0);
   const reading = [
     ...sensitivitySentences({
-      low: endPhrase(meta, range.own, lo, pctOf(lo)),
-      high: endPhrase(meta, range.own, hi, pctOf(hi)),
+      low: endPhrase(meta, range.own, lo, pctOf(lo) ?? 0),
+      high: endPhrase(meta, range.own, hi, pctOf(hi) ?? 0),
       results: chosen.map((m) => ({
         model: modelName(m),
         low: percentChange(rows[0]![m.kind]!, at0(m)),
@@ -586,9 +592,9 @@ function CategoryBars({
     if (control) {
       const on = points.find((q) => q.value === 1)!;
       const off = points.find((q) => q.value === 0)!;
-      const pct = off.prediction
-        ? (on.prediction / off.prediction - 1) * 100
-        : 0;
+      const pct = percentChange(on.prediction, off.prediction);
+      if (pct === null)
+        return `${who} predicts ${formatStat(on.prediction)} t of NOₓ ${unit ? `with ${label}` : `with ${label} on every unit`}, and none without it.`;
       return `${who} predicts ${Math.abs(Math.round(pct))} % ${pct < 0 ? "less" : "more"} NOₓ ${unit ? `with ${label} than without it` : `with ${label} on every unit than on none`}.`;
     }
     return `${who} predicts the most NOₓ with ${top.value} and the least with ${bottom.value}.`;

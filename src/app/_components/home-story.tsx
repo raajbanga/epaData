@@ -69,10 +69,17 @@ export function PollutantList({ story }: { story: Story }) {
             <p className="text-fg-2 text-[15px]">{p.what}</p>
             <p className="text-fg text-[15px] tabular-nums">
               {formatStat(p.last)} tons in {story.to},{" "}
-              <strong className="font-semibold">
-                {Math.round(Math.abs(p.pct))} % {p.pct < 0 ? "less" : "more"}
-              </strong>{" "}
-              than in {story.from}.
+              {p.pct === null ? (
+                <>none in {story.from}.</>
+              ) : (
+                <>
+                  <strong className="font-semibold">
+                    {Math.round(Math.abs(p.pct))} %{" "}
+                    {p.pct < 0 ? "less" : "more"}
+                  </strong>{" "}
+                  than in {story.from}.
+                </>
+              )}
             </p>
           </div>
         </li>

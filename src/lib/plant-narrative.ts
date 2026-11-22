@@ -1,6 +1,6 @@
 import type { BadgeVariant } from "~/components/ui/badge";
 import { isZeroCarbonFuel } from "~/lib/map-utils";
-import { shortNumber } from "~/lib/utils";
+import { formatNumber, shortNumber } from "~/lib/utils";
 
 /** Plain-English plant summaries: grid role, carbon-intensity tier, and EPA equivalencies. */
 
@@ -180,7 +180,7 @@ export function generatePlantStory(params: {
 
   const headline = `${params.name} is a ${
     params.totalCapacityMW > 0
-      ? `${params.totalCapacityMW.toLocaleString()} MW `
+      ? `${formatNumber(params.totalCapacityMW, 1)} MW `
       : ""
   }${fuels} facility in ${location}, operating as ${article} ${roleInfo.label.toLowerCase()} plant.`;
 
@@ -197,7 +197,7 @@ export function generatePlantStory(params: {
       params.grossGenerationMWh > 0
         ? `${(params.grossGenerationMWh / 1_000_000).toFixed(2)} million MWh`
         : "energy";
-    gridStory += `${params.year ? `In ${params.year},` : "In recent reporting,"} it was actively generating power for ${Math.round(params.operatingHours).toLocaleString()} hours (about ${pctYear}% of the year), producing ${output} into the ${grid} electric grid.`;
+    gridStory += `${params.year ? `In ${params.year},` : "In recent reporting,"} it was actively generating power for ${formatNumber(Math.round(params.operatingHours))} hours (about ${pctYear}% of the year), producing ${output} into the ${grid} electric grid.`;
   } else {
     gridStory += `It operates as part of the ${grid} electric reliability network, managed by ${
       params.ownerOperator
@@ -208,9 +208,9 @@ export function generatePlantStory(params: {
 
   let environmentalStory: string;
   if (params.co2Tons > 0) {
-    environmentalStory = `The plant emitted ${Math.round(params.co2Tons).toLocaleString()} tons of carbon dioxide (CO₂), which is roughly equivalent to the annual greenhouse emissions of ${equivalents.carsDrivenFormatted}. `;
+    environmentalStory = `The plant emitted ${formatNumber(Math.round(params.co2Tons))} tons of carbon dioxide (CO₂), which is roughly equivalent to the annual greenhouse emissions of ${equivalents.carsDrivenFormatted}. `;
     if (params.carbonIntensity) {
-      environmentalStory += `Its emissions intensity is ${params.carbonIntensity.toLocaleString()} lbs CO₂/MWh, ${getCarbonIntensityTier(params.carbonIntensity).typicalOf}. `;
+      environmentalStory += `Its emissions intensity is ${formatNumber(params.carbonIntensity)} lbs CO₂/MWh, ${getCarbonIntensityTier(params.carbonIntensity).typicalOf}. `;
     }
   } else {
     environmentalStory = `No direct annual carbon emissions were reported for ${params.year ?? "this period"}. `;

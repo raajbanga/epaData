@@ -5,6 +5,7 @@
  * `modelInputs` and `designRow` in step with `model_inputs` and `design_matrix` in ml/train.py.
  */
 import { formatSigned } from "./analysis";
+import { METRICS } from "./metrics";
 import { shortNumber } from "./utils";
 
 /** A unit-year as ml/train.py's query reads it (snake_case, as stored). */
@@ -36,16 +37,10 @@ const CONTROLS = {
 } as const;
 export type Control = keyof typeof CONTROLS;
 
-/** The numeric inputs, with labels and units for the sensitivity controls. */
 /**
- * The years the saved model was fit on. Tuning trains on `trainYears` and scores `validationYears`;
- * the registered model is then refit on both, so its fit years span the two.
+ * Each model's chart color (globals.css palette), kept apart from the fuel colors (amber coal,
+ * green gas, blue hydro, rose oil); the baseline stays neutral.
  */
-export const fitYears = (m: { trainYears: string; validationYears: string }) =>
-  `${m.trainYears.split("-")[0]}-${m.validationYears.split("-").at(-1)}`;
-
-/** Model colors: kept apart from the fuel colors (amber coal, green gas, blue hydro, rose oil). */
-/** Each model's chart color (globals.css palette): the baseline stays neutral. */
 export const MODEL_COLORS: Record<string, string> = {
   baseline: "var(--chart-sand)",
   ridge: "var(--chart-slate)",
@@ -55,26 +50,26 @@ export const MODEL_COLORS: Record<string, string> = {
 /** The numeric inputs: labels and units for the controls, and the change in plain words. */
 export const NUMERIC_INPUTS = {
   heat_input_mmbtu: {
-    label: "Heat input",
-    unit: "MMBtu",
+    label: METRICS.heatInputMMBtu.label,
+    unit: METRICS.heatInputMMBtu.unit,
     less: "less fuel burned",
     more: "more fuel burned",
   },
   gross_load_mwh: {
-    label: "Gross load",
-    unit: "MWh",
+    label: METRICS.grossGenerationMWh.label,
+    unit: METRICS.grossGenerationMWh.unit,
     less: "less power generated",
     more: "more power generated",
   },
   operating_hours: {
-    label: "Operating time",
-    unit: "hr",
+    label: METRICS.operatingHours.label,
+    unit: METRICS.operatingHours.unit,
     less: "fewer hours run",
     more: "more hours run",
   },
   nameplate_mw: {
-    label: "Nameplate capacity",
-    unit: "MW",
+    label: METRICS.nameplateCapacityMW.label,
+    unit: METRICS.nameplateCapacityMW.unit,
     less: "smaller units",
     more: "larger units",
   },

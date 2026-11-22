@@ -16,7 +16,6 @@ import { Swatch } from "~/components/ui/swatch";
  * sign).
  */
 
-/** Earthy categorical palette (globals.css), in the order series take it. */
 /**
  * Charts side by side: two columns on wide screens, one below. Every pair of charts on the site
  * uses it, so pairs line up the same way on every page.

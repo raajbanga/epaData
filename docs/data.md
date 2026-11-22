@@ -201,6 +201,7 @@ erDiagram
         text params "JSON"
         text train_years
         text validation_years
+        text fit_years
         text test_years
         text metrics "JSON"
         text artifact "JSON"

@@ -90,6 +90,9 @@ export function formatQuantity(
 export const formatNumber = (value: number | null | undefined, digits = 0) =>
   formatQuantity(value, "", { digits, fallback: "0" });
 
+/** "12,345": a count written out in full, for row ranges that must add up exactly. */
+export const exactCount = (n: number) => n.toLocaleString("en-US");
+
 /** "Every unit in Texas" from "every unit in Texas". */
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 

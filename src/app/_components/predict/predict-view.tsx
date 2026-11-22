@@ -82,7 +82,16 @@ export function PredictView({
       : trained;
 
   return (
-    <ExportContext value={predictMetadata(source, view, chosen)}>
+    <ExportContext
+      value={predictMetadata(
+        source,
+        view,
+        // The Models tab's comparison charts and table include the baseline, so it is described too.
+        view.tab === "models"
+          ? [...models.filter((m) => m.kind === "baseline"), ...chosen]
+          : chosen,
+      )}
+    >
       <div className="space-y-6">
         <PageTitle lead="**Computer models** that predict how much **NOₓ** (smog-forming pollution) a unit puts out in a year, from how much fuel it burned, what kind of unit it is, its pollution controls, and last year's rate. **Models** shows how accurate they are; **What-if** asks what would happen if something changed.">
           Predict

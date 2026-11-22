@@ -55,6 +55,7 @@ const report = JSON.parse(readFileSync("ml/models/metrics.json", "utf8")) as {
   target: string;
   train_years: string;
   validation_years: string;
+  fit_years: string;
   test_years: string;
   pipeline_version: string;
   trained_at: string;
@@ -67,6 +68,7 @@ const models: ModelRecord[] = Object.entries(report.models).map(([id, m]) => ({
   params: m.settings,
   trainYears: report.train_years,
   validationYears: report.validation_years,
+  fitYears: report.fit_years,
   testYears: report.test_years,
   metrics: {},
   artifactPath: `ml/models/${id}.joblib`,

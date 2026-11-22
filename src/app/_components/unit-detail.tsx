@@ -19,6 +19,7 @@ import { CompareActions } from "./compare-view";
 import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
 import { AuditPanel, flagsOfRecords } from "./audit-logs-table";
+import { METRICS } from "~/lib/metrics";
 
 /** Unit detail (in the detail dialog): identification, fuel and controls, and every reporting year (2015 on). */
 export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
@@ -60,8 +61,14 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
     ["Commissioned", clean(unit.commercialOpDate)],
     ["Retired", clean(unit.retirementDate)],
     [
-      "Nameplate capacity",
-      formatQuantity(unit.nameplateCapacityMW, "MW", { digits: 1 }),
+      METRICS.nameplateCapacityMW.label,
+      formatQuantity(
+        unit.nameplateCapacityMW,
+        METRICS.nameplateCapacityMW.unit,
+        {
+          digits: 1,
+        },
+      ),
     ],
     [
       "Max heat input rate",
@@ -132,23 +139,32 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
         <KpiStrip>
           <StatTile
             variant="card"
-            label="Operating time"
-            value={formatQuantity(latest?.operatingHours, "hr")}
+            label={METRICS.operatingHours.label}
+            value={formatQuantity(
+              latest?.operatingHours,
+              METRICS.operatingHours.unit,
+            )}
           />
           <StatTile
             variant="card"
-            label="Gross load"
-            value={formatQuantity(latest?.grossGenerationMWh, "MWh")}
+            label={METRICS.grossGenerationMWh.label}
+            value={formatQuantity(
+              latest?.grossGenerationMWh,
+              METRICS.grossGenerationMWh.unit,
+            )}
           />
           <StatTile
             variant="card"
-            label="Heat input"
-            value={formatQuantity(latest?.heatInputMMBtu, "MMBtu")}
+            label={METRICS.heatInputMMBtu.label}
+            value={formatQuantity(
+              latest?.heatInputMMBtu,
+              METRICS.heatInputMMBtu.unit,
+            )}
             subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, "MMBtu/MWh", { digits: 2 })} heat rate`}
           />
           <StatTile
             variant="card"
-            label="CO₂"
+            label={METRICS.co2MassTons.short}
             value={formatQuantity(latest?.co2MassTons, "t")}
             subtext={formatQuantity(latest?.co2IntensityLbsMWh, "lbs/MWh")}
           />

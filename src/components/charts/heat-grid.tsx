@@ -2,6 +2,7 @@
 
 import { TooltipCard } from "~/components/ui/chart";
 import { colorRamp, HoverCard, useHover, useTokens, useWidth } from "./svg";
+import { formatNumber } from "~/lib/utils";
 
 const TOKENS = ["chart-slate", "surface-2", "chart-rust"] as const;
 
@@ -122,9 +123,9 @@ export function HeatGrid({
                 ? [
                     {
                       label: "Unit-years",
-                      value: (
-                        counts[hover.item.i]?.[hover.item.j] ?? 0
-                      ).toLocaleString(),
+                      value: formatNumber(
+                        counts[hover.item.i]?.[hover.item.j] ?? 0,
+                      ),
                     },
                   ]
                 : []),

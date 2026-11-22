@@ -55,7 +55,6 @@ const EXAMPLES = [
 
 const formatP = (p: number) => (p < 0.001 ? "< 0.001" : p.toFixed(3));
 
-/** The result in plain language: the size of the gap, whether tests support it, and what it can't show. */
 /** Two or more groups along one dimension, with differences, confidence intervals, and tests. */
 export function CompareTab(props: TabProps) {
   const { filters, view, setView, catalog } = props;
@@ -301,7 +300,7 @@ export function CompareTab(props: TabProps) {
                   low: g.ci?.low,
                   high: g.ci?.high,
                   details: [
-                    { label: "Unit-years", value: g.count.toLocaleString() },
+                    { label: "Unit-years", value: formatNumber(g.count) },
                   ],
                 }))}
               />

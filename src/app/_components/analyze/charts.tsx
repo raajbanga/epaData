@@ -26,7 +26,7 @@ import {
   strongestPairs,
 } from "~/lib/takeaways";
 import { getFuelTheme } from "~/lib/map-utils";
-import { formatNumber } from "~/lib/utils";
+import { formatNumber, plural } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import {
   asDimension,
@@ -193,7 +193,7 @@ export function BarsChart({
             dimension === "fuelClass"
               ? groupColor(dimension, r.group, i)
               : undefined,
-          details: [{ label: "Unit-years", value: r.n.toLocaleString() }],
+          details: [{ label: "Unit-years", value: formatNumber(r.n) }],
         }))}
       />
     </ChartFrame>
@@ -262,7 +262,7 @@ export function RankingChart({
         rows={rows.map((r) => ({
           label: r.group,
           value: r.values[view.variable] ?? null,
-          details: [{ label: "Unit-years", value: r.n.toLocaleString() }],
+          details: [{ label: "Unit-years", value: formatNumber(r.n) }],
         }))}
       />
     </ChartFrame>
@@ -361,7 +361,6 @@ export function DistributionChart(props: TabProps) {
   );
 }
 
-/** Scatter of two variables over unit-years, colored by a dimension. */
 /** One-click scatter questions. */
 const SCATTER_EXAMPLES = [
   {
@@ -619,7 +618,7 @@ export function MapChart(props: TabProps) {
         )}
         details={(code) => {
           const n = rows.find((r) => r.group === code)?.n;
-          return n ? `${n.toLocaleString()} unit-years` : "";
+          return n ? plural(n, "unit-year") : "";
         }}
       />
     </ChartFrame>

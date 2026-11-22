@@ -1,4 +1,5 @@
 import { getFuelTheme } from "~/lib/map-utils";
+import { METRICS } from "~/lib/metrics";
 import { SHORT_TON_KG, type TraciFactor } from "~/lib/traci";
 import { shortNumber } from "~/lib/utils";
 
@@ -230,58 +231,73 @@ function ratio(
 }
 
 const POLLUTANTS = [
-  { key: "co2", label: "CO₂", mass: "co2MassTons", prev: "prevCo2MassTons" },
-  { key: "so2", label: "SO₂", mass: "so2MassTons", prev: "prevSo2MassTons" },
-  { key: "nox", label: "NOₓ", mass: "noxMassTons", prev: "prevNoxMassTons" },
+  {
+    key: "co2",
+    label: METRICS.co2MassTons.short,
+    mass: "co2MassTons",
+    prev: "prevCo2MassTons",
+  },
+  {
+    key: "so2",
+    label: METRICS.so2MassTons.short,
+    mass: "so2MassTons",
+    prev: "prevSo2MassTons",
+  },
+  {
+    key: "nox",
+    label: METRICS.noxMassTons.short,
+    mass: "noxMassTons",
+    prev: "prevNoxMassTons",
+  },
 ] as const;
 
 const MEASURED: Variable[] = [
   measured(
     "grossGenerationMWh",
-    "Gross load",
-    "MWh",
+    METRICS.grossGenerationMWh.label,
+    METRICS.grossGenerationMWh.unit,
     "sum",
     "Electricity generated, as reported to the EPA.",
   ),
   measured(
     "heatInputMMBtu",
-    "Heat input",
-    "MMBtu",
+    METRICS.heatInputMMBtu.label,
+    METRICS.heatInputMMBtu.unit,
     "sum",
     "Fuel heat burned, as reported.",
   ),
   measured(
     "operatingHours",
-    "Operating time",
-    "hr",
+    METRICS.operatingHours.label,
+    METRICS.operatingHours.unit,
     "mean",
     "Hours the unit operated in the year; groups show the mean per unit-year.",
   ),
   measured(
     "co2MassTons",
-    "CO₂ mass",
-    "short tons",
+    METRICS.co2MassTons.label,
+    METRICS.co2MassTons.unit,
     "sum",
     "CO₂ emitted, as reported.",
   ),
   measured(
     "so2MassTons",
-    "SO₂ mass",
-    "short tons",
+    METRICS.so2MassTons.label,
+    METRICS.so2MassTons.unit,
     "sum",
     "SO₂ emitted, as reported.",
   ),
   measured(
     "noxMassTons",
-    "NOₓ mass",
-    "short tons",
+    METRICS.noxMassTons.label,
+    METRICS.noxMassTons.unit,
     "sum",
     "NOₓ emitted, as reported.",
   ),
   measured(
     "nameplateCapacityMW",
-    "Nameplate capacity",
-    "MW",
+    METRICS.nameplateCapacityMW.label,
+    METRICS.nameplateCapacityMW.unit,
     "mean",
     "The unit's nameplate capacity; groups show the mean per unit-year.",
   ),
@@ -354,8 +370,8 @@ type NumericKey = {
 const YEAR_OVER_YEAR: Variable[] = [
   {
     key: "load",
-    label: "Gross load",
-    unit: "MWh",
+    label: METRICS.grossGenerationMWh.label,
+    unit: METRICS.grossGenerationMWh.unit,
     now: "grossGenerationMWh" as NumericKey,
     prev: "prevGrossGenerationMWh" as NumericKey,
   },

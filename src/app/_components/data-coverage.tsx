@@ -1,4 +1,4 @@
-import { cn, plural, sourceLabel } from "~/lib/utils";
+import { cn, formatNumber, plural, sourceLabel } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 
 type Stats = RouterOutputs["facilities"]["getStats"];
@@ -29,10 +29,10 @@ export function DataCoverage({
           <div
             key={year}
             className="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
-            title={`${year}: ${records.toLocaleString()} unit-years`}
+            title={`${year}: ${plural(records, "unit-year")}`}
           >
             <span className="text-fg pointer-events-none absolute inset-x-0 -top-0.5 text-center text-xs tabular-nums opacity-0 group-hover:opacity-100">
-              {records.toLocaleString()}
+              {formatNumber(records)}
             </span>
             <div
               className="bg-fg-2/75 group-hover:bg-primary mx-auto w-full max-w-10 rounded-t-[4px]"

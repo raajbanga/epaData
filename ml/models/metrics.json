@@ -304,6 +304,7 @@
   ],
   "train_years": "2016-2021",
   "validation_years": "2022-2023",
+  "fit_years": "2016-2023",
   "test_years": "2024-2025",
   "pipeline_version": "git f5ec9a0; Python 3.15.2; scikit-learn 1.9.1; numpy 2.5.4; pandas 3.1.0",
   "trained_at": "2026-11-20T01:33:21.044997+00:00"

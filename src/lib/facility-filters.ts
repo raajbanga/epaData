@@ -1,23 +1,32 @@
 import { z } from "zod";
+import { METRICS } from "./metrics";
 
 export const SORT_FIELDS = ["name", "id", "capacity", "co2"] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
 export type SortDirection = "asc" | "desc";
 
+/** A metric's short name and unit, as the filters show it. */
+const metric = <K extends keyof typeof METRICS>(key: K) =>
+  ({ key, label: METRICS[key].short, unit: METRICS[key].unit }) as const;
+
 /** Range-searchable unit-year metrics; keys are `annual_records` columns. */
 export const UNIT_METRICS = [
-  { key: "operatingHours", label: "Operating time", unit: "hr" },
-  { key: "grossGenerationMWh", label: "Gross load", unit: "MWh" },
-  { key: "heatInputMMBtu", label: "Heat input", unit: "MMBtu" },
-  { key: "co2MassTons", label: "CO₂", unit: "tons" },
-  { key: "so2MassTons", label: "SO₂", unit: "tons" },
-  { key: "noxMassTons", label: "NOₓ", unit: "tons" },
+  metric("operatingHours"),
+  metric("grossGenerationMWh"),
+  metric("heatInputMMBtu"),
+  metric("co2MassTons"),
+  metric("so2MassTons"),
+  metric("noxMassTons"),
 ] as const;
 /** Min/max filters: the reporting year (for 2015–2025 style history), every metric, and the unit's nameplate capacity. */
 export const RANGE_FIELDS = [
   { key: "year", label: "Reporting year", unit: "yr" },
   ...UNIT_METRICS,
-  { key: "capacity", label: "Capacity", unit: "MW" },
+  {
+    key: "capacity",
+    label: METRICS.nameplateCapacityMW.short,
+    unit: METRICS.nameplateCapacityMW.unit,
+  },
 ] as const;
 /** Range fields a description can bind a number to ("over 1000 MW", "CO2 above 1M"). */
 export type RangeMetric = Exclude<(typeof RANGE_FIELDS)[number]["key"], "year">;

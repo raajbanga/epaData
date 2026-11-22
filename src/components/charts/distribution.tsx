@@ -23,6 +23,7 @@ import {
 } from "~/components/ui/chart";
 import { quantile } from "~/lib/stats";
 import { HoverCard, powersOfTen, useHover, useWidth, YGrid } from "./svg";
+import { plural } from "~/lib/utils";
 
 /** One group's values and color. */
 interface ValueGroup {
@@ -276,7 +277,7 @@ export function BoxPlot({
               label,
               value: `${formatValue(v)} ${unit}`,
             }))}
-            footer={`${hover.item.n.toLocaleString()} unit-years`}
+            footer={plural(hover.item.n, "unit-year")}
           />
         )}
       </HoverCard>

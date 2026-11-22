@@ -5,7 +5,7 @@
  */
 import type { Aggregation } from "./analysis";
 import { formatStat } from "./analysis";
-import { capitalize, inSentence } from "./utils";
+import { capitalize, formatNumber, inSentence, plural } from "./utils";
 
 /** "18 %", "0.4 %", "103 %". */
 const pct = (share: number) => {
@@ -15,7 +15,7 @@ const pct = (share: number) => {
 
 /** "5.6×", "103×": a ratio to a sensible precision. */
 const times = (x: number) =>
-  `${x >= 10 ? Math.round(x).toLocaleString() : x.toFixed(1)}×`;
+  `${x >= 10 ? formatNumber(Math.round(x)) : x.toFixed(1)}×`;
 
 /** "Total CO₂ mass", "The average heat rate", "The pooled NOₓ rate". */
 function measureName(label: string, aggregation: Aggregation) {
@@ -373,7 +373,7 @@ export function whatIfAnswer({
   // "Typical miss": how far off each model is on test data, scaled to this many unit-years.
   const miss =
     units > 1
-      ? `typical miss for ${units.toLocaleString()} unit-years`
+      ? `typical miss for ${plural(units, "unit-year")}`
       : "typical miss on one unit-year";
   sentences.push(
     beyond.every(Boolean)
@@ -404,7 +404,7 @@ export function whatIfAnswer({
     sentences.push(
       units === 1
         ? "This change takes the unit beyond what the models learned from, so it's an extrapolation."
-        : `${outside.toLocaleString()} of ${units.toLocaleString()} unit-years go beyond what the models learned from; their predictions are extrapolations.`,
+        : `${formatNumber(outside)} of ${plural(units, "unit-year")} go beyond what the models learned from; their predictions are extrapolations.`,
     );
   return sentences;
 }

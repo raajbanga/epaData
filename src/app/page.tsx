@@ -30,7 +30,7 @@ const QUESTIONS = [
     body: "Year-by-year totals, by state and by plant.",
   },
   {
-    href: "/analyze?yearMin=2015&yearMax=2025&operatingHoursMin=0&operatingHoursMinStrict=1&tab=compare&variable=noxRate",
+    href: "/analyze?tab=compare&variable=noxRate",
     label: "Do pollution controls work?",
     body: "Units with and without NOₓ-cleaning equipment, side by side.",
   },
@@ -82,7 +82,7 @@ export default async function Home() {
     [formatNumber(stats.totalAnomalies), "data-quality flags"],
   ];
   const change = (p: NonNullable<typeof story>["pollutants"][number]) =>
-    `${p.label} by ${Math.round(Math.abs(p.pct))} %`;
+    `${p.label} by ${Math.round(Math.abs(p.pct ?? 0))} %`;
 
   return (
     <div className="space-y-16">
@@ -90,7 +90,7 @@ export default async function Home() {
         <h1 className="text-fg text-3xl font-semibold tracking-tight sm:text-[2.6rem] sm:leading-[1.12]">
           U.S. power plant emissions
         </h1>
-        {story?.pollutants.every((p) => p.pct < 0) && (
+        {story?.pollutants.every((p) => p.pct !== null && p.pct < 0) && (
           <p className="text-fg text-xl text-pretty sm:text-2xl">
             {renderRich(
               `From ${story.from} to ${story.to}, the plants here cut ${story.pollutants
