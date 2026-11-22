@@ -135,6 +135,22 @@ export const analysisFilterParams = (filters: FacilityFilters) =>
     ) as FacilityFilters,
   );
 
+/**
+ * The filters as exported metadata records them: every filter that is set, plus Analyze's own
+ * defaults (a removed one as an empty value), so the record reads on its own and parseAnalysisParams gives back
+ * exactly this selection.
+ */
+export const analysisFilterRecord = (filters: FacilityFilters) =>
+  Object.fromEntries(
+    (Object.keys(DEFAULT_FILTERS) as (keyof FacilityFilters)[])
+      .map((k) => [k, filters[k].trim()] as const)
+      .filter(
+        ([k, v]) =>
+          v !== DEFAULT_FILTERS[k] ||
+          DEFAULT_ANALYSIS_FILTERS[k] !== DEFAULT_FILTERS[k],
+      ),
+  );
+
 /** The inverse of parseAnalysisParams: the filters and view choices that differ from the defaults. */
 export const analysisSearchParams = (
   filters: FacilityFilters,

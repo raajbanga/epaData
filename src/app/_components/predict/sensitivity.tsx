@@ -223,11 +223,15 @@ function endPhrase(
   meta: (typeof NUMERIC_INPUTS)[NumericInput],
   own: boolean,
   value: number,
-  pct: number,
+  value0: number,
 ) {
-  if (Math.abs(pct) < 1e-9) return null;
+  // The unit's value as it is: not an end worth a sentence.
+  if (Math.abs(value - value0) < 1e-9 * Math.max(1, Math.abs(value0)))
+    return null;
   if (own)
     return `${inSentence(meta.label)} at ${axisValue(value)} ${meta.unit}`;
+  const pct = percentChange(value, value0);
+  if (pct === null) return null;
   return `${Number(Math.abs(pct).toPrecision(3))} % ${pct < 0 ? meta.less : meta.more}`;
 }
 
@@ -316,12 +320,14 @@ function UnitCurve({
   const pctOf = (x: number) => percentChange(x, value0);
   const reading = [
     ...sensitivitySentences({
-      low: endPhrase(meta, range.own, lo, pctOf(lo) ?? 0),
-      high: endPhrase(meta, range.own, hi, pctOf(hi) ?? 0),
+      low: endPhrase(meta, range.own, lo, value0),
+      high: endPhrase(meta, range.own, hi, value0),
       results: chosen.map((m) => ({
         model: modelName(m),
         low: percentChange(rows[0]![m.kind]!, at0(m)),
         high: percentChange(rows.at(-1)![m.kind]!, at0(m)),
+        lowTons: rows[0]![m.kind]! - at0(m),
+        highTons: rows.at(-1)![m.kind]! - at0(m),
       })),
     }),
     (lo < min || hi > max) &&
@@ -443,12 +449,15 @@ function GroupCurve({
   const outside = curves[0]?.points.map((p) => p.outside) ?? [];
   const reading = [
     ...sensitivitySentences({
-      low: endPhrase(meta, false, 0, percents[0] ?? 0),
-      high: endPhrase(meta, false, 0, percents.at(-1) ?? 0),
+      // Percent of each unit's value: 100 is the value as it is.
+      low: endPhrase(meta, false, 100 + (percents[0] ?? 0), 100),
+      high: endPhrase(meta, false, 100 + (percents.at(-1) ?? 0), 100),
       results: curves.map(({ model: m, points }) => ({
         model: modelName(m),
         low: points[0]?.diffPct ?? null,
         high: points.at(-1)?.diffPct ?? null,
+        lowTons: points[0]?.diff,
+        highTons: points.at(-1)?.diff,
       })),
     }),
     outside.some((n) => n > 0) &&

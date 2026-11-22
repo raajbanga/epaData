@@ -9,6 +9,7 @@ import { SegmentedControl } from "~/components/ui/segmented-control";
 import {
   analysisFilterParams,
   analysisSearchParams,
+  analysisFilterRecord,
   DEFAULT_ANALYSIS_FILTERS,
   DEFAULT_VIEW,
   type AnalysisView,
@@ -20,7 +21,6 @@ import { analyzeMetadata } from "~/lib/export-bundle";
 import {
   applyDescribed,
   DEFAULT_FILTERS,
-  filterSearchParams,
   type FilterChangeHandler,
 } from "~/lib/facility-filters";
 import { replaceUrlQuery } from "~/lib/utils";
@@ -88,7 +88,6 @@ export function AnalyzeView({
   }, [unknown.join()]); // eslint-disable-line react-hooks/exhaustive-deps
   const { data: filterOptions } = api.facilities.getFilterOptions.useQuery();
   const { data: source } = api.analysis.provenance.useQuery();
-  const filterQuery = filterSearchParams(deferredFilters);
   const summary = api.analysis.summary.useQuery(
     { filters: deferredFilters },
     { placeholderData: (prev) => prev },
@@ -107,7 +106,11 @@ export function AnalyzeView({
 
   return (
     <ExportContext
-      value={analyzeMetadata(source, Object.fromEntries(filterQuery), view)}
+      value={analyzeMetadata(
+        source,
+        analysisFilterRecord(deferredFilters),
+        view,
+      )}
     >
       <div className="space-y-6">
         <PageTitle lead="**Pick which records to look at** with the filters (a state, a fuel, some years), then choose a tab: each one answers **one question** about them. Copy the address to share exactly what you see.">
@@ -128,6 +131,10 @@ export function AnalyzeView({
           filters={filters}
           onFilterChange={setFilter}
           onResetFilters={clearFilters}
+          onClearSearch={() => {
+            setFilters(DEFAULT_ANALYSIS_FILTERS);
+            resetDescribe();
+          }}
           describe={describe}
           filterOptions={filterOptions}
           itemLabel="unit-years"

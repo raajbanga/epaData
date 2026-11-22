@@ -209,6 +209,18 @@ void test("a what-if answer reads as plain sentences", () => {
     one[0],
     "Predicted NOₓ would fall 59 % with Ridge; the tree predicts it would barely change.",
   );
+  // From a prediction of 0 there is no percentage: the change is read in tons.
+  assert.equal(
+    whatIfAnswer({
+      units: 1,
+      share,
+      results: [
+        { ...ridge, base: 0, diff: 12, diffPct: null },
+        { ...tree, base: 40, diff: 4, diffPct: 10 },
+      ],
+    })[0],
+    "Predicted NOₓ would rise from 0 to 12 t with Ridge; the tree predicts it would rise 10 %.",
+  );
   assert.equal(
     one[2],
     "Ridge's change (1.8K t) is bigger than its typical miss on one unit-year (58 t), so **it isn't just noise**; the tree doesn't move.",

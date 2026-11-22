@@ -283,30 +283,39 @@ const tonRange = (values: number[]) => {
   return lo === hi ? `${lo} t` : `${lo}–${hi} t`;
 };
 
-/** "fall 36 %", "rise 0.4 %", "barely change": a predicted change in a sentence. */
-const move = (pct: number | null) => {
-  const p = pct ?? 0;
-  if (Math.abs(p) < 0.5) return "barely change";
-  return `${p < 0 ? "fall" : "rise"} ${pctRange([p])}`;
+/**
+ * "fall 36 %", "rise 0.4 %", "barely change": a predicted change in a sentence. From a prediction
+ * of 0 there is no percentage, so the change is given in tons ("rise from 0 to 12 t").
+ */
+const move = (pct: number | null, tons?: number) => {
+  if (pct === null)
+    return tons === undefined || Math.abs(tons) < 0.5
+      ? "barely change"
+      : `${tons < 0 ? "fall" : "rise"} from 0 to ${tonRange([tons])}`;
+  if (Math.abs(pct) < 0.5) return "barely change";
+  return `${pct < 0 ? "fall" : "rise"} ${pctRange([pct])}`;
 };
 
 /**
  * Each model's move, folding a shared verb: "fall 36 % with Ridge and 52 % with the tree",
  * "rise 6 % with Ridge; the tree would barely change".
  */
-function moves(results: { model: string; pct: number | null }[]) {
-  const verbs = results.map((r) => move(r.pct).split(" ")[0]);
+function moves(
+  results: { model: string; pct: number | null; tons?: number }[],
+) {
+  const verbs = results.map((r) => move(r.pct, r.tons).split(" ")[0]);
   if (
     results.length > 1 &&
     verbs.every((v) => v === verbs[0]) &&
-    verbs[0] !== "barely"
+    verbs[0] !== "barely" &&
+    results.every((r) => r.pct !== null)
   )
-    return `${verbs[0]} ${results.map((r) => `${pctRange([r.pct ?? 0])} with ${r.model}`).join(" and ")}`;
+    return `${verbs[0]} ${results.map((r) => `${pctRange([r.pct!])} with ${r.model}`).join(" and ")}`;
   return results
     .map((r, i) =>
       i === 0
-        ? `${move(r.pct)} with ${r.model}`
-        : `${r.model} predicts it would ${move(r.pct)}`,
+        ? `${move(r.pct, r.tons)} with ${r.model}`
+        : `${r.model} predicts it would ${move(r.pct, r.tons)}`,
     )
     .join("; ");
 }
@@ -327,13 +336,19 @@ export function whatIfAnswer({
   units: number;
   share: { tons: number; of: string };
 }) {
+  // From a prediction of 0 there is no percentage: such a model moves if its tons do.
+  const fromZero = results.some((r) => r.diffPct === null);
   const pcts = results.map((r) => r.diffPct ?? 0);
   const diffs = results.map((r) => r.diff);
-  const down = pcts.every((p) => p <= 0);
-  const up = pcts.every((p) => p >= 0);
-  const tiny = pcts.every((p) => Math.abs(p) < 0.5);
+  const moving = results.map((r) =>
+    r.diffPct === null ? Math.abs(r.diff) >= 0.5 : Math.abs(r.diffPct) >= 0.5,
+  );
+  const sign = results.map((r) => r.diffPct ?? r.diff);
+  const down = sign.every((p) => p <= 0);
+  const up = sign.every((p) => p >= 0);
+  const tiny = !moving.some(Boolean);
   const split = !tiny && !down && !up;
-  const moved = results.filter((_, i) => Math.abs(pcts[i]!) >= 0.5);
+  const moved = results.filter((_, i) => moving[i]);
   const partial = !tiny && !split && moved.length < results.length;
   const both = results.length > 1 ? "both models" : results[0]?.model;
 
@@ -341,8 +356,8 @@ export function whatIfAnswer({
   sentences.push(
     tiny
       ? `NOₓ would barely change: under 0.5 % with ${both}.`
-      : split || partial
-        ? `Predicted NOₓ would ${moves(results.map((r) => ({ model: r.model, pct: r.diffPct })))}.`
+      : split || partial || fromZero
+        ? `Predicted NOₓ would ${moves(results.map((r) => ({ model: r.model, pct: r.diffPct, tons: r.diff })))}.`
         : results.length > 1 && Math.max(...pcts) - Math.min(...pcts) >= 20
           ? // Far apart: a range ("4–49 %") hides who says what, so name each model.
             `NOₓ would **${down ? "fall" : "rise"}**: ${results
@@ -356,7 +371,9 @@ export function whatIfAnswer({
 
   if (results.length > 1 && !tiny) {
     const spread = Math.max(...pcts) - Math.min(...pcts);
-    if (split)
+    if (fromZero && !split && !partial) {
+      // No percentage to compare: say nothing about agreement.
+    } else if (split)
       sentences.push(
         "The models don't even agree on the direction, so the data can't settle this effect.",
       );
@@ -422,7 +439,14 @@ export function sensitivitySentences({
   /** Each end of the range in words ("50 % less fuel burned"), null when it is the baseline. */
   low: string | null;
   high: string | null;
-  results: { model: string; low: number | null; high: number | null }[];
+  results: {
+    model: string;
+    low: number | null;
+    high: number | null;
+    /** The change in tons, used where there is no percentage (from a prediction of 0). */
+    lowTons?: number;
+    highTons?: number;
+  }[];
 }) {
   const ends = [
     low && { at: low, key: "low" as const },
@@ -430,7 +454,7 @@ export function sensitivitySentences({
   ].filter((e): e is { at: string; key: "low" | "high" } => Boolean(e));
   return ends.map(
     (e, i) =>
-      `With ${e.at}, ${i ? "it" : "predicted NOₓ"} would ${moves(results.map((r) => ({ model: r.model, pct: r[e.key] })))}.`,
+      `With ${e.at}, ${i ? "it" : "predicted NOₓ"} would ${moves(results.map((r) => ({ model: r.model, pct: r[e.key], tons: r[`${e.key}Tons`] })))}.`,
   );
 }
 

@@ -2,10 +2,12 @@ import { asc, count, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { buildVariables, dimension, variableInfo } from "~/lib/analysis";
-import { parseAnalysisParams } from "~/lib/analysis-state";
+import {
+  analysisFilterRecord,
+  parseAnalysisParams,
+} from "~/lib/analysis-state";
 import { EXPORT_TYPES, toCsv, type CsvColumn } from "~/lib/csv";
 import { datasetMetadata, zipBundle } from "~/lib/export-bundle";
-import { filterSearchParams } from "~/lib/facility-filters";
 import { analysisRows, loadFactors, provenance } from "~/server/analysis";
 import {
   parseExplorerParams,
@@ -375,7 +377,7 @@ export async function buildExport(params: URLSearchParams) {
           },
           datasetMetadata({
             source,
-            filters: Object.fromEntries(filterSearchParams(filters)),
+            filters: analysisFilterRecord(filters),
             unitYears: rows.length,
             variables: variables.map(variableInfo),
             factors,

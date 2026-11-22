@@ -62,7 +62,7 @@ export const modelMetadata = (m: ModelRecord) => ({
   trainedAt: m.trainedAt,
 });
 
-/** The Analyze page's shared metadata: the data, the filters (as in the URL), and the view. */
+/** The Analyze page's shared metadata: the data, the filters (each one set, and each removed default as empty), and the view. */
 export const analyzeMetadata = (
   source: Provenance | undefined,
   filters: Record<string, string>,

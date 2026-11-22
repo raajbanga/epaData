@@ -705,6 +705,8 @@ interface FilterBarProps {
   filterOptions?: FilterOptions;
   onFilterChange: FilterChangeHandler;
   onResetFilters: () => void;
+  /** What the search box's clear button does, when not a full reset (Analyze keeps its defaults). */
+  onClearSearch?: () => void;
   totalMatching?: number;
   itemLabel: "facilities" | "unit-years" | "flags";
   isLoading: boolean;
@@ -730,6 +732,7 @@ export function FacilityFilterBar({
   filterOptions,
   onFilterChange,
   onResetFilters,
+  onClearSearch,
   totalMatching,
   itemLabel,
   isLoading,
@@ -804,7 +807,7 @@ export function FacilityFilterBar({
             },
           }}
           onSubmit={describe?.onSubmit}
-          onClear={onResetFilters}
+          onClear={onClearSearch ?? onResetFilters}
           isLoading={describe?.isLoading}
           placeholder={
             analysis

@@ -15,6 +15,7 @@ import {
   type AnalysisRow,
 } from "./analysis";
 import {
+  analysisFilterRecord,
   analysisSearchParams,
   DEFAULT_VIEW,
   parseAnalysisParams,
@@ -202,6 +203,19 @@ void test("parseAnalysisParams: defaults stay unless the URL changes them", () =
   ).filters;
   assert.equal(fromFirst.yearMin, "");
   assert.equal(fromFirst.yearMax, "2025");
+  // Exported metadata lists every filter set and each removed default, and reads back exactly.
+  const record = analysisFilterRecord({ ...removed, yearMin: "" });
+  assert.deepEqual(record, {
+    stateCode: "KY",
+    yearMin: "",
+    yearMax: "2025",
+    operatingHoursMin: "",
+    operatingHoursMinStrict: "1",
+  });
+  const restored = parseAnalysisParams(record).filters;
+  assert.equal(restored.yearMin, "");
+  assert.equal(restored.operatingHoursMin, "");
+  assert.equal(restored.stateCode, "KY");
   assert.equal(fromFirst.operatingHoursMin, "0");
   assert.equal(parseAnalysisParams({ tab: "nonsense" }).view.tab, "overview");
 });
