@@ -1,5 +1,6 @@
 "use client";
 
+import { METRICS } from "~/lib/metrics";
 import { use } from "react";
 import { FuelBadge } from "~/components/ui/badge";
 import {
@@ -84,7 +85,7 @@ function FuelList({ fuels }: { fuels: string[] }) {
 const roleOf = (fac: FacilityRow) =>
   getPlantRole({
     operatingHours: fac.peakUnitHours ?? 0,
-    capacityMW: fac.totalCapacityMW,
+    capacityMW: fac.totalCapacityMW ?? 0,
     sourceCategory: fac.sourceCategory,
     primaryFuels: fac.primaryFuels,
   });
@@ -219,7 +220,11 @@ const COLUMNS: { label: string; sort?: SortField; className: string }[] = [
   { label: "State", className: "w-[11%]" },
   { label: "Primary fuel", className: "w-[17%]" },
   { label: "Role, grid", className: "w-[14%]" },
-  { label: "Capacity", sort: "capacity", className: "w-[11%] text-right" },
+  {
+    label: METRICS.nameplateCapacityMW.short,
+    sort: "capacity",
+    className: "w-[11%] text-right",
+  },
   { label: "CO₂", sort: "co2", className: "w-[14%] text-right" },
 ];
 
@@ -229,7 +234,7 @@ export function FacilitiesTable({
   sortBy,
   sortDir,
   showRank,
-  year,
+  years,
   onSortChange,
   compareIds,
   onToggleCompare,
@@ -240,8 +245,8 @@ export function FacilitiesTable({
   sortBy: SortField;
   sortDir: SortDirection;
   showRank: boolean;
-  /** The year filter; CO₂ totals cover it, or every year when "ALL". */
-  year: string;
+  /** The years CO₂ totals cover (yearsText); "" for every year. */
+  years: string;
   onSortChange: (field: SortField) => void;
   compareIds: number[];
   onToggleCompare: (id: number) => void;
@@ -275,7 +280,7 @@ export function FacilitiesTable({
                   {...col}
                   label={
                     col.sort === "co2"
-                      ? `CO₂, ${year === "ALL" ? "all years" : year}`
+                      ? `CO₂, ${years || "all years"}`
                       : col.label
                   }
                   sortBy={sortBy}

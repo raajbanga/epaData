@@ -1,9 +1,9 @@
-import type {
-  FacilityFilters,
-  RangeMetric,
-  RankMetric,
-  SortDirection,
+import {
   UNIT_METRICS,
+  type FacilityFilters,
+  type RangeMetric,
+  type RankMetric,
+  type SortDirection,
 } from "./facility-filters";
 
 /**
@@ -17,14 +17,7 @@ import type {
 
 /** The measured unit-year metrics: what "high"/"low" resolve to percentiles of. */
 export type Metric = (typeof UNIT_METRICS)[number]["key"];
-const MEASURED = new Set<string>([
-  "operatingHours",
-  "grossGenerationMWh",
-  "heatInputMMBtu",
-  "co2MassTons",
-  "so2MassTons",
-  "noxMassTons",
-] satisfies Metric[]);
+const MEASURED = new Set<string>(UNIT_METRICS.map((m) => m.key));
 const isMeasured = (m: RankMetric): m is Metric => MEASURED.has(m);
 /** Metrics with min/max filters: a number can bind to them ("over 1000 MW"); rates only rank. */
 const isRangeMetric = (m: RankMetric): m is RangeMetric =>

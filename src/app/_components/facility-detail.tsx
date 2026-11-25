@@ -5,7 +5,11 @@ import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { Badge, FuelBadge } from "~/components/ui/badge";
 import { Term } from "~/components/ui/term";
 import { DataPanel } from "~/components/ui/data-panel";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { DialogHeader } from "~/components/ui/dialog";
 import { DetailList, Section } from "~/components/ui/report";
 import { SegmentedControl } from "~/components/ui/segmented-control";
@@ -20,7 +24,12 @@ import {
   SortableTableHead,
   TableRow,
 } from "~/components/ui/table";
-import { buildYearlyRollups, type YearlyRollup } from "~/lib/emissions-metrics";
+import { detailLinks } from "~/lib/analysis-state";
+import {
+  buildYearlyRollups,
+  sumReported,
+  type YearlyRollup,
+} from "~/lib/emissions-metrics";
 import type { SortDirection } from "~/lib/facility-filters";
 import {
   cleanOwnerOperator,
@@ -45,7 +54,7 @@ import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
 import { AuditPanel, flagsOfRecords } from "./audit-logs-table";
 import { GranularEmissionsWindow } from "./granular-emissions-window";
-import { METRICS } from "~/lib/metrics";
+import { METRICS, RATES } from "~/lib/metrics";
 
 type FacilityDetail = NonNullable<RouterOutputs["facilities"]["getFacility"]>;
 type PlantStory = ReturnType<typeof generatePlantStory>;
@@ -97,7 +106,7 @@ function FleetPanel({ units }: { units: FacilityDetail["units"] }) {
             <SortableTableHead label="Type and fuel" sort="type" {...head} />
             <SortableTableHead label="Status" sort="status" {...head} />
             <SortableTableHead
-              label="Capacity"
+              label={METRICS.nameplateCapacityMW.short}
               sort="capacity"
               className="text-right"
               {...head}
@@ -196,12 +205,10 @@ function EmissionCells({
   return (
     <>
       <TableCell className={numeric}>
-        {formatQuantity(rec.grossGenerationMWh, "", {
-          fallback: sub ? "0" : "—",
-        })}
+        {formatQuantity(rec.grossGenerationMWh)}
       </TableCell>
       <TableCell className={numeric}>
-        {formatQuantity(rec.co2MassTons, "", { fallback: sub ? "0" : "—" })}
+        {formatQuantity(rec.co2MassTons)}
       </TableCell>
       <TableCell
         className={numeric}
@@ -216,9 +223,7 @@ function EmissionCells({
       <TableCell className={muted}>
         {formatQuantity(rec.heatRateMMBtuMWh, "", { digits: 2 })}
       </TableCell>
-      <TableCell className={muted}>
-        {formatQuantity(hours, "", { fallback: sub ? "0" : "—" })}
-      </TableCell>
+      <TableCell className={muted}>{formatQuantity(hours)}</TableCell>
     </>
   );
 }
@@ -279,8 +284,14 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
                   "generation",
                 ],
                 [`${METRICS.co2MassTons.short} (tons)`, "co2"],
-                ["CO₂ rate (lbs/MWh)", "intensity"],
-                ["Heat rate (MMBtu/MWh)", "heatRate"],
+                [
+                  `${RATES.co2Intensity.label} (${RATES.co2Intensity.unit})`,
+                  "intensity",
+                ],
+                [
+                  `${RATES.heatRate.label} (${RATES.heatRate.unit})`,
+                  "heatRate",
+                ],
                 [
                   `${METRICS.operatingHours.label} (${METRICS.operatingHours.unit})`,
                   "hours",
@@ -380,7 +391,12 @@ function EmissionsPanel({ rollups }: { rollups: YearlyRollup[] }) {
 export function FacilityDetail({ facilityId }: { facilityId: number }) {
   const [activeTab, setActiveTab] = useState<DetailTab>("emissions");
   const { compareIds, toggleCompare } = use(SelectionContext);
-  const { data: facility, isLoading } = api.facilities.getFacility.useQuery({
+  const {
+    data: facility,
+    isLoading,
+    error,
+    refetch,
+  } = api.facilities.getFacility.useQuery({
     id: facilityId,
   });
 
@@ -389,11 +405,13 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
     [facility?.annualRecords],
   );
   const latest = rollups[0];
-  const units = facility?.units ?? [];
-  const totalCapacityMW = units.reduce(
-    (acc, u) => acc + (u.nameplateCapacityMW ?? 0),
-    0,
+  const links = detailLinks(
+    facility?.id ?? 0,
+    undefined,
+    rollups.map((r) => r.year),
   );
+  const units = facility?.units ?? [];
+  const totalCapacityMW = sumReported(units.map((u) => u.nameplateCapacityMW));
   const auditLogs = flagsOfRecords(facility?.annualRecords ?? []);
   const flagged = auditLogs.length > 0;
   const fuels = uniqueStrings(units.map((u) => u.primaryFuel));
@@ -402,7 +420,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
     facility &&
     generatePlantStory({
       ...facility,
-      totalCapacityMW,
+      totalCapacityMW: totalCapacityMW ?? 0,
       primaryFuels: fuels,
       co2Tons: latest?.co2MassTons ?? 0,
       operatingHours: latest?.maxOperatingHours ?? 0,
@@ -412,6 +430,7 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
       year: latest?.year,
     });
 
+  if (error) return <QueryError error={error} onRetry={() => void refetch()} />;
   if (isLoading) return <InlineLoading title="Loading facility…" />;
   if (!facility || !story) {
     return (
@@ -482,8 +501,13 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
             links={[
               [
                 "Analyze",
-                `/analyze?facilityId=${facility.id}&yearMin=&yearMax=`,
+                links.analyze,
                 "Trends, distributions, and TRACI impacts for this facility's units",
+              ],
+              [
+                "Predict",
+                links.predict,
+                "Predicted NOₓ for every unit at this plant in its last complete year, and how it responds to changes",
               ],
             ]}
           />
@@ -515,13 +539,13 @@ export function FacilityDetail({ facilityId }: { facilityId: number }) {
               latest?.heatInputMMBtu,
               METRICS.heatInputMMBtu.unit,
             )}
-            subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, "MMBtu/MWh", { digits: 2 })} heat rate`}
+            subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, RATES.heatRate.unit, { digits: 2 })} heat rate`}
           />
           <StatTile
             variant="card"
             label={METRICS.co2MassTons.short}
             value={formatQuantity(latest?.co2MassTons, "t")}
-            subtext={`${formatQuantity(latest?.co2IntensityLbsMWh, "lbs/MWh")}`}
+            subtext={`${formatQuantity(latest?.co2IntensityLbsMWh, RATES.co2Intensity.unit)}`}
           />
           <StatTile
             variant="card"

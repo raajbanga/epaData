@@ -1,8 +1,8 @@
 /**
- * Refreshes stored analysis results (`result_cache`): drops entries from older data versions'
- * inputs that no longer parse, and recomputes every stored input for the current data, so the
- * committed database ships the views people open. Run after `db:rebuild`, an import, or
- * `ml:train`. New views are stored when opened locally, or from a list of requests:
+ * Refreshes stored analysis results (`result_cache`): recomputes each entry stored for an older
+ * data version for the current one, and drops those whose inputs no longer parse, so the
+ * committed database ships the views people open. Run after `db:rebuild`, an import,
+ * `ml:train`, or `traci:import`. New views are stored when opened locally, or from a list of requests:
  *
  *   npm run db:precompute
  *   npm run db:precompute -- requests.json   # [{ "procedure": "analysis.summary", "input": {…} }]

@@ -1,24 +1,23 @@
 "use client";
 
 import { ChartGrid } from "~/components/ui/chart";
-
+import { InlineLoading } from "~/components/ui/empty-state";
 import { ProgressBar } from "~/components/ui/metric-bar";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
-import type { VariableInfo } from "~/lib/analysis";
 import { Term } from "~/components/ui/term";
 import { QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
-import { formatStat } from "~/lib/analysis";
+import { formatStat, type VariableInfo } from "~/lib/analysis";
 import { leaderSentence, shareSentence, trendSentence } from "~/lib/takeaways";
-import { formatNumber } from "~/lib/utils";
+import { formatNumber, inSentence } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { MapChart, RankingChart, TrendChart } from "./charts";
 import {
   bind,
   combinedLabel,
+  dimensionLabel,
   findInfo,
-  inSentence,
   VariableField,
   type TabProps,
 } from "./shared";
@@ -35,7 +34,7 @@ const KINDS: { group: VariableInfo["group"]; note: string }[] = [
   },
   {
     group: "TRACI impact",
-    note: "EPA TRACI 2.2 potential impacts; see the Impacts tab for the factors.",
+    note: "EPA TRACI potential impacts; see TRACI impacts for the factors.",
   },
 ];
 
@@ -46,12 +45,12 @@ const KINDS: { group: VariableInfo["group"]; note: string }[] = [
  */
 export function OverviewTab(props: TabProps) {
   const { summary } = props;
-  if (!summary) return null;
+  if (!summary) return <InlineLoading title="Summarizing the selection…" />;
   return (
     <div className="space-y-6">
       <QuestionSentence label="Overview question">
         <span>How has</span>
-        <VariableField {...bind(props, "variable")} label="Show" inline />
+        <VariableField {...bind(props, "variable")} label="Show" />
         <span>changed over the years, and where is it?</span>
       </QuestionSentence>
       <OverviewTakeaways {...props} />
@@ -74,7 +73,8 @@ export function OverviewTab(props: TabProps) {
 function OverviewTakeaways({ filters, view, catalog, summary }: TabProps) {
   const info = findInfo(catalog, view.variable);
   const variables = [view.variable];
-  const sum = info?.aggregation === "sum";
+  // Year-over-year changes have either sign, so a share of their total means nothing.
+  const sum = info?.aggregation === "sum" && info.group !== "Year over year";
   const years = api.analysis.aggregate.useQuery({
     filters,
     variables,
@@ -145,22 +145,27 @@ function whyMissing(v: VariableInfo, r: Reasons) {
     );
   if (v.group === "Year over year")
     why.push(
-      `${formatNumber(r.noPrevYear)} have no previous year to compare (the first year, or a new unit), and others miss the value in one of the two years`,
+      `${formatNumber(r.noPrevYear)} have no previous year to compare (the first year stored, or a new unit), and others miss the value in one of the two years`,
     );
   if (/co2|globalWarming/i.test(v.key) && r.noCo2Program)
     why.push(
       `${formatNumber(r.noCo2Program)} ran under NOₓ-only programs, which don't require CO₂ reporting`,
     );
-  if (
-    (v.group === "Derived" && v.key !== "noxRate") ||
-    /^load|PerMWh$/.test(v.key) ||
-    v.key === "grossGenerationMWh"
-  )
-    if (r.noLoad)
-      why.push(
-        `${formatNumber(r.noLoad)} report no electricity (gross load)${r.steamOnly ? `, ${formatNumber(r.steamOnly)} of them steam-only cogeneration units` : ""}, so a per-MWh rate is undefined`,
-      );
-  return why.length ? `Mostly: ${why.join("; ")}.` : undefined;
+  if (/Intensity$|^heatRate$|PerMWh$/.test(v.key) && r.noLoad)
+    why.push(
+      `${formatNumber(r.noLoad)} report no electricity (gross load), or 0${r.steamOnly ? `, ${formatNumber(r.steamOnly)} of them steam-only cogeneration units` : ""}, so there is nothing to divide by`,
+    );
+  else if (/^load|^capacityFactor$|^grossGeneration/.test(v.key) && r.noLoad)
+    why.push(
+      `some units report no electricity (gross load)${r.steamOnly ? ", mostly cogeneration units that sell steam" : ""}`,
+    );
+  if (/so2|acidification|particulate/i.test(v.key))
+    why.push("units outside the Acid Rain Program need not report SO₂");
+  if (/capacity/i.test(v.key))
+    why.push("the EPA lists no nameplate capacity for some units");
+  return why.length
+    ? `Mostly: ${why.join("; ")}.`
+    : "The plant left it blank that year.";
 }
 
 /** Missing-value summary and the variables available, collapsed under one heading. */
@@ -174,7 +179,7 @@ function DataQuality({ catalog, summary }: TabProps) {
       title="Data quality and variables"
       hint={`${catalog.variables.length} variables, missing values per variable, grouping fields${
         worst && records
-          ? `; most missing: ${catalog.variables.find((v) => v.key === worst.key)?.label} (${((worst.missing / records) * 100).toFixed(0)} %)`
+          ? `; most missing: ${findInfo(catalog, worst.key)?.label} (${((worst.missing / records) * 100).toFixed(0)} %)`
           : ""
       }`}
     >
@@ -186,22 +191,20 @@ function DataQuality({ catalog, summary }: TabProps) {
           summary.reasons.noCo2Program > 0 &&
             `${formatNumber(summary.reasons.noCo2Program)} ran under NOₓ-only programs (SIP NOₓ, CSAPR NOₓ), which require NOₓ and heat input but not CO₂; CO₂ is reported under the Acid Rain Program and RGGI.`,
           summary.reasons.noLoad > 0 &&
-            `${formatNumber(summary.reasons.noLoad)} report no gross load${summary.reasons.steamOnly ? ` (${formatNumber(summary.reasons.steamOnly)} are cogeneration units that sell steam instead)` : ""}, so every per-MWh rate is undefined for them.`,
+            `${formatNumber(summary.reasons.noLoad)} report no gross load, or 0${summary.reasons.steamOnly ? ` (${formatNumber(summary.reasons.steamOnly)} are cogeneration units that sell steam instead)` : ""}, so none of their per-MWh rates can be computed.`,
           summary.reasons.noPrevYear > 0 &&
-            `${formatNumber(summary.reasons.noPrevYear)} have no previous year to compare against (the first year selected, or a new unit), so year-over-year changes are missing.`,
+            `${formatNumber(summary.reasons.noPrevYear)} have no previous year to compare against (the first year stored, or a new unit), so year-over-year changes are missing.`,
         ]}
       />
       <Section
         title="Grouping fields"
-        note="Every analysis can be grouped and compared by these fields; the number is how many distinct values the selection has."
+        note="Every analysis can be grouped and compared by these fields; the number is how many distinct values the selection has. Fuel and unit type are stored per unit, not per year, so a unit that switched from coal to gas counts as gas in every year."
       >
         <KpiStrip className="lg:grid-cols-9">
           {summary.distinct.map((d) => (
             <StatTile
               key={d.key}
-              label={
-                catalog.dimensions.find((x) => x.key === d.key)?.label ?? d.key
-              }
+              label={dimensionLabel(catalog, d.key)}
               value={formatNumber(d.count)}
             />
           ))}

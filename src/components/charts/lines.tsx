@@ -40,7 +40,6 @@ export function Lines({
   integerX,
   xTitle,
   unit = "",
-  fromZero = true,
   refLines = [],
   bands = [],
   markers = [],
@@ -56,7 +55,6 @@ export function Lines({
   xTitle?: string;
   /** Appended to tooltip values: "t", "short tons". */
   unit?: string;
-  fromZero?: boolean;
   refLines?: { axis: "x" | "y"; value: number; color?: string }[];
   bands?: { from: number; to: number }[];
   markers?: { x: number; y: number; color: string }[];
@@ -105,11 +103,7 @@ export function Lines({
                   : undefined
               }
             />
-            <YAxis
-              {...axisProps}
-              width={56}
-              domain={fromZero ? [0, "auto"] : ["auto", "auto"]}
-            />
+            <YAxis {...axisProps} width={56} domain={[0, "auto"]} />
             {bands.map((b) => (
               <ReferenceArea
                 key={`${b.from}-${b.to}`}

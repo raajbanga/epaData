@@ -65,7 +65,7 @@ flowchart TD
 - **Heat Rate (MMBtu / MWh)**: Thermal efficiency. It measures: _"How much raw fuel energy did this unit have to burn to produce 1 MWh of electricity?"_
   - **Lower is better**: Modern combined-cycle gas plants run around 6.5 to 7.5 MMBtu/MWh. Old, inefficient peaking boilers run at 12.0 to 18.0+ MMBtu/MWh.
 - **Carbon Intensity (lbs CO₂ / MWh)**: Emissions cleanliness. It measures: _"How many pounds of CO₂ entered the atmosphere for every single MWh of electricity generated?"_
-  - **Lower is cleaner**: Clean natural gas typically runs between 700 and 1,000 lbs/MWh. Unabated coal plants run between 1,900 and 2,400+ lbs/MWh.
+  - **Lower is cleaner**: Clean natural gas typically runs between 700 and 1,000 lb/MWh. Unabated coal plants run between 1,900 and 2,400+ lb/MWh.
 
 ---
 
@@ -196,7 +196,7 @@ Represents the physical power plant installation.
 | `longitude`      | `REAL`                | GPS West coordinate.                                                            | **Mapping**: Used by Leaflet 2D maps and D3 3D orthographic globe to pin plant coordinates.                                                                  |
 | `epaRegion`      | `INTEGER`             | Federal EPA administrative zone (1 through 10).                                 | **Inspection**: Displayed in the plant detail dialog for regulatory context.                                                                                 |
 | `nercRegion`     | `TEXT`                | Electric reliability grid council (ERCOT, PJM/RFC, WECC, SERC, MRO, SPP, etc.). | **Grid Analysis & Filtering**: NERC dropdown filter, comparison dialog grid specs.                                                                           |
-| `sourceCategory` | `TEXT`                | Classification (Electric Utility, Cogeneration, Small Power Producer, etc.).    | **Display & Classification**: Table tags and facility detail inspector (not a filter dropdown).                                                              |
+| `sourceCategory` | `TEXT`                | Classification (Electric Utility, Cogeneration, Small Power Producer, etc.).    | **Display & Classification**: Grid role, facility details, and comparison (not a filter dropdown).                                                           |
 | `ownerOperator`  | `TEXT`                | Parent utility or corporate owner (e.g. Duke Energy, Southern Company).         | **Search & Accountability**: Included in full-text search matching and displayed on plant cards.                                                             |
 
 ### Table 2: `units`
@@ -216,7 +216,7 @@ Represents individual generating machines (boilers, combustion turbines, generat
 | `retirementDate`      | `TEXT`             | Date the unit retired, if any.                                          | **Unit dialog**: Identification section; CSV exports.                                                                       |
 | `maxHourlyHIRate`     | `REAL`             | Maximum design heat input rate (MMBtu/hour).                            | **Unit dialog**: Shown with capacity; populated from CSV seed data.                                                         |
 | `nameplateCapacityMW` | `REAL`             | Electrical generator nameplate capacity in Megawatts (MW).              | **Capacity Aggregations**: Summed at the plant level for table sorting, map pin scaling, and KPI cards (`totalCapacityMW`). |
-| `so2Controls`         | `TEXT`             | Sulfur scrubbers (e.g., Wet Limestone Scrubber).                        | **Environmental Abatement**: Checked to compute "controlled units count" badge in table; detailed in comparison modal.      |
+| `so2Controls`         | `TEXT`             | Sulfur scrubbers (e.g., Wet Limestone Scrubber).                        | **Environmental Abatement**: Counted as controlled units in the CSV export and the comparison modal.                        |
 | `noxControls`         | `TEXT`             | Nitrogen reduction tech (e.g., Low-NOₓ Burner, SCR).                    | **Environmental Abatement**: Displayed in unit inspector and used in emission controls tally.                               |
 | `pmControls`          | `TEXT`             | Particulate matter filters (e.g., Fabric Filter baghouses).             | **Filter & tallies**: PM control filter; `controlledUnitsCount` / comparison tallies; listed in the unit dialog.            |
 | `hgControls`          | `TEXT`             | Mercury sorbent systems (e.g., Activated Carbon).                       | **Tallies & unit dialog**: Counted in `controlledUnitsCount`; listed in the unit dialog.                                    |
@@ -226,7 +226,7 @@ Represents individual generating machines (boilers, combustion turbines, generat
 
 Stores the annual operational metrics and pollution mass for one unit for one calendar year, and the
 controls and programs the unit reported that year. Metric columns are `NULL` when the source did not
-report the value (distinct from a reported 0): totals count them as 0, range filters and percentile
+report the value (distinct from a reported 0): totals add what was reported (missing when nothing was), range filters and percentile
 thresholds skip them, and CSV exports leave them blank.
 
 | Column                                      | Type               | What It Means                                                                                                                                                                | Where and How It Is Used                                                                                                               |
@@ -257,9 +257,9 @@ Records anomalies discovered during data ingestion by the automated physical san
 | `id`             | `TEXT PRIMARY KEY` | UUID identifier for the violation.                | **Log Key**: Primary key for audit table rendering.                                                                             |
 | `annualRecordId` | `TEXT`             | Foreign key referencing `annual_records.id`.      | **Relational Join**: Joins audit flags to the offending unit, facility name, and year.                                          |
 | `flagType`       | `TEXT`             | Category of physics violation.                    | **Categorization**: Grouping into `ZERO_EMISSIONS_HIGH_HEAT`, `CO2_NOT_REPORTED`, `PHANTOM_GENERATION`, or `EXTREME_HEAT_RATE`. |
-| `severity`       | `TEXT`             | Level of concern (`ERROR` or `WARN`).             | **Visual Alerting**: Determines badge colors (crimson vs amber) in the Audits tab.                                              |
+| `severity`       | `TEXT`             | Level of concern (`ERROR` or `WARN`).             | **Visual Alerting**: Determines badge colors (crimson vs amber) in the Audit flags tab.                                         |
 | `details`        | `TEXT`             | Plain-language diagnostic explanation.            | **Audit Log Display**: Explains the exact numbers that triggered the flag so researchers understand why it failed.              |
-| `createdAt`      | `INTEGER`          | Unix timestamp of when the violation was flagged. | **Audit Trail**: Sorting logs chronologically to see the newest ingestion flags first.                                          |
+| `createdAt`      | `INTEGER`          | Unix timestamp of when the violation was flagged. | **Audit Trail**: Stored; not shown.                                                                                             |
 
 ### Table 5: `datasets`
 
@@ -284,7 +284,7 @@ Rows are never deleted: a re-import of a year moves its `annual_records` to the 
 | `originalFilename` | `TEXT`             | Uploaded file name (uploads only).                                              | **Provenance**: Which file a batch came from.                                     |
 | `archivedPath`     | `TEXT`             | Copy of the original file under `uploads/`.                                     | **Provenance**: Lets the original upload be recovered.                            |
 | `queryParams`      | `TEXT` (JSON)      | CAMPD request parameters (endpoint, year, paging, filters) for syncs.           | **Reproducibility**: Records exactly what was retrieved.                          |
-| `notes`            | `TEXT`             | Free text: upload rejected/duplicate counts, or `Error: …` for a failed sync.   | **Provenance**: Shown alongside the batch; drives the Retrieve dialog's status.   |
+| `notes`            | `TEXT`             | Free text: upload rejected/duplicate counts, or `Error: …` for a failed sync.   | **Provenance**: Shown alongside the batch; drives the Retrieve page's status.     |
 
 ### Table 6: `import_issues`
 
@@ -322,19 +322,19 @@ Unique index on (`traciVersion`, `pollutant`, `medium`, `impactCategory`).
 
 Prediction models trained by `ml/train.py` (`npm run ml:train`), which writes one row per model. `artifact` holds the preprocessing and parameters as JSON, so the web app predicts without Python (`src/lib/model.ts`); the scikit-learn object is saved beside it as `artifactPath`.
 
-| Column                                                      | Type               | What It Means                                                                                                                                                                                           | Where and How It Is Used                                |
-| :---------------------------------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------------------------------------------ |
-| `id`                                                        | `TEXT PRIMARY KEY` | `nox-baseline`, `nox-ridge`, `nox-tree`.                                                                                                                                                                | **Key**.                                                |
-| `name` / `kind`                                             | `TEXT`             | Display name; `baseline`, `ridge`, or `tree`.                                                                                                                                                           | **Predict page**: Model pickers and comparison table.   |
-| `target`                                                    | `TEXT`             | NOₓ mass, short tons per unit-year.                                                                                                                                                                     | **Labels**.                                             |
-| `features`                                                  | `TEXT` (JSON)      | Input names.                                                                                                                                                                                            | **Model record**; export metadata.                      |
-| `params`                                                    | `TEXT` (JSON)      | Settings chosen on the validation years (alpha, depth, leaf size).                                                                                                                                      | **Comparison table**.                                   |
-| `trainYears` / `validationYears` / `fitYears` / `testYears` | `TEXT`             | `2016-2021` / `2022-2023` / `2016-2023` / `2024-2025`: tuning fits on the first and scores the second; the saved model is refit on both (`fitYears`, migration 0011) and scored once on the test years. | **Chronological split**, shown and exported.            |
-| `metrics`                                                   | `TEXT` (JSON)      | MAE, RMSE, R², MAPE, n for train, validation, test, and validation without same-year activity; `test_ci_low` / `test_ci_high` hold 95 % bootstrap bounds of test MAE, RMSE, R².                         | **Comparison table** and its intervals.                 |
-| `artifact`                                                  | `TEXT` (JSON)      | Preprocessing spec, coefficients or tree arrays, training ranges, importances.                                                                                                                          | **Prediction, sensitivity, scenarios, range warnings**. |
-| `artifactPath`                                              | `TEXT`             | `ml/models/<id>.joblib`.                                                                                                                                                                                | **Reproducibility**.                                    |
-| `pipelineVersion`                                           | `TEXT`             | Git commit and scikit-learn, NumPy, pandas versions.                                                                                                                                                    | **Reproducibility**.                                    |
-| `trainedAt`                                                 | `INTEGER`          | Unix time.                                                                                                                                                                                              | **Model record**.                                       |
+| Column                                                      | Type               | What It Means                                                                                                                                                                                                                                                                                             | Where and How It Is Used                                |
+| :---------------------------------------------------------- | :----------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------ |
+| `id`                                                        | `TEXT PRIMARY KEY` | `nox-baseline`, `nox-ridge`, `nox-tree`.                                                                                                                                                                                                                                                                  | **Key**.                                                |
+| `name` / `kind`                                             | `TEXT`             | Display name; `baseline`, `ridge`, or `tree`.                                                                                                                                                                                                                                                             | **Predict page**: Model pickers and comparison table.   |
+| `target`                                                    | `TEXT`             | NOₓ mass, short tons per unit-year.                                                                                                                                                                                                                                                                       | **Labels**.                                             |
+| `features`                                                  | `TEXT` (JSON)      | Input names.                                                                                                                                                                                                                                                                                              | **Model record**; export metadata.                      |
+| `params`                                                    | `TEXT` (JSON)      | Settings chosen on the validation years (alpha, depth, leaf size).                                                                                                                                                                                                                                        | **Comparison table**.                                   |
+| `trainYears` / `validationYears` / `fitYears` / `testYears` | `TEXT`             | `2016-2021` / `2022-2023` / `2016-2023` / `2024-2025`: tuning fits on the first and scores the second; the saved model is refit on both (`fitYears`, migration 0011) and scored once on the test years.                                                                                                   | **Chronological split**, shown and exported.            |
+| `metrics`                                                   | `TEXT` (JSON)      | MAE, RMSE, R², MAPE, n for train, validation, test, and validation without same-year activity; `test_ci_low` / `test_ci_high` hold 95 % bootstrap bounds of test MAE, RMSE, R²; `persistence_test` scores last year's rate on the test years and `test_vs_persistence` the MAE gap to it with its bounds. | **Comparison table** and its intervals.                 |
+| `artifact`                                                  | `TEXT` (JSON)      | Preprocessing spec, coefficients or tree arrays, training ranges, importances.                                                                                                                                                                                                                            | **Prediction, sensitivity, scenarios, range warnings**. |
+| `artifactPath`                                              | `TEXT`             | `ml/models/<id>.joblib`.                                                                                                                                                                                                                                                                                  | **Reproducibility**.                                    |
+| `pipelineVersion`                                           | `TEXT`             | Git commit and scikit-learn, NumPy, pandas versions.                                                                                                                                                                                                                                                      | **Reproducibility**.                                    |
+| `trainedAt`                                                 | `INTEGER`          | Unix time.                                                                                                                                                                                                                                                                                                | **Model record**.                                       |
 
 ### Table 9: `result_cache` (Phase 2)
 
@@ -422,24 +422,23 @@ flowchart LR
 - **What Part of the Table It Uses**:
   - `facilities`: `COUNT(*)`.
   - `units`: `COUNT(*)`, `SUM(nameplate_capacity_mw)`.
-  - `annual_records`: unit-years per reporting year (`coverage`).
+  - `annual_records`: unit-years and CO₂, SO₂, NOₓ totals per reporting year (`coverage`).
   - `data_audit_logs`: `COUNT(*)` for total flagged anomalies. The Explore page's Audit flags tab shows the same count.
   - `datasets`: active and superseded batches per source, and the last import (`sources`).
 - **Why It’s Built This Way**: A handful of aggregate queries return a tiny JSON payload.
 
 ---
 
-### View 2: Facilities Explorer Table (`FacilitiesTable` & `FacilityFilters`)
+### View 2: Facilities Explorer Table (`FacilitiesTable` & `FacilityFilterBar`)
 
 - **Purpose**: The primary interactive workspace for browsing, searching, and filtering all ~1,800 facilities.
-- **Queries Used**: `api.facilities.getFilterOptions` (dropdown values) and `api.facilities.getFacilities` (pagination, text search, state / NERC / primary-fuel filters, plus the §8 **Advanced** panel shared with View 2b)
+- **Queries Used**: `api.facilities.getFilterOptions` (dropdown values) and `api.facilities.getFacilities` (pagination, text search, state / NERC / primary-fuel filters, plus the §8 filters under **+ Filter**, shown as chips and shared with View 2b)
 - **What Part of the Table It Uses**:
   - **From `facilities`**: `id`, `name`, `stateCode`, `county`, `nercRegion`, `sourceCategory`, `ownerOperator`.
-  - **Aggregated from `units`**: unit count, total capacity, fuel badges, controlled-units count.
-  - **Aggregated from `annual_records`**: total CO₂, total operating hours, carbon intensity — summed across all years, or **only the chosen reporting year** when the Year filter is set.
+  - **Aggregated from `units`**: unit count, total capacity, fuel badges. The CSV export adds the controlled-units count.
+  - **Aggregated from `annual_records`**: total CO₂, the busiest unit's hours (for the grid role), carbon intensity tier — over all years, or **only the chosen year or year range**. The CSV export adds total operating hours.
   - **Unit / unit-year filters** (fuel, unit type, controls, unit ID, year, min/max ranges) keep facilities with at least one matching unit(-year) (`IN` subqueries).
-  - **Ranking (§8.3)**: `ROW_NUMBER() OVER ([PARTITION BY state_code] ORDER BY <sort column>)`; "First N" keeps ranks ≤ N, overall or per state (e.g. top CO₂ facility in each state).
-  - **Carbon intensity badge tiers** (`CarbonIntensityBadge`): low CO₂ rate if `< 950`, medium if `950–1600`, high if `> 1600` lbs/MWh (zero shows "Zero CO₂").
+  - **Ranking (§8.3)**: the **Top N** filter (`topN`, `topBy`, `topDir`, `rankGroup`) keeps the first N by any metric, whatever the table is sorted by: `ROW_NUMBER() OVER ([PARTITION BY state_code] ORDER BY <metric>)`, overall or per state (e.g. top CO₂ facility in each state).
 - **Why It’s Built This Way**: The backend rolls up each facility into one row. Pagination (10/25/50/100 per page) keeps responses small.
 
 ---
@@ -447,10 +446,10 @@ flowchart LR
 ### View 2b: Units Explorer (`UnitsTable`, `UnitDetail`) — §8 search
 
 - **Purpose**: The data explorer at unit-year grain: one row per facility-unit-year.
-- **Queries Used**: `api.facilities.getUnitYears` (filters, sort on every metric, ranking, paging) and `api.facilities.getUnit` (detail dialog).
-- **What Part of the Table It Uses**: `annual_records ⨝ units ⨝ facilities`. Basic filters (§8.1): facility ID, name search, unit ID, state, county, year, primary/secondary fuel, unit type, SO₂/NOₓ/PM control (fuels, type, and controls match by "contains" because units store combined values such as `Wet Lime FGD|Wet Limestone`; the dropdowns list the split values). Range filters (§8.2): min/max operating hours, gross load, heat input, CO₂, SO₂, NOₓ, each inclusive or strict (`…MinStrict` / `…MaxStrict`). Everything ANDs together.
-- **Ranking (§8.3)**: Top-N / Bottom-N = sort column + direction with "First N"; per-state groups via `ROW_NUMBER() OVER (PARTITION BY state_code …)`. Units can be added to the compare dock (mixed with facilities, 2–4 total; `compareFacilities({ ids, unitIds })`). The unit dialog shows identification, fuel + controls, every reporting year with its source dataset, and audit flags.
-- **URL state (§8.4)**: tab, filters, sort, and page are mirrored into the query string (`explorerSearchParams` / `parseExplorerParams`) and read by `page.tsx`, so a search is shareable and reload-safe. Example: `/explore?tab=units&stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000` (25 unit-years).
+- **Queries Used**: `api.facilities.getUnitYears` (filters, sort on every metric, Top N, paging) and `api.facilities.getUnit` (detail dialog).
+- **What Part of the Table It Uses**: `annual_records ⨝ units ⨝ facilities`. Basic filters (§8.1): facility ID, name search, unit ID, state, county, year, primary/secondary fuel, unit type, SO₂/NOₓ/PM control, program, operating status (fuels, type, and controls match by "contains" because units store combined values such as `Wet Lime FGD|Wet Limestone`; the dropdowns list the split values). Range filters (§8.2): min/max operating hours, gross load, heat input, CO₂, SO₂, NOₓ, and nameplate capacity, each inclusive or strict (`…MinStrict` / `…MaxStrict`). Everything ANDs together.
+- **Ranking (§8.3)**: the Top N filter at this grain: highest or lowest N unit-years by any metric, overall or per state. Units can be added to the compare dock (mixed with facilities, 2–4 total; `compareFacilities({ ids, unitIds })`). The unit dialog shows identification, fuel + controls, every reporting year with its source dataset, and audit flags.
+- **URL state (§8.4)**: tab, filters, sort, and page are mirrored into the query string (`explorerSearchParams` / `parseExplorerParams`) and read by `src/app/explore/page.tsx`, so a search is shareable and reload-safe. Example: `/explore?tab=units&stateCode=KY&primaryFuel=Coal&year=2025&co2MassTonsMin=500000` (25 unit-years).
 
 ---
 
@@ -459,9 +458,9 @@ flowchart LR
 - **Purpose**: Visualizing spatial patterns of power generation and carbon emissions across the US.
 - **Query Used**: `api.facilities.getMapFacilities`
 - **What Part of the Table It Uses**:
-  - `facilities`: `id`, `name`, `stateCode`, `county`, `latitude`, `longitude`, `nercRegion`, `sourceCategory`, `ownerOperator`.
-  - `units`: first non-empty `primary_fuel` (marker color via `getFuelTheme()`: green for gas, amber for coal, rose for oil, blue/cyan/lime for hydro/nuclear/solar/wind) and `totalCapacityMW`.
-  - `annual_records`: `totalCo2Tons` (marker radius when metric mode is CO₂; summed across all years).
+  - `facilities`: `id`, `name`, `stateCode`, `county`, `latitude`, `longitude`, `nercRegion`.
+  - `units`: the largest unit's `primary_fuel` (marker color via `getFuelTheme()`: ochre for coal, teal for gas, rust for oil) and `totalCapacityMW`.
+  - `annual_records`: `totalCo2Tons` (marker radius when metric mode is CO₂; summed over the Year filter or year range, else all years).
 - **Why It’s Built This Way**: Heavy fields like individual boiler IDs, scrubber names, and yearly historical ledgers are stripped out. The map gets only coordinates and sizing metrics, allowing smooth 60fps panning, zooming, and 3D globe rotation.
 
 ---
@@ -497,7 +496,7 @@ flowchart LR
   - Extracts the facility name, unit ID, reporting year, violation flag type, severity (`ERROR` / `WARN`), and plain-English diagnostic description.
 - **The Physics Rules We Check** (enforced via `AUDIT_THRESHOLDS` in `src/lib/emissions-metrics.ts` for both the CAMPD sync and file uploads):
   1. **`ZERO_EMISSIONS_HIGH_HEAT`** (`severity: "ERROR"`): A fossil fuel generator consumed heat energy above the threshold (`heatInputMMBtu > 1,000 MMBtu`), but reported 0.0 tons of CO₂ emissions (`co2MassTons === 0`), which is physically impossible when combusting hydrocarbon fuels.
-  2. **`CO2_NOT_REPORTED`** (`severity: "WARN"`): Heat input above the same threshold, but no CO₂ value at all (`co2MassTons === null`): a reporting gap rather than an implausible measurement. All 6,516 such flags in the committed database are of this kind.
+  2. **`CO2_NOT_REPORTED`** (`severity: "WARN"`): Heat input above the same threshold, but no CO₂ value at all (`co2MassTons === null`): a reporting gap rather than an implausible measurement. The committed database has 6,516 such flags.
   3. **`PHANTOM_GENERATION`** (`severity: "ERROR"`): A generator produced electricity (`grossGenerationMWh > 0 MWh`), but recorded 0.0 hours of operating time (`operatingHours === 0`).
   4. **`EXTREME_HEAT_RATE`** (`severity: "WARN"`): The calculated heat rate falls outside standard thermodynamic limits (< 5.0 or > 25.0 MMBtu/MWh: `heatRateMMBtuMWh < 5.0 || heatRateMMBtuMWh > 25.0`), indicating faulty generation or fuel telemetry.
 - **Why It’s Built This Way**: Isolates suspicious or corrupt data points into a dedicated review screen with human-friendly descriptions rather than silently corrupting fleet-wide averages.
@@ -550,14 +549,14 @@ flowchart LR
 ### View 12: Predict Page (`PredictView`, `src/app/_components/predict/`)
 
 - **Purpose**: Compares the NOₓ models and runs sensitivity and scenario analysis, on the Models and What-if tabs.
-- **Queries Used**: `api.prediction.models`, `baselineOptions`, `baseline`, and `testPredictions`.
-- **What Part of the Table It Uses**: `models` for the registered models, and `annual_records ⨝ units ⨝ facilities` for baseline unit-years.
+- **Queries Used**: `api.prediction.models`, `baselineUnits` (a plant's units in a year), `scope` (every unit-year of a unit, plant, state, or the US in a year, with the state's and nation's reported NOₓ), and `testPredictions`; `api.facilities.getFilterOptions` for the years and `api.analysis.provenance` for export metadata.
+- **What Part of the Table It Uses**: `models` for the registered models, and `annual_records ⨝ units ⨝ facilities`, joined to the previous year's record, for the scope's unit-years and the test years.
 
 ---
 
 ## 5. Ingestion & Sync Workflow
 
-Data enters in five ways. All but the seed script go through the same write path in `src/server/ingest.ts`, so validation, the database comparison, and the sanity audits are identical.
+Data enters in five ways. All go through the same write path in `src/server/ingest.ts`, so validation, the database comparison, and the sanity audits are identical.
 
 | Path                                                      | What it does                                                                                                                   |
 | :-------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------- |
@@ -565,7 +564,7 @@ Data enters in five ways. All but the seed script go through the same write path
 | **Upload** page                                           | Validates a CSV/Excel file with Python, previews it against the database, then saves on approval. One `datasets` row per file. |
 | `npm run sync:campd` (`scripts/sync_campd.ts`)            | The retrieval without the preview, for scripted refreshes.                                                                     |
 | `npm run db:rebuild` (`scripts/rebuild-db.ts`)            | Rebuilds the database from facility CSVs and daily-emissions files rolled up to unit-years, each imported as an upload.        |
-| `npm run db:seed` (`scripts/seed-facilities-from-csv.ts`) | Loads `facilities` and `units` from CAMPD facility CSV files (no emissions, no `datasets` rows).                               |
+| `npm run db:seed` (`scripts/seed-facilities-from-csv.ts`) | Loads `facilities` and `units` from CAMPD facility CSV files, each imported as an upload (no emissions).                       |
 
 ```mermaid
 sequenceDiagram
@@ -601,39 +600,41 @@ The commit fetches again rather than reusing the preview, as the upload re-posts
 
 ## 6. Table-to-View Mapping Matrix
 
-| Database Table        | Column Name                                       |    System KPIs     |  Explorer Table  | Geographic Map  |    Plant Inspector     |  Compare Modal  | Audits Tab | Granular Time Window |
-| :-------------------- | :------------------------------------------------ | :----------------: | :--------------: | :-------------: | :--------------------: | :-------------: | :--------: | :------------------: |
-| **`facilities`**      | `id` (ORISPL)                                     |                    |     **Yes**      |                 |        **Yes**         |     **Yes**     |  **Yes**   |   **Yes** (Filter)   |
-|                       | `name`                                            |                    |     **Yes**      |     **Yes**     |        **Yes**         |     **Yes**     |  **Yes**   |   **Yes** (Header)   |
-|                       | `stateCode`                                       |                    |     **Yes**      |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
-|                       | `county`                                          |                    |                  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `latitude` / `longitude`                          |                    |                  |     **Yes**     |        **Yes**         |                 |            |                      |
-|                       | `epaRegion`                                       |                    |                  |                 |        **Yes**         |                 |            |                      |
-|                       | `nercRegion`                                      |                    |     **Yes**      |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `sourceCategory`                                  |                    |                  |                 |        **Yes**         |                 |            |                      |
-|                       | `ownerOperator`                                   |                    |     **Yes**      |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
-| **`units`**           | `unitId`                                          |                    |                  |                 |        **Yes**         |                 |  **Yes**   |   **Yes** (Filter)   |
-|                       | `primaryFuel`                                     |                    |     **Yes**      |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
-|                       | `unitType`                                        |                    |                  |                 |        **Yes**         |                 |            |                      |
-|                       | `operatingStatus`                                 |                    |                  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `nameplateCapacityMW`                             |  **Yes** (Total)   | **Yes** (Total)  | **Yes** (Scale) |        **Yes**         |     **Yes**     |            |                      |
-|                       | Environmental Controls (`so2`, `nox`, `pm`, `hg`) |                    | **Yes** (Count)  |                 | **Yes** (SO₂/NOₓ only) | **Yes** (Tally) |            |                      |
-| **`annual_records`**  | `grossGenerationMWh`                              |                    |                  |                 |        **Yes**         |     **Yes**     |            |   **Yes** (yearly)   |
-|                       | `operatingHours`                                  |                    | **Yes** (Total)  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `heatInputMMBtu`                                  |                    |                  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `co2MassTons`                                     |                    | **Yes** (Total)  | **Yes** (Scale) |        **Yes**         |     **Yes**     |            |                      |
-|                       | `so2MassTons` / `noxMassTons`                     |                    |                  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `co2IntensityLbsMWh`                              |                    | **Yes** (Badge)  |                 |        **Yes**         |     **Yes**     |            |                      |
-|                       | `heatRateMMBtuMWh`                                |                    |                  |                 |        **Yes**         |     **Yes**     |            |                      |
-| **EPA CAMPD API**     | apportioned hourly/daily/monthly payloads         |                    |                  |                 |                        |                 |            |       **Yes**        |
-| **`data_audit_logs`** | `flagType` / `severity` / `details`               |  **Yes** (Count)   |                  |                 |        **Yes**         |                 |  **Yes**   |                      |
-| **`datasets`**        | `name` / `importedAt` / counts                    | **Yes** (Coverage) | **Yes** (Origin) |                 |   **Yes** (per year)   |                 |            |                      |
+Phase 1 views only; "Explorer Table" is the Facilities view. The Units view (2b) also reads every `units` and `annual_records` column below.
+
+| Database Table        | Column Name                                       |    System KPIs     |    Explorer Table     | Geographic Map  |    Plant Inspector     |  Compare Modal  | Audits Tab | Granular Time Window |
+| :-------------------- | :------------------------------------------------ | :----------------: | :-------------------: | :-------------: | :--------------------: | :-------------: | :--------: | :------------------: |
+| **`facilities`**      | `id` (ORISPL)                                     |                    |        **Yes**        |                 |        **Yes**         |     **Yes**     |  **Yes**   |   **Yes** (Filter)   |
+|                       | `name`                                            |                    |        **Yes**        |     **Yes**     |        **Yes**         |     **Yes**     |  **Yes**   |   **Yes** (Header)   |
+|                       | `stateCode`                                       |                    |        **Yes**        |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
+|                       | `county`                                          |                    |        **Yes**        |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
+|                       | `latitude` / `longitude`                          |                    |                       |     **Yes**     |        **Yes**         |                 |            |                      |
+|                       | `epaRegion`                                       |                    |                       |                 |        **Yes**         |                 |            |                      |
+|                       | `nercRegion`                                      |                    |        **Yes**        |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
+|                       | `sourceCategory`                                  |                    |    **Yes** (Role)     |                 |        **Yes**         |     **Yes**     |            |                      |
+|                       | `ownerOperator`                                   |                    |        **Yes**        |                 |        **Yes**         |     **Yes**     |            |                      |
+| **`units`**           | `unitId`                                          |                    |                       |                 |        **Yes**         |                 |  **Yes**   |   **Yes** (Filter)   |
+|                       | `primaryFuel`                                     |                    |        **Yes**        |     **Yes**     |        **Yes**         |     **Yes**     |            |                      |
+|                       | `unitType`                                        |                    |                       |                 |        **Yes**         |                 |            |                      |
+|                       | `operatingStatus`                                 |                    |                       |                 |        **Yes**         |     **Yes**     |            |                      |
+|                       | `nameplateCapacityMW`                             |  **Yes** (Total)   |    **Yes** (Total)    | **Yes** (Scale) |        **Yes**         |     **Yes**     |            |                      |
+|                       | Environmental Controls (`so2`, `nox`, `pm`, `hg`) |                    |    CSV export only    |                 | **Yes** (SO₂/NOₓ only) | **Yes** (Tally) |            |                      |
+| **`annual_records`**  | `grossGenerationMWh`                              |                    |                       |                 |        **Yes**         |     **Yes**     |  **Yes**   |   **Yes** (yearly)   |
+|                       | `operatingHours`                                  |                    |    **Yes** (Role)     |                 |        **Yes**         |     **Yes**     |  **Yes**   |                      |
+|                       | `heatInputMMBtu`                                  |                    |                       |                 |        **Yes**         |     **Yes**     |  **Yes**   |                      |
+|                       | `co2MassTons`                                     |                    |    **Yes** (Total)    | **Yes** (Scale) |        **Yes**         |     **Yes**     |  **Yes**   |                      |
+|                       | `so2MassTons` / `noxMassTons`                     |                    |                       |                 |        **Yes**         |     **Yes**     |            |                      |
+|                       | `co2IntensityLbsMWh`                              |                    |    **Yes** (Badge)    |                 |        **Yes**         |     **Yes**     |            |                      |
+|                       | `heatRateMMBtuMWh`                                |                    |                       |                 |        **Yes**         |     **Yes**     |  **Yes**   |                      |
+| **EPA CAMPD API**     | apportioned hourly/daily/monthly payloads         |                    |                       |                 |                        |                 |            |       **Yes**        |
+| **`data_audit_logs`** | `flagType` / `severity` / `details`               |  **Yes** (Count)   |                       |                 |        **Yes**         |                 |  **Yes**   |                      |
+| **`datasets`**        | `name` / `importedAt` / counts                    | **Yes** (Coverage) | **Yes** (Last import) |                 |   **Yes** (per year)   |                 |            |                      |
 
 ---
 
 ## 7. Important Caveats
 
-1. **Multi-year aggregation**: The explorer table and the map sum `annual_records` across every year loaded — only the comparison modal scopes to the latest year per plant.
+1. **Multi-year aggregation**: The explorer table and the map sum `annual_records` across every year loaded, or the Year filter's or year range's years when one is set — only the comparison modal scopes to the latest year per plant.
 2. **Column naming**: Drizzle uses camelCase (`stateCode`); SQLite stores snake_case (`state_code`). This doc uses Drizzle names in tables and SQL column names in query descriptions.
 3. **Seed vs sync**: CSV seeding populates plant/unit metadata; API retrieval populates emissions. Both are required for a fully enriched database.
 4. **Controls and program codes are per unit-year**: As the specification asks, they are stored on each `annual_records` row as reported that year; `units` keeps the latest values for display. Fuel and unit type remain per unit (latest import wins).

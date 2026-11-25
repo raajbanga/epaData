@@ -25,6 +25,7 @@ import train as T
 DEPTHS = [4, 6, 8, 12, 16, None]
 LEAVES = [5, 20, 50, 200]
 ALPHAS = [0.1, 1, 10, 100]
+SETTINGS = {"ridge": ALPHAS, "tree": [(d, l) for d in DEPTHS for l in LEAVES]}
 
 
 def tuned(candidates, y, val, test):
@@ -79,7 +80,7 @@ def main():
             if kind == "ridge":
                 return T.predict_ridge(T.fit_ridge(X[rows_fit], y[rows_fit], s), X)
             return T.fit_tree(X[rows_fit], y[rows_fit], *s).predict(X)
-        make.settings = ALPHAS if kind == "ridge" else [(d, l) for d in DEPTHS for l in LEAVES]
+        make.settings = SETTINGS[kind]
         rows.append((f"{kind.title()}, persistence as a feature", *tuned(candidates(make), y, val, test)))
 
     # 2. Rate target, weighted by heat input so errors count in tons.
@@ -96,7 +97,7 @@ def main():
                 t = DecisionTreeRegressor(max_depth=s[0], min_samples_leaf=s[1], random_state=0)
                 pred_rate = t.fit(X[m], rate[m], sample_weight=heat[m]).predict(X)
             return pred_rate * heat / 2000
-        make.settings = ALPHAS if kind == "ridge" else [(d, l) for d in DEPTHS for l in LEAVES]
+        make.settings = SETTINGS[kind]
         rows.append((f"{kind.title()}, rate target x heat input", *tuned(candidates(make), y, val, test)))
 
     # 3. Correction of persistence: log ratio of actual to the estimate, weighted by the estimate.
@@ -110,7 +111,7 @@ def main():
             model.fit(X[m], ratio[m], sample_weight=expected[m])
             corrected = (np.nan_to_num(expected) + 0.01) * np.exp(model.predict(X)) - 0.01
             return np.clip(np.where(has, corrected, persistence), 0, None)
-        make.settings = ALPHAS if kind == "ridge" else [(d, l) for d in DEPTHS for l in LEAVES]
+        make.settings = SETTINGS[kind]
         rows.append((f"{kind.title()}, correction of persistence", *tuned(candidates(make), y, val, test)))
 
     print(f"{'Formulation':40} {'chosen on validation':22} {'val MAE':>8} {'test MAE':>9}")

@@ -4,7 +4,11 @@ import { useDeferredValue, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { Input } from "~/components/ui/input";
 import { PageTitle, PageView } from "~/components/ui/page";
 import {
@@ -24,6 +28,7 @@ import {
 } from "~/lib/facility-filters";
 import { describeChanges, type FieldChange } from "~/lib/record-diff";
 import { datasetOriginLabel, formatNumber } from "~/lib/utils";
+import { METRICS } from "~/lib/metrics";
 import { api } from "~/trpc/react";
 import { DatasetHistory } from "./dataset-history";
 
@@ -261,23 +266,24 @@ export function RetrieveView() {
         title="Already stored here"
         note="What is **already stored** for these years and filters, by where it came from. This is an estimate of what the EPA will send."
       >
-        {coverageQuery.isLoading && deferredInput ? (
+        {coverageQuery.error ? (
+          <QueryError
+            error={coverageQuery.error}
+            onRetry={() => void coverageQuery.refetch()}
+          />
+        ) : coverageQuery.isLoading && deferredInput ? (
           <InlineLoading className="py-6" title="Checking the database…" />
         ) : coverage.length === 0 ? (
           <EmptyState title="Nothing stored for these years and filters yet." />
         ) : (
           <ReportTable
             sortable
-            sortKeys={coverage.map((c) => [undefined, undefined, c.importedAt])}
+            sortKeys={coverage.map((c) => [c.year, c.records, c.importedAt])}
             head={["Year", "Stored unit-years", "Last written by"]}
             rows={coverage.map((c) => [
               c.year,
               formatNumber(c.records),
-              <span
-                key="from"
-                className="font-sans"
-                title={c.datasetName ?? ""}
-              >
+              <span key="from" title={c.datasetName ?? ""}>
                 {c.source && c.importedAt
                   ? datasetOriginLabel({
                       source: c.source,
@@ -312,6 +318,14 @@ export function RetrieveView() {
               {previewYears.length > 1 && (
                 <ReportTable
                   sortable
+                  sortKeys={previewYears.map((y) => [
+                    y.year,
+                    y.received,
+                    y.inserted,
+                    y.updated,
+                    y.unchanged,
+                    y.dropped,
+                  ])}
                   head={[
                     "Year",
                     "Received",
@@ -376,13 +390,13 @@ export function RetrieveView() {
                     "Year",
                     "Facility",
                     "Unit",
-                    "Gross MWh (API)",
-                    "CO₂ t (API)",
+                    `${METRICS.grossGenerationMWh.column} (API)`,
+                    `${METRICS.co2MassTons.column} (API)`,
                     ...(tab === "changed" ? ["Database → API"] : []),
                   ]}
                   rows={previewRows.map((r) => [
                     r.year,
-                    <span key="f" className="font-sans" title={r.facilityName}>
+                    <span key="f" title={r.facilityName}>
                       {r.facilityName} (#{r.facilityId})
                     </span>,
                     r.unitId,
@@ -390,11 +404,7 @@ export function RetrieveView() {
                     formatNumber(r.co2MassTons),
                     ...(tab === "changed"
                       ? [
-                          <span
-                            key="c"
-                            className="font-sans"
-                            title={changeText(r.changes)}
-                          >
+                          <span key="c" title={changeText(r.changes)}>
                             {changeText(r.changes)}
                           </span>,
                         ]

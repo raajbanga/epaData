@@ -9,8 +9,9 @@ import { Input } from "~/components/ui/input";
 import { Select } from "~/components/ui/select";
 import { BLANK, QuestionSentence } from "~/components/ui/question-sentence";
 import { Takeaways } from "~/components/ui/takeaways";
+import { DEFAULT_RANGE } from "~/lib/analysis-state";
 import { sensitivitySentences } from "~/lib/takeaways";
-import { capitalize, inSentence, plural } from "~/lib/utils";
+import { capitalize, inSentence, plural, formatNumber } from "~/lib/utils";
 import { formatPct, formatSigned, formatStat } from "~/lib/analysis";
 import {
   CATEGORY_INPUTS,
@@ -34,9 +35,6 @@ import {
   type WhatIfProps,
 } from "./predict-view";
 
-/** The range a sensitivity opens on, and the one any new input starts from. */
-const DEFAULT_RANGE = { by: "pct", from: "-50", to: "50", step: "5" };
-
 /** A value as the axis and inputs show it: "26.4M", "0.231". */
 const axisValue = (v: number) => formatStat(Number(v.toPrecision(3)));
 /** A number for an input field: three significant digits, no grouping. */
@@ -44,19 +42,14 @@ const fieldValue = (v: number) => String(Number(v.toPrecision(3)));
 
 /**
  * The varied input's range as the user set it: by percent of each unit's value, or (one unit) in
- * the input's own unit. A group always uses percent, since its units have no single value.
+ * the input's own unit. A group is always by percent, since its units have no single value.
  */
-function rangeOf(view: WhatIfProps["view"], unit: boolean) {
-  const own = unit && view.by === "unit";
-  // A unit-valued range left from a one-unit question means nothing for a group.
-  const r = !unit && view.by === "unit" ? DEFAULT_RANGE : view;
-  return {
-    own,
-    from: Number(r.from),
-    to: Number(r.to),
-    step: Number(r.step),
-  };
-}
+const rangeOf = (view: WhatIfProps["view"]) => ({
+  own: view.by === "unit",
+  from: Number(view.from),
+  to: Number(view.to),
+  step: Number(view.step),
+});
 
 /**
  * The question: which input, from what to what, in which steps. Switching between percent and the
@@ -66,29 +59,19 @@ function VaryControls({
   view,
   setView,
   unit,
-  numeric,
   meta,
   value0,
 }: Pick<WhatIfProps, "view" | "setView" | "unit"> & {
-  numeric: boolean;
   meta: (typeof NUMERIC_INPUTS)[NumericInput] | undefined;
   /** The unit's current value of the input (one unit only). */
   value0: number | null;
 }) {
-  const own = unit && view.by === "unit";
-  // A group reads a unit-valued range as the default; editing it starts from that default.
-  const stale = !unit && view.by === "unit";
   const field = (key: "from" | "to" | "step", label: string) => (
     <Input
       type="number"
       aria-label={label}
-      value={stale ? DEFAULT_RANGE[key] : view[key]}
-      onChange={(e) =>
-        setView({
-          ...(stale ? DEFAULT_RANGE : {}),
-          [key]: e.target.value,
-        })
-      }
+      value={view[key]}
+      onChange={(e) => setView({ [key]: e.target.value })}
       className="h-9 w-24"
     />
   );
@@ -134,7 +117,7 @@ function VaryControls({
           })),
         ]}
       />
-      {numeric && meta ? (
+      {meta ? (
         <>
           <span>goes from</span>
           {field("from", "Minimum")}
@@ -143,7 +126,7 @@ function VaryControls({
           {unit ? (
             <Select
               aria-label="Range in"
-              value={own ? "unit" : "pct"}
+              value={view.by}
               onValueChange={convert}
               className={BLANK}
               options={[
@@ -170,11 +153,8 @@ function VaryControls({
  * a curve for a number, bars for a fuel, unit type, or control.
  */
 export function SensitivitySection(props: WhatIfProps) {
-  const input = isCategoryInput(props.view.input)
-    ? props.view.input
-    : props.view.input in NUMERIC_INPUTS
-      ? (props.view.input as NumericInput)
-      : "heat_input_mmbtu";
+  // parsePredictParams keeps it to an input the models have.
+  const input = props.view.input as NumericInput | CategoryInput;
   const numeric = !isCategoryInput(input);
   const value0 =
     props.unit && numeric
@@ -190,7 +170,6 @@ export function SensitivitySection(props: WhatIfProps) {
     >
       <VaryControls
         {...props}
-        numeric={numeric}
         meta={numeric ? NUMERIC_INPUTS[input] : undefined}
         value0={value0}
       />
@@ -256,7 +235,7 @@ function UnitCurve({
   const [min, max] = first.ranges.numeric[input];
   const median = first.spec.numeric.find((f) => f.name === input)?.median ?? 0;
   const value0 = base[input] ?? median;
-  const range = rangeOf(view, true);
+  const range = rangeOf(view);
   const tree = chosen.find((m) => m.kind === "tree");
 
   const { grid, rows, jumps, lo, hi, notes } = useMemo(() => {
@@ -268,6 +247,10 @@ function UnitCurve({
     const all = g.values.map(toValue);
     const grid = all.filter((x) => x >= 0);
     const notes = [...g.notes];
+    if (base[input] === null)
+      notes.push(
+        `This unit doesn't report ${inSentence(meta.label)}, so the models use the training data's median, ${axisValue(value0)} ${meta.unit}, and the range starts from that.`,
+      );
     if (!range.own && value0 === 0)
       notes.push(
         `This unit's ${inSentence(meta.label)} is 0, and a percentage of 0 is still 0: choose ${meta.unit} to vary it.`,
@@ -394,7 +377,7 @@ function UnitCurve({
           markers={chosen.map((m) => ({
             x: value0,
             y: at0(m),
-            color: MODEL_COLORS[m.kind]!,
+            color: MODEL_COLORS[m.kind],
           }))}
           tooltipRows={(row, s) => {
             const m = chosen.find((c) => c.kind === s.key);
@@ -425,7 +408,7 @@ function GroupCurve({
   input,
 }: WhatIfProps & { input: NumericInput }) {
   const meta = NUMERIC_INPUTS[input];
-  const range = rangeOf(view, false);
+  const range = rangeOf(view);
   const { percents, notes } = useMemo(() => {
     const g = sensitivityGrid(range.from, range.to, range.step, { include: 0 });
     const percents = g.values.filter((p) => p >= -100);
@@ -434,8 +417,13 @@ function GroupCurve({
       notes.push(
         `Changes below −100 % were left out: ${inSentence(meta.label)} can't be negative.`,
       );
+    const missing = scope.rows.filter((r) => r.inputs[input] === null).length;
+    if (missing)
+      notes.push(
+        `${formatNumber(missing)} of ${plural(scope.rows.length, "unit")} ${missing === 1 ? "doesn't" : "don't"} report ${inSentence(meta.label)}: the models use the training data's median there, and it stays the same at every step.`,
+      );
     return { percents, notes };
-  }, [range.from, range.to, range.step, meta.label]);
+  }, [range.from, range.to, range.step, meta.label, scope.rows, input]);
   const curves = useMemo(
     () =>
       chosen.map((m) => ({
@@ -536,19 +524,30 @@ function GroupCurve({
           markers={curves.map(({ model: m, points }) => ({
             x: 0,
             y: points[zero]!.prediction,
-            color: MODEL_COLORS[m.kind]!,
+            color: MODEL_COLORS[m.kind],
           }))}
           tooltipRows={(row, s) => {
             const c = curves.find((c) => c.model.kind === s.key);
             const p = c?.points.find((q) => q.pct === row.x);
-            return p && Math.abs(p.diff) > 1e-9
-              ? [
-                  {
-                    label: "vs. as reported",
-                    value: changeText(p.diff, p.prediction - p.diff),
-                  },
-                ]
-              : [];
+            if (!p) return [];
+            return [
+              ...(Math.abs(p.diff) > 1e-9
+                ? [
+                    {
+                      label: "vs. as reported",
+                      value: changeText(p.diff, p.prediction - p.diff),
+                    },
+                  ]
+                : []),
+              ...(p.outside
+                ? [
+                    {
+                      label: "Range",
+                      value: `${plural(p.outside, "unit")} outside the training data`,
+                    },
+                  ]
+                : []),
+            ];
           }}
         />
       </ChartFrame>
@@ -565,7 +564,7 @@ function CategoryBars({
   input,
 }: WhatIfProps & { input: CategoryInput }) {
   const label = CATEGORY_INPUTS[input];
-  const lower = /^[A-Z]{2}/.test(label) ? label : label.toLowerCase();
+  const lower = inSentence(label);
   const control = input !== "primary_fuel" && input !== "unit_type";
   const curves = useMemo(
     () =>
@@ -596,7 +595,8 @@ function CategoryBars({
     const sorted = [...points].sort((a, b) => b.prediction - a.prediction);
     const top = sorted[0]!;
     const bottom = sorted.at(-1)!;
-    if (top.prediction - bottom.prediction < Math.abs(top.prediction) * 0.01)
+    // Within 1 % of each other (or all 0): no response worth a sentence.
+    if (top.prediction - bottom.prediction <= Math.abs(top.prediction) * 0.01)
       return `${who} barely responds to the ${lower}.`;
     if (control) {
       const on = points.find((q) => q.value === 1)!;
@@ -614,7 +614,7 @@ function CategoryBars({
       <Takeaways items={reading} />
       <ChartFrame
         title={`Predicted NOₓ for each ${lower}${control ? " setting" : ""}`}
-        subtitle={`${capitalize(place)}, short tons${unit ? "" : ", with every unit set the same way"}. "(reported)" marks how it is now.`}
+        subtitle={`${capitalize(place)}, short tons${unit ? "" : ", with every unit set the same way"}. ${curves.some((c) => c.points.some((q) => q.reported)) ? '"(reported)" marks how it is now' : "These units differ now, so no bar is the group as reported"}.`}
         note="Each bar swaps only this input. A fuel or unit type changes what the model assumes about the whole unit, so read the bars as how the models respond, not what a real conversion would do."
         filename={`sensitivity-${input}`}
         height={order.length * 26}

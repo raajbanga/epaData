@@ -1,7 +1,7 @@
 import { getFuelTheme } from "~/lib/map-utils";
-import { METRICS } from "~/lib/metrics";
+import { METRICS, RATES } from "~/lib/metrics";
 import { SHORT_TON_KG, type TraciFactor } from "~/lib/traci";
-import { shortNumber } from "~/lib/utils";
+import { chemUnit, shortNumber } from "~/lib/utils";
 
 /**
  * The Analyze page's vocabulary: the unit-year row every analysis reads,
@@ -110,9 +110,10 @@ export const GROUP_EXPLAIN: Record<string, Record<string, string>> = {
     "Natural Gas":
       "Burns cleaner than coal: almost no SO₂ and about half the CO₂ for the same power.",
     "Oil / Petroleum":
-      "Mostly used in small units that run only when demand peaks.",
+      "Mostly used in small units that run only when demand peaks (includes petroleum coke).",
     Wood: "Wood and other plant material.",
-    "Other Solid Fuel": "Fuels such as tires, waste, or petroleum coke.",
+    "Other Solid Fuel":
+      "Solid fuels other than coal and wood, such as tires or waste.",
   },
 };
 
@@ -196,19 +197,17 @@ export const hoursInYear = (year: number) =>
   (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 8784 : 8760;
 
 const measured = (
-  key: keyof AnalysisRow,
-  label: string,
-  unit: string,
+  key: keyof typeof METRICS,
   aggregation: Aggregation,
   definition: string,
 ): Variable => ({
   key,
-  label,
-  unit,
+  label: METRICS[key].label,
+  unit: METRICS[key].unit,
   group: "Measured",
   definition,
   aggregation,
-  value: (r) => r[key] as number | null,
+  value: (r) => r[key],
 });
 
 /** A rate: null when either input is missing or the denominator is 0 (or negative). */
@@ -254,50 +253,20 @@ const POLLUTANTS = [
 const MEASURED: Variable[] = [
   measured(
     "grossGenerationMWh",
-    METRICS.grossGenerationMWh.label,
-    METRICS.grossGenerationMWh.unit,
     "sum",
     "Electricity generated, as reported to the EPA.",
   ),
-  measured(
-    "heatInputMMBtu",
-    METRICS.heatInputMMBtu.label,
-    METRICS.heatInputMMBtu.unit,
-    "sum",
-    "Fuel heat burned, as reported.",
-  ),
+  measured("heatInputMMBtu", "sum", "Fuel heat burned, as reported."),
   measured(
     "operatingHours",
-    METRICS.operatingHours.label,
-    METRICS.operatingHours.unit,
     "mean",
     "Hours the unit operated in the year; groups show the mean per unit-year.",
   ),
-  measured(
-    "co2MassTons",
-    METRICS.co2MassTons.label,
-    METRICS.co2MassTons.unit,
-    "sum",
-    "CO₂ emitted, as reported.",
-  ),
-  measured(
-    "so2MassTons",
-    METRICS.so2MassTons.label,
-    METRICS.so2MassTons.unit,
-    "sum",
-    "SO₂ emitted, as reported.",
-  ),
-  measured(
-    "noxMassTons",
-    METRICS.noxMassTons.label,
-    METRICS.noxMassTons.unit,
-    "sum",
-    "NOₓ emitted, as reported.",
-  ),
+  measured("co2MassTons", "sum", "CO₂ emitted, as reported."),
+  measured("so2MassTons", "sum", "SO₂ emitted, as reported."),
+  measured("noxMassTons", "sum", "NOₓ emitted, as reported."),
   measured(
     "nameplateCapacityMW",
-    METRICS.nameplateCapacityMW.label,
-    METRICS.nameplateCapacityMW.unit,
     "mean",
     "The unit's nameplate capacity; groups show the mean per unit-year.",
   ),
@@ -311,7 +280,7 @@ const DERIVED: Variable[] = [
       {
         key: `${p.key}Intensity`,
         label: `${p.label} intensity`,
-        unit: "lb/MWh",
+        unit: RATES.co2Intensity.unit,
         group: "Derived",
         definition: `${p.label} mass × 2,000 ÷ gross load. Missing when either is missing or gross load is 0.`,
       },
@@ -323,8 +292,7 @@ const DERIVED: Variable[] = [
   ratio(
     {
       key: "noxRate",
-      label: "NOₓ emission rate",
-      unit: "lb/MMBtu",
+      ...RATES.noxRate,
       group: "Derived",
       definition:
         "NOₓ mass × 2,000 ÷ heat input. Missing when either is missing or heat input is 0.",
@@ -336,8 +304,7 @@ const DERIVED: Variable[] = [
   ratio(
     {
       key: "heatRate",
-      label: "Heat rate",
-      unit: "MMBtu/MWh",
+      ...RATES.heatRate,
       group: "Derived",
       definition:
         "Heat input ÷ gross load (lower is more efficient). Missing when either is missing or gross load is 0.",
@@ -378,7 +345,7 @@ const YEAR_OVER_YEAR: Variable[] = [
   ...POLLUTANTS.map((p) => ({
     key: p.key,
     label: p.label,
-    unit: "short tons",
+    unit: METRICS[p.mass].unit,
     now: p.mass,
     prev: p.prev,
   })),
@@ -422,7 +389,7 @@ function impactVariables(factors: readonly TraciFactor[]): Variable[] {
   const categories = [...new Set(factors.map((f) => f.impactCategory))];
   return categories.flatMap((category) => {
     const terms = factors.filter((f) => f.impactCategory === category);
-    const unit = terms[0]!.factorUnit;
+    const unit = chemUnit(terms[0]!.factorUnit);
     const parts = terms.map((f) => {
       const p = POLLUTANTS.find((x) => x.key === f.pollutant)!;
       return { p, factor: f.factor };
@@ -537,20 +504,25 @@ export function groupRows(rows: readonly AnalysisRow[], key: DimensionKey) {
   return groups;
 }
 
-/** Display a statistic: whole numbers from 1,000 up, else up to 4 significant digits. */
+/** A finite number to display; null, undefined, NaN, and infinities show "—". */
+const shown = (v: number | null | undefined): v is number =>
+  v != null && Number.isFinite(v);
+
+/** Display a statistic: short form from 10,000 ("19.5B"), whole numbers from 1,000, else up to 4 significant digits. */
 export function formatStat(v: number | null | undefined) {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  if (!shown(v)) return "—";
   const abs = Math.abs(v);
-  if (abs >= 1000) return shortNumber(v) ?? Math.round(v).toLocaleString();
+  if (abs >= 1000)
+    return shortNumber(v) ?? Math.round(v).toLocaleString("en-US");
   if (abs === 0) return "0";
-  return Number(v.toPrecision(4)).toLocaleString(undefined, {
+  return Number(v.toPrecision(4)).toLocaleString("en-US", {
     maximumFractionDigits: 6,
   });
 }
 
 /** A signed percentage: "+12.3 %", "-4.0 %"; "—" when undefined. */
 export const formatPct = (v: number | null | undefined) => {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  if (!shown(v)) return "—";
   // Round first, so 0.04 and -0.04 both read "0.0 %" (not "+0.0 %" or "-0.0 %").
   const r = Number(v.toFixed(1)) || 0;
   return `${r > 0 ? "+" : ""}${r.toFixed(1)} %`;
@@ -558,6 +530,6 @@ export const formatPct = (v: number | null | undefined) => {
 
 /** A signed amount with its unit: "+12 t", "-3,400 MWh", "+10 %"; "—" when undefined. */
 export const formatSigned = (v: number | null | undefined, unit = "") => {
-  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  if (!shown(v)) return "—";
   return `${v > 0 ? "+" : ""}${formatStat(v)}${unit ? ` ${unit}` : ""}`;
 };

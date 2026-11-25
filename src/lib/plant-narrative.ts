@@ -1,4 +1,5 @@
 import type { BadgeVariant } from "~/components/ui/badge";
+import { hoursInYear } from "~/lib/analysis";
 import { isZeroCarbonFuel } from "~/lib/map-utils";
 import { formatNumber, shortNumber } from "~/lib/utils";
 
@@ -22,7 +23,7 @@ const PLANT_ROLES = {
   baseload: {
     label: "Baseload",
     description:
-      "Runs most of the year (busiest unit over 4,800 h, or over 1,200 MW).",
+      "Runs most of the year (busiest unit at least 4,800 h, or over 1,200 MW and at least 1,800 h).",
   },
   peaker: {
     label: "Peaking",
@@ -52,7 +53,7 @@ export const hasAirQualityControls = (unit: {
     (c) => Boolean(c?.trim()),
   );
 
-/** Plain-English grid role, by category, fuel, and dispatch hours (baseload > 4,800 h/yr, peaker < 1,800 h/yr). */
+/** Plain-English grid role, by category, fuel, and dispatch hours (baseload ≥ 4,800 h/yr, peaker < 1,800 h/yr). */
 export function getPlantRole(params: {
   operatingHours?: number;
   capacityMW?: number;
@@ -66,7 +67,12 @@ export function getPlantRole(params: {
   }
   if (params.primaryFuels?.some(isZeroCarbonFuel))
     return PLANT_ROLES.zeroCarbon;
-  if (hours >= 4800 || capacity > 1200) return PLANT_ROLES.baseload;
+  // A big plant counts as baseload unless its hours say otherwise.
+  if (
+    hours >= 4800 ||
+    (capacity > 1200 && (params.operatingHours ?? 1800) >= 1800)
+  )
+    return PLANT_ROLES.baseload;
   if (hours > 0 && hours < 1800) return PLANT_ROLES.peaker;
   if (hours === 0 && capacity > 0) return PLANT_ROLES.standby;
   return PLANT_ROLES.loadFollowing;
@@ -75,28 +81,28 @@ export function getPlantRole(params: {
 function formatLargeNumber(num: number, suffix: string) {
   return num <= 0
     ? `0${suffix}`
-    : `${shortNumber(num) ?? Math.round(num).toLocaleString()}${suffix}`;
+    : `${shortNumber(num) ?? Math.round(num).toLocaleString("en-US")}${suffix}`;
 }
 
-/** CO₂ rate tier (lbs/MWh); `typicalOf` names the plants such a rate usually comes from. */
+/** CO₂ intensity tier (lb/MWh); `typicalOf` names the plants such a rate usually comes from. */
 export function getCarbonIntensityTier(intensity: number) {
   const tier: { label: string; variant: BadgeVariant; typicalOf: string } =
     intensity === 0
       ? { label: "Zero CO₂", variant: "success", typicalOf: "" }
       : intensity < 950
         ? {
-            label: "Low CO₂ rate",
+            label: "Low CO₂ intensity",
             variant: "success",
             typicalOf: "typical of combined-cycle gas units",
           }
         : intensity <= 1600
           ? {
-              label: "Medium CO₂ rate",
+              label: "Medium CO₂ intensity",
               variant: "warning",
               typicalOf: "typical of simple-cycle gas or oil units",
             }
           : {
-              label: "High CO₂ rate",
+              label: "High CO₂ intensity",
               variant: "destructive",
               typicalOf: "typical of coal or older steam units",
             };
@@ -190,7 +196,11 @@ export function generatePlantStory(params: {
       : "";
   if (params.operatingHours > 0) {
     const pctYear = Math.min(
-      Math.round((params.operatingHours / 8760) * 100),
+      Math.round(
+        (params.operatingHours /
+          (params.year ? hoursInYear(params.year) : 8760)) *
+          100,
+      ),
       100,
     );
     const output =

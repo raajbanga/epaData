@@ -6,8 +6,8 @@ behind each one: why it's built that way, the numbers, and the answers to follow
 them before presenting; glance at them while presenting. Each slide's speaker notes are generated
 from its section here, so the two always match.
 
-- **Timing:** about 14:30 in total.
-  - Slides before the demo: about 6:55.
+- **Timing:** about 14:35 in total.
+  - Slides before the demo: about 7:00.
   - The demo: about 5:40.
   - Slides after the demo: about 1:55.
   - If time is short, skip slide 15 (the main bugs). That saves about 0:35.
@@ -58,7 +58,7 @@ from its section here, so the two always match.
   - Q2: how much lower is the NOₓ rate of units with SCR, a catalytic NOₓ control?
   - Q3: which states contribute most to each TRACI impact category?
   - Q4: how well can we predict a unit's NOₓ, and how does it respond to changes?
-- **The data:** 57,414 unit-years from 6,031 units at 1,777 plants, all from Phase 1's tables.
+- **The data:** 57,414 unit-years; 6,031 units at 1,777 plants on file, all from Phase 1's tables.
   - A unit-year is one generating unit's record for one year.
   - By default the analysis uses 45,441 of them: the complete years 2015–2025, units that ran.
 - **Who it's for:** people who know the subject but not statistics software. Every chart opens
@@ -91,7 +91,7 @@ from its section here, so the two always match.
   - Factors are data, not code: a new TRACI version is new rows, not a code change.
 - **`models`** (3 rows): one row per trained model.
   - `artifact` holds the whole model as JSON: preprocessing plus coefficients or the tree.
-  - Train, validation, and test years, metrics, and `pipeline_version` (git commit and
+  - Train, validation, fit, and test years, metrics, and `pipeline_version` (git commit and
     scikit-learn version) make each model reproducible.
   - The app predicts from the JSON in TypeScript, so What-if needs no Python server.
 - **`result_cache`** (90 rows, 3.8 MB): one finished result per question.
@@ -229,7 +229,7 @@ example in step 5, and its unit 2 is the one changed in steps 7 and 8.
 
 - Typical rates: gas 0.034, coal 0.136, oil 0.574 lb/MMBtu. The average is 2.5× the median,
   because a few huge values pull it up, so the page leads with the median.
-- Pooled, no control is 0.1746 lb/MMBtu and SCR 0.0495: 252.6 % higher. Welch's t and
+- Pooled over 2015–2025, no control is 0.1746 lb/MMBtu and SCR 0.0495: 252.6 % higher. Welch's t and
   Mann–Whitney both give p < 0.001.
 - The groups differ in more than SCR (fuel, size, hours), so it's an association, not the effect
   of SCR alone. That answers Q2.
@@ -251,13 +251,13 @@ example in step 5, and its unit 2 is the one changed in steps 7 and 8.
 ### 13. Steps 7–8: change one input, then ask what-if — Arnav (1:30)
 
 1. What-if. It opens on "What if Ghent unit 2 added SCR in 2024?".
-2. Scroll to the heat-input chart (± 50 %), then back up to the answer.
+2. Scroll to the heat-input chart (± 50 %; the slide's figure runs to +250 %), then back up to the answer.
 3. Click **Download** on any chart.
 
 - Ghent unit 2 reported 4,146 t in 2024; Ridge predicts 2,972 and the tree 2,738. Both are low
   because its rate jumped that year.
 - With half the fuel, Ridge predicts 35 % less and the tree 57 % less. The tree is a staircase with
-  8 thresholds; shaded areas are values never seen in training.
+  8 thresholds.
 - Adding SCR: Ridge −59 % (1.7K t, far above its 58 t typical miss); the tree doesn't move, because
   none of its questions about this unit is about SCR.
 - They agree on fuel use and disagree on controls and fuel type; the disagreement is the finding.
@@ -297,7 +297,7 @@ example in step 5, and its unit 2 is the one changed in steps 7 and 8.
 
 - **What we found:**
   - Q1: CO₂ fell 22 %; coal's intensity stayed flat, so the fall is the shift to gas.
-  - Q2: uncontrolled units emit NOₓ at a 252.6 % higher pooled rate than SCR units.
+  - Q2: uncontrolled units emit NOₓ at a 252.6 % higher pooled rate than SCR units (2015–2025).
   - Q3: Texas leads every category in total; Nebraska, North Dakota, and Missouri per MWh.
   - Q4: the tree cuts the baseline's error by 76 %, but last year's rate still forecasts best.
 - **Who built what:**

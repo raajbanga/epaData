@@ -2,10 +2,19 @@
 
 import { Badge } from "~/components/ui/badge";
 import { Term } from "~/components/ui/term";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { ReportTable, Section } from "~/components/ui/report";
 import { describeCampdFilters } from "~/lib/facility-filters";
-import { datasetStatus, formatNumber, sourceLabel } from "~/lib/utils";
+import {
+  datasetStatus,
+  formatDate,
+  formatNumber,
+  sourceLabel,
+} from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
 
 type DatasetRow = RouterOutputs["facilities"]["getDatasets"][number];
@@ -63,7 +72,12 @@ export function DatasetHistory({
 
   return (
     <Section title={title} note={note}>
-      {historyQuery.isLoading ? (
+      {historyQuery.error ? (
+        <QueryError
+          error={historyQuery.error}
+          onRetry={() => void historyQuery.refetch()}
+        />
+      ) : historyQuery.isLoading ? (
         <InlineLoading className="py-6" title="Loading datasets…" />
       ) : history.length === 0 ? (
         <EmptyState title={uploads ? "No uploads yet" : "No retrievals yet"} />
@@ -76,7 +90,13 @@ export function DatasetHistory({
             ...(uploads ? [] : [undefined]),
             datasetParams(d),
             d.importedAt,
-            ...Array<undefined>(uploads ? 8 : 6),
+            d.rawRecordCount,
+            d.validRecords,
+            d.insertedRecords,
+            d.updatedRecords,
+            d.unchangedRecords,
+            d.droppedRecords,
+            ...(uploads ? [d.currentRecords, d.replacedByApi] : []),
             datasetStatus(d),
           ])}
           head={[
@@ -100,8 +120,8 @@ export function DatasetHistory({
             <span key="params" title={d.name}>
               {datasetParams(d)}
             </span>,
-            <span key="at" title={d.importedAt.toLocaleString()}>
-              {d.importedAt.toLocaleDateString()}
+            <span key="at" title={d.importedAt.toUTCString()}>
+              {formatDate(d.importedAt)}
             </span>,
             formatNumber(d.rawRecordCount),
             formatNumber(d.validRecords),

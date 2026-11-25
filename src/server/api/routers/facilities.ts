@@ -22,7 +22,11 @@ import {
   getCampdPublishedYear,
   GRANULARITIES,
 } from "~/lib/campd-reporting-period";
-import { deriveRates, sumTotals } from "~/lib/emissions-metrics";
+import {
+  maxReported,
+  sumReported,
+  totalsAndRates,
+} from "~/lib/emissions-metrics";
 import {
   AUDIT_SORT_FIELDS,
   campdRetrievalSchema,
@@ -65,26 +69,35 @@ import {
   units,
 } from "~/server/db/schema";
 
-const yearClause = (year?: number) =>
-  year === undefined ? sql`` : sql` AND "annual_records"."year" = ${year}`;
+/** The Year filter or year range as a clause on annual_records; empty for every year. */
+function yearClause(f: FilterInput) {
+  const bound = (op: string, year?: number) =>
+    year === undefined
+      ? sql``
+      : sql` AND "annual_records"."year" ${sql.raw(op)} ${year}`;
+  const year = filterYear(f);
+  return year === undefined
+    ? sql`${bound(f.yearMinStrict ? ">" : ">=", toNumber(f.yearMin))}${bound(f.yearMaxStrict ? "<" : "<=", toNumber(f.yearMax))}`
+    : bound("=", year);
+}
 
-/** Correlated per-facility subqueries over child tables; record totals cover `year` when given, else all years. */
-const facilityMetrics = (year?: number) => ({
+/** Correlated per-facility subqueries over child tables; record totals cover `years` (a yearClause), else all years. */
+const facilityMetrics = (years: SQL = sql``) => ({
   unitCount: sql<number>`(
     SELECT COUNT(*) FROM "units" WHERE "units"."facility_id" = "facilities"."id"
   )`,
-  totalCapacityMW: sql<number>`(
-    SELECT COALESCE(ROUND(SUM("units"."nameplate_capacity_mw"), 1), 0)
+  totalCapacityMW: sql<number | null>`(
+    SELECT ROUND(SUM("units"."nameplate_capacity_mw"), 1)
     FROM "units" WHERE "units"."facility_id" = "facilities"."id"
   )`,
-  totalCo2Tons: sql<number>`(
-    SELECT COALESCE(ROUND(SUM("annual_records"."co2_mass_tons"), 0), 0)
-    FROM "annual_records" WHERE "annual_records"."facility_id" = "facilities"."id"${yearClause(year)}
+  totalCo2Tons: sql<number | null>`(
+    SELECT ROUND(SUM("annual_records"."co2_mass_tons"), 0)
+    FROM "annual_records" WHERE "annual_records"."facility_id" = "facilities"."id"${years}
   )`,
 });
 
-const perFacility = (year?: number) => {
-  const m = facilityMetrics(year);
+const perFacility = (years?: SQL) => {
+  const m = facilityMetrics(years);
   return {
     unitCount: m.unitCount.as("unit_count"),
     totalCapacityMW: m.totalCapacityMW.as("total_capacity_mw"),
@@ -99,8 +112,8 @@ const largestUnitFuel = sql<string | null>`(
   ORDER BY "units"."nameplate_capacity_mw" DESC LIMIT 1
 )`;
 
-const facilitySortColumns = (year?: number) => {
-  const m = facilityMetrics(year);
+const facilitySortColumns = (years?: SQL) => {
+  const m = facilityMetrics(years);
   return {
     name: facilities.name,
     id: facilities.id,
@@ -348,25 +361,35 @@ function recordConditions(f: FilterInput): SQL[] {
   return conditions;
 }
 
+/** GROUP_CONCAT of fuels, some of which hold several themselves ("Coal, Natural Gas"). */
+export const splitFuels = (raw: string | null) => [
+  ...new Set((raw ?? "").split(",").flatMap((s) => s.trim() || [])),
+];
+
 /** The filters without their Top N: what a ranking ranks. */
 const unranked = (f: FilterInput): FilterInput => ({ ...f, topN: "ALL" });
 
+/** Σ numerator × scale / Σ denominator over the unit-years that report both (denominator > 0). */
+const pooledRatio = (
+  num: SQL | SQLiteColumn,
+  den: SQL | SQLiteColumn,
+  scale: number,
+) =>
+  sql`SUM(CASE WHEN ${den} > 0 AND ${num} IS NOT NULL THEN ${num} END) * ${scale} / NULLIF(SUM(CASE WHEN ${den} > 0 AND ${num} IS NOT NULL THEN ${den} END), 0)`;
+
 /** A facility's ranking value over its matching unit-years (one GROUP BY facility). */
 const facilityRankValue = (metric: RankMetric): SQL => {
-  /** Σ numerator × scale / Σ denominator over the unit-years that report both (denominator > 0). */
-  const ratio = (num: SQLiteColumn, den: SQLiteColumn, scale: number) =>
-    sql`SUM(CASE WHEN ${den} > 0 AND ${num} IS NOT NULL THEN ${num} END) * ${scale} / NULLIF(SUM(CASE WHEN ${den} > 0 AND ${num} IS NOT NULL THEN ${den} END), 0)`;
   const { co2MassTons, grossGenerationMWh, heatInputMMBtu, noxMassTons } =
     annualRecords;
   switch (metric) {
     case "capacity":
       return sql`MAX(${facilityMetrics().totalCapacityMW})`;
     case "co2Intensity":
-      return ratio(co2MassTons, grossGenerationMWh, 2000);
+      return pooledRatio(co2MassTons, grossGenerationMWh, 2000);
     case "heatRate":
-      return ratio(heatInputMMBtu, grossGenerationMWh, 1);
+      return pooledRatio(heatInputMMBtu, grossGenerationMWh, 1);
     case "noxRate":
-      return ratio(noxMassTons, heatInputMMBtu, 2000);
+      return pooledRatio(noxMassTons, heatInputMMBtu, 2000);
     default:
       return sql`SUM(${annualRecords[metric]})`;
   }
@@ -470,8 +493,7 @@ export function rankedFacilities(
   input: FilterInput & { sortBy: SortField; sortDir: SortDirection },
 ) {
   const { sortBy, sortDir } = input;
-  const year = filterYear(input);
-  const yearRecords = yearClause(year);
+  const yearRecords = yearClause(input);
   const ranked = database
     .select({
       id: facilities.id,
@@ -481,19 +503,19 @@ export function rankedFacilities(
       nercRegion: facilities.nercRegion,
       sourceCategory: facilities.sourceCategory,
       ownerOperator: facilities.ownerOperator,
-      ...perFacility(year),
+      ...perFacility(yearRecords),
       primaryFuelsRaw: sql<string | null>`(
         SELECT GROUP_CONCAT(DISTINCT "units"."primary_fuel") FROM "units" WHERE "units"."facility_id" = "facilities"."id" AND "units"."primary_fuel" IS NOT NULL AND "units"."primary_fuel" != ''
       )`.as("primary_fuels_raw"),
       carbonIntensityLbsMWh: sql<number | null>`(
-        SELECT ROUND(SUM("annual_records"."co2_mass_tons") * 2000.0 / NULLIF(SUM("annual_records"."gross_generation_mwh"), 0))
+        SELECT ROUND(${pooledRatio(sql`"annual_records"."co2_mass_tons"`, sql`"annual_records"."gross_generation_mwh"`, 2000)})
         FROM "annual_records" WHERE "annual_records"."facility_id" = "facilities"."id"${yearRecords}
       )`.as("carbon_intensity_lbs_mwh"),
       controlledUnitsCount: sql<number>`(
         SELECT COUNT(*) FROM "units" WHERE "units"."facility_id" = "facilities"."id" AND (TRIM(COALESCE("units"."so2_controls", '')) != '' OR TRIM(COALESCE("units"."nox_controls", '')) != '' OR TRIM(COALESCE("units"."pm_controls", '')) != '' OR TRIM(COALESCE("units"."hg_controls", '')) != '')
       )`.as("controlled_units_count"),
-      totalOperatingHours: sql<number>`(
-        SELECT COALESCE(ROUND(SUM("annual_records"."operating_hours"), 0), 0) FROM "annual_records" WHERE "annual_records"."facility_id" = "facilities"."id"${yearRecords}
+      totalOperatingHours: sql<number | null>`(
+        SELECT ROUND(SUM("annual_records"."operating_hours"), 0) FROM "annual_records" WHERE "annual_records"."facility_id" = "facilities"."id"${yearRecords}
       )`.as("total_operating_hours"),
       // The busiest unit's hours in the latest year in scope: the dispatch measure behind the plant role (same as the detail dialog).
       peakUnitHours: sql<number | null>`(
@@ -501,7 +523,7 @@ export function rankedFacilities(
         ORDER BY "annual_records"."year" DESC, "annual_records"."operating_hours" DESC LIMIT 1
       )`.as("peak_unit_hours"),
       rank: rankOver(
-        facilitySortColumns(year)[sortBy],
+        facilitySortColumns(yearRecords)[sortBy],
         sortDir,
         facilities.id,
         perState(input),
@@ -893,7 +915,7 @@ export const facilitiesRouter = createTRPCRouter({
         ...page,
         items: items.map(({ primaryFuelsRaw, ...row }) => ({
           ...row,
-          primaryFuels: primaryFuelsRaw?.split(",").filter(Boolean) ?? [],
+          primaryFuels: splitFuels(primaryFuelsRaw),
         })),
       };
     }),
@@ -924,10 +946,8 @@ export const facilitiesRouter = createTRPCRouter({
           latitude: facilities.latitude,
           longitude: facilities.longitude,
           nercRegion: facilities.nercRegion,
-          sourceCategory: facilities.sourceCategory,
-          ownerOperator: facilities.ownerOperator,
           primaryFuel: largestUnitFuel.as("primary_fuel"),
-          ...perFacility(input && filterYear(input)),
+          ...perFacility(input && yearClause(input)),
         })
         .from(facilities)
         .where(and(...filterConditions(input)));
@@ -1054,8 +1074,8 @@ export const facilitiesRouter = createTRPCRouter({
         const latestRecords = plant.annualRecords.filter(
           (r) => r.year === latestYear,
         );
-        const totals = sumTotals(latestRecords);
-        const rates = deriveRates(totals);
+        const totals = totalsAndRates(latestRecords);
+        const rounded = (n: number | null) => n && Math.round(n);
 
         return {
           id: plant.id,
@@ -1071,27 +1091,23 @@ export const facilitiesRouter = createTRPCRouter({
           operatingUnitsCount: countUnits((u) =>
             isOperatingStatus(u.operatingStatus),
           ),
-          totalCapacityMW: Math.round(
-            plant.units.reduce(
-              (sum, u) => sum + (u.nameplateCapacityMW ?? 0),
-              0,
-            ),
+          totalCapacityMW: rounded(
+            sumReported(plant.units.map((u) => u.nameplateCapacityMW)),
           ),
           primaryFuels: uniqueStrings(plant.units.map((u) => u.primaryFuel)),
           secondaryFuels: uniqueStrings(
             plant.units.map((u) => u.secondaryFuel),
           ),
           // The busiest unit's hours (a sum over units could exceed a year), as in the detail dialog.
-          peakUnitHours: Math.max(
-            0,
-            ...latestRecords.map((r) => r.operatingHours ?? 0),
+          peakUnitHours: maxReported(
+            latestRecords.map((r) => r.operatingHours),
           ),
-          totalGenerationMWh: Math.round(totals.grossGenerationMWh),
-          totalCo2Tons: Math.round(totals.co2MassTons),
-          totalSo2Tons: Math.round(totals.so2MassTons),
-          totalNoxTons: Math.round(totals.noxMassTons),
-          carbonIntensityLbsMWh: rates.co2IntensityLbsMWh,
-          heatRateMMBtuMWh: rates.heatRateMMBtuMWh,
+          totalGenerationMWh: rounded(totals.grossGenerationMWh),
+          totalCo2Tons: rounded(totals.co2MassTons),
+          totalSo2Tons: rounded(totals.so2MassTons),
+          totalNoxTons: rounded(totals.noxMassTons),
+          carbonIntensityLbsMWh: totals.co2IntensityLbsMWh,
+          heatRateMMBtuMWh: totals.heatRateMMBtuMWh,
           so2ControlledUnits: countUnits((u) => u.so2Controls),
           noxControlledUnits: countUnits((u) => u.noxControls),
           pmControlledUnits: countUnits((u) => u.pmControls),
@@ -1103,7 +1119,7 @@ export const facilitiesRouter = createTRPCRouter({
     }),
 
   /**
-   * Audits tab: physical-sanity flags matching the explorer filters (rule and severity apply to the
+   * Audit flags tab: physical-sanity flags matching the explorer filters (rule and severity apply to the
    * flag itself), sorted and paged, with per-rule counts. Each row carries the values that tripped
    * the rule and the dataset the flagged record came from.
    */
@@ -1126,7 +1142,6 @@ export const facilitiesRouter = createTRPCRouter({
           unitInternalId: annualRecords.unitInternalId,
           facilityId: annualRecords.facilityId,
           facilityName: facilities.name,
-          stateCode: facilities.stateCode,
           unitId: units.unitId,
           heatInputMMBtu: annualRecords.heatInputMMBtu,
           co2MassTons: annualRecords.co2MassTons,
@@ -1157,6 +1172,7 @@ export const facilitiesRouter = createTRPCRouter({
               auditFlag: undefined,
               auditSeverity: undefined,
             }),
+            ...topUnitYearCondition(input),
             active(input.auditFlag)
               ? eq(dataAuditLogs.flagType, input.auditFlag)
               : undefined,

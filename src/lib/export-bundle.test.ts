@@ -8,7 +8,6 @@ import {
   analyzeMetadata,
   datasetMetadata,
   downloadMetadata,
-  missingMetadata,
   modelMetadata,
   predictMetadata,
   zipBundle,
@@ -17,6 +16,63 @@ import {
   type Provenance,
 } from "./export-bundle";
 import type { TraciFactor } from "./traci";
+
+const isObject = (x: unknown): x is Record<string, unknown> =>
+  typeof x === "object" && x !== null && !Array.isArray(x);
+const list = (x: unknown) => (Array.isArray(x) ? (x as unknown[]) : []);
+const text = (x: unknown) => typeof x === "string" && x.trim() !== "";
+
+/**
+ * The reproducibility items an export's metadata leaves out (empty when it is complete).
+ * Analyze exports need filters and defined variables; Predict exports need each model's name,
+ * features, settings, periods, and pipeline.
+ */
+function missingMetadata(meta: ExportMetadata) {
+  const missing: string[] = [];
+  const check = (ok: boolean, item: string) => {
+    if (!ok && !missing.includes(item)) missing.push(item);
+  };
+  const db = meta.database;
+  check(
+    text(meta.exportedAt) && !Number.isNaN(Date.parse(String(meta.exportedAt))),
+    "Analysis date",
+  );
+  check(
+    isObject(db) && typeof db.unitYears === "number" && "lastImport" in db,
+    "Dataset identifier",
+  );
+  const software = meta.software;
+  check(
+    isObject(software) && text(software.version) && text(software.commit),
+    "Software or pipeline version",
+  );
+  if (meta.page === "Predict") {
+    const models = list(meta.models).filter(isObject);
+    check(models.length > 0, "Model name, features, and parameters");
+    for (const m of models) {
+      check(
+        text(m.name) && list(m.features).length > 0 && isObject(m.settings),
+        "Model name, features, and parameters",
+      );
+      check(
+        text(m.fitYears) && text(m.testYears),
+        "Training and testing periods",
+      );
+      check(text(m.pipeline), "Software or pipeline version");
+    }
+  } else {
+    const variables = list(meta.variables).filter(isObject);
+    check(
+      isObject(meta.filters) && variables.length > 0,
+      "Selected filters and variables",
+    );
+    check(
+      variables.every((v) => text(v.key) && text(v.definition)),
+      "Definitions of derived indicators",
+    );
+  }
+  return missing;
+}
 
 /** What each export's metadata.json must contain to be reproducible. */
 

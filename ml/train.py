@@ -15,7 +15,6 @@ sample the TypeScript test replays to check the app predicts exactly what scikit
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import subprocess
 import sys
@@ -387,7 +386,7 @@ def main():
         "bootstrap": f"{BOOTSTRAP_SAMPLES} replicates resampling units of the test years, 95 % percentile intervals",
         "models": {},
     }
-    # Persistence is a reference, not a registered model: the app neither shows nor replays it.
+    # Persistence is a reference, not a registered model: the app states its error but doesn't replay it.
     intervals = bootstrap(
         y[test], {k: p[test] for k, p in preds.items()}, raw["unit_internal_id"].to_numpy()[test], "persistence"
     )

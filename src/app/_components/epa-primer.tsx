@@ -12,7 +12,7 @@ const TERMS = [
     body: "The most power a unit can make at once. One megawatt (MW) powers roughly 750 to 1,000 homes.",
   },
   {
-    term: "CO₂ rate (lbs/MWh)",
+    term: "CO₂ intensity (lb/MWh)",
     body: "Pounds of CO₂ for each megawatt-hour of electricity. A modern gas plant is about 800, coal about 2,100; nuclear, wind, and solar are 0.",
   },
   {

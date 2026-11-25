@@ -44,7 +44,6 @@ export function HeatGrid({
       {width > 0 && color && (
         <svg width={width} height={height}>
           {matrix.map((row, i) =>
-            // Each pair once: the lower half, without a variable against itself.
             row.map((v, j) =>
               j >= i ? null : (
                 <g key={`${i}-${j}`} {...on({ i, j })}>

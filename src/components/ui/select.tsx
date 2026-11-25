@@ -28,7 +28,6 @@ export function Select({
   placeholder,
   size = "toolbar",
   className,
-  disabled,
   "aria-label": ariaLabel,
 }: {
   value: string;
@@ -37,7 +36,6 @@ export function Select({
   placeholder?: string;
   size?: keyof typeof TRIGGER_SIZES;
   className?: string;
-  disabled?: boolean;
   "aria-label"?: string;
 }) {
   // A value set elsewhere (a shared URL, a parsed description) still shows when it isn't a listed option.
@@ -46,11 +44,7 @@ export function Select({
       ? [...options, { value, label: value }]
       : options;
   return (
-    <SelectPrimitive.Root
-      value={value}
-      onValueChange={onValueChange}
-      disabled={disabled}
-    >
+    <SelectPrimitive.Root value={value} onValueChange={onValueChange}>
       <SelectPrimitive.Trigger
         aria-label={ariaLabel}
         className={cn(

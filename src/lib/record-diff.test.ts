@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { emptyTotals } from "./emissions-metrics";
+import { TOTAL_KEYS, type ReportedTotals } from "./emissions-metrics";
 import {
   countDiff,
   diffRecord,
@@ -10,7 +10,7 @@ import {
 } from "./record-diff";
 
 const stored = {
-  ...emptyTotals(),
+  ...(Object.fromEntries(TOTAL_KEYS.map((k) => [k, 0])) as ReportedTotals),
   co2MassTons: 80614.43,
   operatingHours: 5000,
 };

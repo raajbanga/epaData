@@ -94,6 +94,14 @@ void test("k-sample tests match SciPy", () => {
   const f = anova([a, b, c])!;
   close(f.f, 23.49554062330667);
   close(f.p, 5.625097860848096e-6, 1e-6);
+  // Every value the same: no test, as in the others.
+  assert.equal(
+    kruskalWallis([
+      [0, 0],
+      [0, 0],
+    ]),
+    null,
+  );
   const k = kruskalWallis([a, b, c])!;
   close(k.h, 15.082995551161641);
   close(k.p, 0.0005306023031697081, 1e-6);

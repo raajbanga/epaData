@@ -6,11 +6,9 @@ export interface MapFacility {
   latitude: number;
   longitude: number;
   nercRegion: string | null;
-  sourceCategory: string | null;
-  ownerOperator: string | null;
   primaryFuel: string;
-  totalCapacityMW: number;
-  totalCo2Tons: number;
+  totalCapacityMW: number | null;
+  totalCo2Tons: number | null;
   unitCount: number;
 }
 
@@ -112,8 +110,8 @@ export function getMarkerRadius(
   if (metricMode === "uniform") return uniformBase + zoomBonus;
   const raw =
     metricMode === "capacity"
-      ? Math.sqrt(plant.totalCapacityMW) * capacityScale
-      : Math.sqrt(plant.totalCo2Tons) * co2Scale;
+      ? Math.sqrt(plant.totalCapacityMW ?? 0) * capacityScale
+      : Math.sqrt(plant.totalCo2Tons ?? 0) * co2Scale;
   return Math.max(min, Math.min(max, raw)) + zoomBonus;
 }
 

@@ -26,7 +26,8 @@ import {
   strongestPairs,
 } from "~/lib/takeaways";
 import { getFuelTheme } from "~/lib/map-utils";
-import { formatNumber, plural } from "~/lib/utils";
+import { formatNumber, inSentence, plural } from "~/lib/utils";
+import { useMemo } from "react";
 import { api } from "~/trpc/react";
 import {
   asDimension,
@@ -35,12 +36,11 @@ import {
   DimensionField,
   dimensionLabel,
   findInfo,
-  inSentence,
-  Toggle,
   valueColumn,
   variableLabel,
   VariableField,
   type TabProps,
+  shownOf,
 } from "./shared";
 
 /**
@@ -67,11 +67,30 @@ const CORRELATION_VARIABLES = [
 const groupColor = (dimension: string | undefined, group: string, i: number) =>
   dimension === "fuelClass" ? getFuelTheme(group).color : seriesColor(i);
 
-/** "; the 8 largest of 15 groups" when a chart shows only part of its groups. */
-const shownOf = (shown: number, total = 0, noun = "groups") =>
-  total > shown
-    ? `; the ${shown} largest of ${formatNumber(total)} ${noun}`
-    : "";
+/** Linear or logarithmic axes. */
+const LogToggle = ({
+  view,
+  setView,
+  label = "Log",
+}: TabProps & { label?: string }) => (
+  <SegmentedControl
+    value={view.log}
+    onChange={(log) => setView({ log })}
+    options={[
+      {
+        value: "",
+        label: "Linear",
+        title: "Equal steps on the axis are equal amounts.",
+      },
+      {
+        value: "1",
+        label,
+        title:
+          "Each step is 10× the last, so small and very large values both show.",
+      },
+    ]}
+  />
+);
 
 /** "Total per year, short tons." */
 const per = (info: ReturnType<typeof findInfo>, what: string) =>
@@ -87,7 +106,8 @@ export function TrendChart(props: TabProps) {
     variables: [view.variable],
     by: "year",
     seriesBy,
-    limit: 8,
+    // The limit counts lines, or without them years: every year is drawn.
+    limit: seriesBy ? 8 : 100,
   });
   const rows = q.data?.rows ?? [];
   const names = [...new Set(rows.map((r) => r.series ?? "All"))];
@@ -96,7 +116,9 @@ export function TrendChart(props: TabProps) {
     label: name,
     color: seriesBy ? groupColor(seriesBy, name, i) : "var(--chart-slate)",
   }));
-  const years = [...new Set(rows.map((r) => Number(r.group)))].sort();
+  const years = [...new Set(rows.map((r) => Number(r.group)))].sort(
+    (a, b) => a - b,
+  );
   const data = years.map((x) => ({
     x,
     ...Object.fromEntries(
@@ -115,10 +137,10 @@ export function TrendChart(props: TabProps) {
       actions={
         <DimensionField
           {...bind(props, "series")}
-          label=""
-          none="One line"
+          label="Lines"
+          prefix="by "
+          none="one line"
           exclude={["year", "facility", "unit"]}
-          className="h-8 w-40"
         />
       }
       legend={series}
@@ -150,10 +172,10 @@ export function TrendChart(props: TabProps) {
 /** Bars of the variable for every group of `by` (largest first), names beside the bars. */
 export function BarsChart({
   by,
-  limit = 30,
   reading,
   ...props
-}: TabProps & { by: string; limit?: number; reading?: string }) {
+}: TabProps & { by: string; reading?: string }) {
+  const limit = 30;
   const { filters, view, catalog } = props;
   const info = findInfo(catalog, view.variable);
   const dimension = asDimension(by) ?? "state";
@@ -201,10 +223,8 @@ export function BarsChart({
 }
 
 /** Rankings: the highest or lowest facilities or units, names beside the bars. */
-export function RankingChart({
-  limit = 15,
-  ...props
-}: TabProps & { limit?: number }) {
+export function RankingChart(props: TabProps) {
+  const limit = 15;
   const { filters, view, setView, catalog } = props;
   const info = findInfo(catalog, view.variable);
   const by = view.rankBy === "unit" ? "unit" : "facility";
@@ -220,7 +240,7 @@ export function RankingChart({
   const noun = by === "unit" ? "units" : "facilities";
   return (
     <ChartFrame
-      title={`${order === "desc" ? "Highest" : "Lowest"} ${limit} ${noun} by ${info?.label}`}
+      title={`${order === "desc" ? "Highest" : "Lowest"} ${q.data ? Math.min(limit, rows.length) : limit} ${noun} by ${info && inSentence(info.label)}`}
       subtitle={`${per(info, "over the selected years")}, of ${formatNumber(q.data?.total)} ${noun}.`}
       note={info?.definition}
       actions={
@@ -271,10 +291,12 @@ export function RankingChart({
 
 /** Histogram (one line per group) or box plot of the unit-year values. */
 export function DistributionChart(props: TabProps) {
-  const { filters, view, setView, catalog } = props;
+  const { filters, view, setView, catalog, summary } = props;
   const info = findInfo(catalog, view.variable);
-  // Facilities and units are too many to draw one shape each.
-  const by = /facility|unit/.test(view.by) ? undefined : asDimension(view.by);
+  // Facilities and units are too many to draw one shape each: the chart draws them together
+  // (and says so) while the statistics table keeps the grouping.
+  const perPlace = /^(facility|unit)$/.test(view.by);
+  const by = perPlace ? undefined : asDimension(view.by);
   // Overlaid histograms of many groups are unreadable: grouped views default to box plots.
   const box = view.box === "1" || (view.box === "" && Boolean(by));
   const log = view.log === "1";
@@ -283,15 +305,32 @@ export function DistributionChart(props: TabProps) {
     variable: view.variable,
     by,
   });
-  const groups = (q.data?.groups ?? []).map((g, i) => ({
-    label: g.group,
-    values: g.values,
-    // Boxes stand apart by position, so only fuel (which has its own colors) gets color.
-    color:
-      by && (!box || by === "fuelClass")
-        ? groupColor(by, g.group, i)
-        : "var(--chart-slate)",
-  }));
+  const data = q.data?.groups;
+  // The server draws the groups with the most unit-years; years then read in order.
+  const total = summary?.distinct.find((d) => d.key === by)?.count ?? 0;
+  const groups = useMemo(
+    () =>
+      (by === "year"
+        ? [...(data ?? [])].sort((a, b) => Number(a.group) - Number(b.group))
+        : (data ?? [])
+      ).map((g, i) => ({
+        label: g.group,
+        values: g.values,
+        // Boxes stand apart by position, so only fuel (which has its own colors) gets color.
+        color:
+          by && (!box || by === "fuelClass")
+            ? groupColor(by, g.group, i)
+            : "var(--chart-slate)",
+      })),
+    [data, by, box],
+  );
+  const table = useMemo(
+    () => ({
+      head: ["group", valueColumn(info)],
+      rows: groups.flatMap((g) => g.values.map((v) => [g.label, v])),
+    }),
+    [groups, info],
+  );
   // A log axis can't show zero or negative values: they are left out and counted in the note.
   const dropped = log
     ? groups.reduce((n, g) => n + g.values.filter((x) => x <= 0).length, 0)
@@ -299,7 +338,7 @@ export function DistributionChart(props: TabProps) {
   return (
     <ChartFrame
       title={`Distribution of ${info?.label}${by ? ` by ${inSentence(dimensionLabel(catalog, by))}` : ""}`}
-      subtitle={`${formatNumber(q.data?.total)} unit-years with a value, in ${info?.unit}${by ? "; the 12 groups with the most" : ""}. ${box ? "Each box shows how one group's unit-years spread out; the key below says how to read it." : "Each bar counts the unit-years whose value falls in that range, so tall bars are common values."}`}
+      subtitle={`${formatNumber(q.data?.total)} unit-years with a value, in ${info?.unit}${groups.length < total ? `; the ${groups.length} groups with the most of ${total}` : ""}. ${box ? "Each box shows how one group's unit-years spread out; the key below says how to read it." : "Each bar counts the unit-years whose value falls in that range, so tall bars are common values."}${perPlace ? ` **Every ${view.by} is drawn together**: one shape per ${view.by} would be unreadable, so the grouping is in the statistics table below.` : ""}`}
       note={[
         q.data?.sampled && "An even sample of 20,000 unit-years is drawn.",
         dropped &&
@@ -323,20 +362,11 @@ export function DistributionChart(props: TabProps) {
                 value: "box",
                 label: "Box plot",
                 title:
-                  "Per group: the box is the middle half of the values, the line the median, and the whiskers the usual range; dots beyond are unusual.",
+                  "Per group: the box is the middle half of the values, the line the median, and the whiskers the usual range.",
               },
             ]}
           />
-          <Toggle
-            {...bind(props, "log")}
-            label=""
-            off="Linear"
-            on="Log"
-            titles={[
-              "Equal steps on the axis are equal amounts.",
-              "Each step is 10× the last, so small and very large values both show.",
-            ]}
-          />
+          <LogToggle {...props} />
         </>
       }
       legend={box ? undefined : groups.map((g) => ({ key: g.label, ...g }))}
@@ -344,10 +374,7 @@ export function DistributionChart(props: TabProps) {
       meta={{ variables: [info], sampled: q.data?.sampled }}
       height={340}
       {...queryStatus(q)}
-      table={{
-        head: ["group", valueColumn(info)],
-        rows: groups.flatMap((g) => g.values.map((v) => [g.label, v])),
-      }}
+      table={table}
     >
       {box ? (
         <>
@@ -398,29 +425,58 @@ export function ScatterChart(props: TabProps) {
     y: view.y,
     color,
   });
-  const points = q.data?.points ?? [];
-  const groups = [...new Set(points.map((p) => p.group))]
-    .slice(0, 10)
-    .map((group, i) => ({
+  const points = q.data?.points;
+  const { groups, own, ranked, other } = useMemo(() => {
+    // Eight colors at most: the seven largest groups keep their own, the rest share "Other", so no
+    // point is dropped.
+    const sizes = new Map<string, number>();
+    for (const p of points ?? [])
+      sizes.set(p.group, (sizes.get(p.group) ?? 0) + 1);
+    const ranked = [...sizes].sort((a, b) => b[1] - a[1]).map(([g]) => g);
+    const own = new Set(ranked.length > 8 ? ranked.slice(0, 7) : ranked);
+    const other =
+      ranked.length > own.size
+        ? `Other (${ranked.length - own.size} groups)`
+        : "";
+    // One pass puts every point in its group's bucket.
+    const buckets = new Map<string, { x: number; y: number; label: string }[]>(
+      [...own, ...(other ? [other] : [])].map((g) => [g, []]),
+    );
+    for (const p of points ?? [])
+      if (!log || (p.x > 0 && p.y > 0))
+        buckets
+          .get(own.has(p.group) ? p.group : other)!
+          .push({ x: p.x, y: p.y, label: `${p.label} (${p.group})` });
+    const groups = [...buckets].map(([group, pts], i) => ({
       label: group,
-      color: groupColor(color, group, i),
-      points: points
-        .filter((p) => p.group === group && (!log || (p.x > 0 && p.y > 0)))
-        .map((p) => ({ x: p.x, y: p.y, label: p.label })),
+      color:
+        group === other ? "var(--chart-sand)" : groupColor(color, group, i),
+      points: pts,
     }));
+    return { groups, own, ranked, other };
+  }, [points, log, color]);
+  // A log axis can't show zero or negative values.
+  const dropped =
+    (points?.length ?? 0) - groups.reduce((n, g) => n + g.points.length, 0);
+  const table = useMemo(
+    () => ({
+      head: ["unit_year", color, valueColumn(x), valueColumn(y)],
+      rows: (points ?? []).map((p) => [p.label, p.group, p.x, p.y]),
+    }),
+    [points, color, x, y],
+  );
   return (
     <div className="space-y-4">
       <QuestionSentence label="Relationship question">
         <span>How does</span>
-        <VariableField {...bind(props, "y")} label="Y axis" inline />
+        <VariableField {...bind(props, "y")} label="Y axis" />
         <span>move with</span>
-        <VariableField {...bind(props, "x")} label="X axis" inline />
+        <VariableField {...bind(props, "x")} label="X axis" />
         <span className="-ml-1.5">, colored by</span>
         <DimensionField
           {...bind(props, "color")}
           label="Color by"
           exclude={["unit", "facility", "state"]}
-          inline
         />
         <span className="-ml-1.5">?</span>
       </QuestionSentence>
@@ -433,31 +489,15 @@ export function ScatterChart(props: TabProps) {
       <ChartFrame
         title={`${y?.label} against ${inSentence(x?.label ?? "")}`}
         subtitle={`${correlationSentence(q.data?.r, x?.label ?? "", y?.label ?? "") ?? ""} ${formatNumber(q.data?.total)} unit-years with both values.`}
-        actions={
-          <SegmentedControl
-            value={view.log === "1" ? "1" : "0"}
-            onChange={(v) => setView({ log: v === "1" ? "1" : "" })}
-            options={[
-              {
-                value: "0",
-                label: "Linear",
-                title: "Equal steps on each axis are equal amounts.",
-              },
-              {
-                value: "1",
-                label: "Log–log",
-                title:
-                  "Each step on both axes is 10× the last, so small and large plants both show.",
-              },
-            ]}
-          />
-        }
+        actions={<LogToggle {...props} label="Log–log" />}
         note={[
           q.data &&
-            q.data.total > points.length &&
-            `An even sample of ${formatNumber(points.length)} is drawn; r uses all of them.`,
-          log &&
-            "Values of 0 or less can't be drawn on log scales and are left out.",
+            q.data.total > q.data.points.length &&
+            `An even sample of ${formatNumber(q.data.points.length)} is drawn; r uses all of them.`,
+          other &&
+            `The ${own.size} largest of ${ranked.length} groups have their own color; the rest are drawn together as “Other”.`,
+          dropped > 0 &&
+            `${formatNumber(dropped)} of them have a value ≤ 0 and are left out on the log scale.`,
           "Correlation is association, not cause.",
         ]
           .filter(Boolean)
@@ -467,10 +507,7 @@ export function ScatterChart(props: TabProps) {
         meta={{ variables: [x, y], pearsonR: q.data?.r, pairs: q.data?.total }}
         height={440}
         {...queryStatus(q)}
-        table={{
-          head: ["unit_year", color, valueColumn(x), valueColumn(y)],
-          rows: points.map((p) => [p.label, p.group, p.x, p.y]),
-        }}
+        table={table}
       >
         <ScatterPlot
           groups={groups}
@@ -542,8 +579,8 @@ export function CorrelationChart({ filters, catalog }: TabProps) {
         </div>
         <Takeaways
           items={[
-            pairs.strongest[0] &&
-              `The closest pair is **${pairs.strongest[0].a}** and **${pairs.strongest[0].b}** (${pairs.strongest[0].r.toFixed(2)}): when one is high, the other almost always is too.`,
+            pairs.strongest &&
+              `The closest pair is **${pairs.strongest.a}** and **${pairs.strongest.b}** (${pairs.strongest.r.toFixed(2)}): when one is high, the other ${pairs.strongest.r > 0 ? "tends to be too" : "tends to be low"}.`,
             pairs.negative &&
               `The most opposite pair is **${pairs.negative.a}** and **${pairs.negative.b}** (${pairs.negative.r.toFixed(2)}), and that link is ${correlationStrength(pairs.negative.r).replace(/^an? /, "")}.`,
             byAmount.data &&
@@ -553,7 +590,7 @@ export function CorrelationChart({ filters, catalog }: TabProps) {
                 byAmount.data.matrix,
                 byRank.data.matrix,
               ),
-          ].filter((x): x is string => Boolean(x))}
+          ]}
         />
         <ChartGrid>
           {panels.map(({ q, method, title, subtitle }) => (

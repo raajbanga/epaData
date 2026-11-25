@@ -1,26 +1,18 @@
 import { and, between, desc, eq, sql, sum, type SQL } from "drizzle-orm";
-import { alias } from "drizzle-orm/sqlite-core";
 
 import type { FilterInput } from "~/lib/facility-filters";
-import {
-  modelInputs,
-  predict,
-  type ModelArtifact,
-  type ScopeRow,
-} from "~/lib/model";
+import { modelInputs, predict, type ScopeRow } from "~/lib/model";
 import { getFuelTheme } from "~/lib/map-utils";
-import { sample } from "~/server/analysis";
+import { onPrevYear, prev, sample } from "~/server/analysis";
 import { unitYearConditions } from "~/server/api/routers/facilities";
 import { db } from "~/server/db";
 import { annualRecords, facilities, models, units } from "~/server/db/schema";
 
 /** Registered models, baseline unit-years, and test-year predictions. */
 
-const prev = alias(annualRecords, "prev");
-
 /** Unit-years in ml/train.py's raw shape, plus identity and the actual NOₓ. */
-async function modelRows(where: SQL | undefined, limit?: number) {
-  const query = db
+const modelRows = (where: SQL | undefined) =>
+  db
     .select({
       year: annualRecords.year,
       primary_fuel: units.primaryFuel,
@@ -43,26 +35,11 @@ async function modelRows(where: SQL | undefined, limit?: number) {
     .from(annualRecords)
     .innerJoin(units, eq(annualRecords.unitInternalId, units.id))
     .innerJoin(facilities, eq(annualRecords.facilityId, facilities.id))
-    .leftJoin(
-      prev,
-      and(
-        eq(prev.unitInternalId, annualRecords.unitInternalId),
-        eq(prev.year, sql`${annualRecords.year} - 1`),
-      ),
-    )
+    .leftJoin(prev, onPrevYear)
     .where(where)
-    .orderBy(desc(annualRecords.noxMassTons))
-    .$dynamic();
-  return limit ? query.limit(limit) : query;
-}
+    .orderBy(desc(annualRecords.noxMassTons));
 
-export async function listModels() {
-  const rows = await db.select().from(models).orderBy(models.id);
-  return rows.map((m) => ({
-    ...m,
-    artifact: m.artifact as unknown as ModelArtifact,
-  }));
-}
+export const listModels = () => db.select().from(models).orderBy(models.id);
 
 /** A facility's units with a NOₓ value in `year`, largest NOₓ first: the baseline choices. */
 export async function baselineUnits(facilityId: number, year: number) {
@@ -72,15 +49,11 @@ export async function baselineUnits(facilityId: number, year: number) {
       eq(annualRecords.year, year),
       sql`${annualRecords.noxMassTons} IS NOT NULL`,
     ),
-    40,
   );
   return rows.map((r) => ({
-    facilityId: r.facilityId,
     facilityName: r.facilityName,
     stateCode: r.stateCode,
     unitId: r.unitId,
-    fuel: r.primary_fuel,
-    noxMassTons: r.noxMassTons,
   }));
 }
 

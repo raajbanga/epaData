@@ -24,8 +24,9 @@ import {
   type ExplorerState,
   type FilterChangeHandler,
   type SortDirection,
+  yearsText,
 } from "~/lib/facility-filters";
-import { formatNumber, replaceUrlQuery } from "~/lib/utils";
+import { formatDate, formatNumber, replaceUrlQuery } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { SelectionContext } from "./selection-context";
 import { AuditLogsTable } from "./audit-logs-table";
@@ -160,9 +161,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
     0,
     ...(stats?.sources ?? []).map((s) => new Date(s.lastImportedAt).getTime()),
   );
-  const lastImport = lastImportedAt
-    ? new Date(lastImportedAt).toLocaleDateString()
-    : undefined;
+  const lastImport = lastImportedAt ? formatDate(lastImportedAt) : undefined;
 
   /** A tab's table props: sort and page state with their handlers, and the query's status. */
   const tableProps = <
@@ -173,7 +172,10 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
   >(
     t: T,
     setT: Dispatch<SetStateAction<T>>,
-    q: { isLoading: boolean; isPlaceholderData: boolean },
+    q: Pick<
+      typeof facilitiesQuery,
+      "isLoading" | "isPlaceholderData" | "error"
+    > & { refetch: () => unknown },
   ) => ({
     sortBy: t.sortBy,
     sortDir: t.sortDir,
@@ -183,6 +185,8 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
       pageSize: t.pageSize,
       isLoading: q.isLoading,
       isPlaceholderData: q.isPlaceholderData,
+      error: q.error,
+      onRetry: () => void q.refetch(),
       onPageChange: (page: number) => setT((s) => ({ ...s, page })),
       onPageSizeChange: (pageSize: number) =>
         setT((s) => ({ ...s, pageSize, page: 1 })),
@@ -267,6 +271,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
         <AuditLogsTable
           data={auditQuery.data}
           {...tableProps(auditTable, setAuditTable, auditQuery)}
+          onResetFilters={resetFilters}
         />
       ) : activeTab === "units" ? (
         <UnitsTable
@@ -282,7 +287,7 @@ export function Explorer({ initialState }: { initialState: ExplorerState }) {
           data={facilitiesQuery.data}
           {...tableProps(table, setTable, facilitiesQuery)}
           showRank={showFacilityRank}
-          year={filters.year}
+          years={yearsText(filters)}
           compareIds={compareIds}
           onToggleCompare={toggleCompare}
           onResetFilters={resetFilters}

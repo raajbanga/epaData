@@ -17,8 +17,6 @@ interface BarRow {
   low?: number | null;
   high?: number | null;
   color?: string;
-  /** Lighter: e.g. inputs outside the training data. */
-  faded?: boolean;
   details?: TooltipRow[];
 }
 
@@ -119,7 +117,7 @@ export function BarList({
                       left: `${at(Math.min(0, v))}%`,
                       width: `${at(Math.max(0, v)) - at(Math.min(0, v))}%`,
                       background: r.color ?? color,
-                      opacity: r.faded ? 0.35 : 0.9,
+                      opacity: 0.9,
                     }}
                   />
                 )}

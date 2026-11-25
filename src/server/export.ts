@@ -19,6 +19,7 @@ import { datasetStatus, sourceLabel } from "~/lib/utils";
 import {
   datasetHistory,
   rankedFacilities,
+  splitFuels,
   rankedUnitYears,
 } from "~/server/api/routers/facilities";
 import { db } from "~/server/db";
@@ -104,7 +105,7 @@ const FACILITY_COLUMNS: CsvColumn<FacilityRow>[] = [
   ["nerc_region", (r) => r.nercRegion],
   ["source_category", (r) => r.sourceCategory],
   ["owner_operator", (r) => r.ownerOperator],
-  ["primary_fuels", (r) => r.primaryFuelsRaw?.replaceAll(",", "; ")],
+  ["primary_fuels", (r) => splitFuels(r.primaryFuelsRaw).join("; ")],
   ["unit_count", (r) => r.unitCount],
   ["nameplate_capacity_mw", (r) => r.totalCapacityMW],
   ["co2_mass_tons", (r) => r.totalCo2Tons],
@@ -130,7 +131,6 @@ const PROVENANCE_COLUMNS: CsvColumn<DatasetRow & { currentRecords: number }>[] =
     ["updated_records", (r) => r.updatedRecords],
     ["unchanged_records", (r) => r.unchangedRecords],
     ["dropped_records", (r) => r.droppedRecords],
-    ["current_records", (r) => r.currentRecords],
     ["original_filename", (r) => r.originalFilename],
     ["archived_path", (r) => r.archivedPath],
     ["query_params", (r) => r.queryParams],
@@ -156,12 +156,19 @@ function selectUnitYears(
 
 /** Unit-year CSV with each record's audit flags; `ranked` adds the rank column. */
 async function unitYearCsv(rows: UnitYearRow[], ranked = false) {
+  // A small selection reads only its own records' flags; a large one reads them all at once.
+  const ids = rows.map((r) => r.id);
   const flags = await db
     .select({
       id: dataAuditLogs.annualRecordId,
       flags: sql<string>`GROUP_CONCAT(DISTINCT ${dataAuditLogs.flagType})`,
     })
     .from(dataAuditLogs)
+    .where(
+      ids.length <= 5000
+        ? inArray(dataAuditLogs.annualRecordId, ids)
+        : undefined,
+    )
     .groupBy(dataAuditLogs.annualRecordId);
   const flagsById = new Map(
     flags.map((f) => [f.id, f.flags.replaceAll(",", "; ")]),

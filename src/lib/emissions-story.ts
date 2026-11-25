@@ -6,7 +6,7 @@ import { METRICS } from "./metrics";
  * well under the year before with about as many units) are left out, so a drop is a real drop.
  */
 
-export const POLLUTANTS = [
+const POLLUTANTS = [
   {
     key: "so2",
     label: METRICS.so2MassTons.short,

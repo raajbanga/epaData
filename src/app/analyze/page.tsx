@@ -1,6 +1,7 @@
 import { type Metadata } from "next";
 import { AnalyzeView } from "~/app/_components/analyze/analyze-view";
 import { parseAnalysisParams } from "~/lib/analysis-state";
+import { type Params } from "~/lib/facility-filters";
 import { api, HydrateClient } from "~/trpc/server";
 
 export const metadata: Metadata = { title: "Analyze" };
@@ -8,7 +9,7 @@ export const metadata: Metadata = { title: "Analyze" };
 export default async function AnalyzePage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<Params>;
 }) {
   const initial = parseAnalysisParams(await searchParams);
   // The summary streams in after the page (pending queries are sent to the browser); the

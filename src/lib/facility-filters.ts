@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { METRICS } from "./metrics";
+import { METRICS, RATES } from "./metrics";
+import { inSentence } from "./utils";
 
 export const SORT_FIELDS = ["name", "id", "capacity", "co2"] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
@@ -8,6 +9,8 @@ export type SortDirection = "asc" | "desc";
 /** A metric's short name and unit, as the filters show it. */
 const metric = <K extends keyof typeof METRICS>(key: K) =>
   ({ key, label: METRICS[key].short, unit: METRICS[key].unit }) as const;
+/** A unit's nameplate capacity, or a plant's total. */
+const CAPACITY = { ...metric("nameplateCapacityMW"), key: "capacity" } as const;
 
 /** Range-searchable unit-year metrics; keys are `annual_records` columns. */
 export const UNIT_METRICS = [
@@ -22,11 +25,7 @@ export const UNIT_METRICS = [
 export const RANGE_FIELDS = [
   { key: "year", label: "Reporting year", unit: "yr" },
   ...UNIT_METRICS,
-  {
-    key: "capacity",
-    label: METRICS.nameplateCapacityMW.short,
-    unit: METRICS.nameplateCapacityMW.unit,
-  },
+  CAPACITY,
 ] as const;
 /** Range fields a description can bind a number to ("over 1000 MW", "CO2 above 1M"). */
 export type RangeMetric = Exclude<(typeof RANGE_FIELDS)[number]["key"], "year">;
@@ -39,8 +38,7 @@ const RANGE_KEYS = RANGE_FIELDS.flatMap(
 type StrictKey = `${RangeKey}Strict`;
 const STRICT_KEYS = RANGE_KEYS.map((k) => `${k}Strict` as const);
 /** A strict flag only modifies its bound; it is not a filter of its own. */
-export const isStrictKey = (key: string): key is StrictKey =>
-  key.endsWith("Strict");
+const isStrictKey = (key: string): key is StrictKey => key.endsWith("Strict");
 
 /** Unit-year (Units view) sort keys: identity columns, every metric, and the derived rates. */
 export const UNIT_SORT_FIELDS = [
@@ -66,14 +64,46 @@ export const TOP_N_OPTIONS = [5, 10, 20, 50, 100] as const;
  */
 export const RANK_METRICS = [
   ...UNIT_METRICS,
-  { key: "capacity", label: "Capacity", unit: "MW" },
-  { key: "co2Intensity", label: "CO₂ intensity", unit: "lb/MWh" },
-  { key: "heatRate", label: "Heat rate", unit: "MMBtu/MWh" },
-  { key: "noxRate", label: "NOₓ rate", unit: "lb/MMBtu" },
+  CAPACITY,
+  ...(
+    Object.entries(RATES) as [
+      keyof typeof RATES,
+      (typeof RATES)[keyof typeof RATES],
+    ][]
+  ).map(([key, r]) => ({ key, ...r })),
 ] as const;
 export type RankMetric = (typeof RANK_METRICS)[number]["key"];
 export const isRankMetric = (v: string): v is RankMetric =>
   RANK_METRICS.some((m) => m.key === v);
+
+/** A bounded range in words: "2015–2025", "> 10, ≤ 20", "≥ 2015"; "" when unbounded. */
+export function rangeText(
+  min: string | undefined,
+  max: string | undefined,
+  minStrict: boolean,
+  maxStrict: boolean,
+) {
+  if (min && max && !minStrict && !maxStrict)
+    return min === max ? min : `${min}–${max}`;
+  return [
+    min && `${minStrict ? ">" : "≥"} ${min}`,
+    max && `${maxStrict ? "<" : "≤"} ${max}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** The years a selection's totals cover: "2024", "2015–2025", "≥ 2015", or "" for every year. */
+export const yearsText = (f: FacilityFilters) =>
+  isFilterActive(f, "year")
+    ? f.year
+    : rangeText(
+        f.yearMin.trim(),
+        f.yearMax.trim(),
+        isFilterActive(f, "yearMinStrict"),
+        isFilterActive(f, "yearMaxStrict"),
+      );
+
 /** Ranking keys that only mean something while `topN` is set. */
 const RANK_KEYS = ["topBy", "topDir", "topLevel", "rankGroup"] as const;
 
@@ -143,23 +173,6 @@ export const DEFAULT_FILTERS = {
 };
 export type FacilityFilters = typeof DEFAULT_FILTERS;
 
-/** Basic search fields, always visible in the explorer toolbar. */
-const BASIC_FILTER_KEYS = [
-  "search",
-  "stateCode",
-  "year",
-  "primaryFuel",
-  "unitType",
-] as const satisfies readonly (keyof FacilityFilters)[];
-
-/** Everything else (grid, controls, ranges, ranking, …), shown under "Advanced". */
-export const ADVANCED_FILTER_KEYS = (
-  Object.keys(DEFAULT_FILTERS) as (keyof FacilityFilters)[]
-).filter(
-  (k) =>
-    !(BASIC_FILTER_KEYS as readonly string[]).includes(k) && !isStrictKey(k),
-);
-
 /**
  * Set to a non-default value; a strict flag counts only while its bound is set, and the ranking
  * measure, order, level, and grouping only while Top N is set.
@@ -190,6 +203,12 @@ export function applyDescribed(
   const next = {
     ...base,
     ...Object.fromEntries(set.map((k) => [k, described[k]])),
+    // A described bound brings its own ≥ or >, never the page default's.
+    ...Object.fromEntries(
+      STRICT_KEYS.filter((k) =>
+        set.includes(k.slice(0, -"Strict".length) as RangeKey),
+      ).map((k) => [k, described[k]]),
+    ),
   };
   // Pages that pick years as a range (Analyze) show "in 2025" as 2025–2025.
   if (yearRange && next.year !== "ALL") {
@@ -213,11 +232,7 @@ export function describeRanking(filters: FacilityFilters) {
       : n === 1
         ? "facility"
         : "facilities";
-  // "heat rate", but "CO₂ intensity": formulas keep their capitals.
-  const measure = /^[A-Z]{2}/.test(label)
-    ? label
-    : label[0]!.toLowerCase() + label.slice(1);
-  return `${filters.topDir === "asc" ? "Lowest" : "Top"} ${n} ${what} by ${measure}${
+  return `${filters.topDir === "asc" ? "Lowest" : "Top"} ${n} ${what} by ${inSentence(label)}${
     filters.rankGroup === "state" ? " per state" : ""
   }`;
 }
@@ -229,7 +244,7 @@ export const DEFAULT_TABLE_STATE = {
   sortDir: "asc" as SortDirection,
 };
 
-/** Audits tab sort keys (server-side, the table is paged). */
+/** Audit flags tab sort keys (server-side, the table is paged). */
 export const AUDIT_SORT_FIELDS = [
   "year",
   "severity",
@@ -327,14 +342,18 @@ const TAB_TABLES = {
   },
 } as const;
 
-type Params = Record<string, string | string[] | undefined>;
+/** A page's search params, as Next passes them. */
+export type Params = Record<string, string | string[] | undefined>;
+
+/** A search param's first value. */
+export const firstParam = (params: Params, key: string) => {
+  const v = params[key];
+  return Array.isArray(v) ? v[0] : v;
+};
 
 /** Rebuilds explorer state from URL query params, ignoring unknown keys and invalid values. */
 export function parseExplorerParams(params: Params): ExplorerState {
-  const get = (key: string) => {
-    const v = params[key];
-    return Array.isArray(v) ? v[0] : v;
-  };
+  const get = (key: string) => firstParam(params, key);
   const oneOf = <T extends string>(values: readonly T[], v?: string) =>
     values.find((x) => x === v);
   const positive = (v?: string) => {

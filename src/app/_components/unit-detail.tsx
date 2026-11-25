@@ -3,7 +3,11 @@
 import { use } from "react";
 import { Badge, FuelBadge } from "~/components/ui/badge";
 import { Term } from "~/components/ui/term";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { DialogHeader } from "~/components/ui/dialog";
 import { DetailList, ReportTable, Section } from "~/components/ui/report";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
@@ -13,21 +17,29 @@ import {
   formatNumber,
   formatQuantity,
   plural,
+  formatDate,
 } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { CompareActions } from "./compare-view";
 import { DetailLink } from "./detail-link";
 import { SelectionContext } from "./selection-context";
 import { AuditPanel, flagsOfRecords } from "./audit-logs-table";
-import { METRICS } from "~/lib/metrics";
+import { detailLinks } from "~/lib/analysis-state";
+import { METRICS, RATES } from "~/lib/metrics";
 
-/** Unit detail (in the detail dialog): identification, fuel and controls, and every reporting year (2015 on). */
+/** Unit detail (in the detail dialog): identification, fuel and controls, and every reporting year. */
 export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
   const { compareUnitIds, toggleUnitCompare } = use(SelectionContext);
-  const { data: unit, isLoading } = api.facilities.getUnit.useQuery({
+  const {
+    data: unit,
+    isLoading,
+    error,
+    refetch,
+  } = api.facilities.getUnit.useQuery({
     id: unitInternalId,
   });
 
+  if (error) return <QueryError error={error} onRetry={() => void refetch()} />;
   if (isLoading) return <InlineLoading title="Loading unit…" />;
   if (!unit) {
     return (
@@ -40,10 +52,11 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
 
   const records = unit.annualRecords;
   const latest = records[0];
-  // The current year is still being reported, so the What-if baseline is the last complete one.
-  const predictYear = records.find(
-    (r) => r.year < new Date().getFullYear(),
-  )?.year;
+  const links = detailLinks(
+    unit.facilityId,
+    unit.unitId,
+    records.map((r) => r.year),
+  );
   const auditLogs = flagsOfRecords(records, unit.unitId);
   const clean = (v: string | null | undefined) =>
     v ? v.replaceAll("|", " · ") : "—";
@@ -110,8 +123,13 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
             onToggle={() => toggleUnitCompare(unit.id)}
             links={[
               [
+                "Analyze",
+                links.analyze,
+                "Trends, distributions, and TRACI impacts for this unit",
+              ],
+              [
                 "Predict",
-                `/predict?tab=whatif&fid=${unit.facilityId}&uid=${encodeURIComponent(unit.unitId)}${predictYear ? `&year=${predictYear}` : ""}`,
+                links.predict,
                 "Predicted NOₓ for this unit's last complete year, and how it responds to changes",
               ],
             ]}
@@ -160,13 +178,16 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
               latest?.heatInputMMBtu,
               METRICS.heatInputMMBtu.unit,
             )}
-            subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, "MMBtu/MWh", { digits: 2 })} heat rate`}
+            subtext={`${formatQuantity(latest?.heatRateMMBtuMWh, RATES.heatRate.unit, { digits: 2 })} heat rate`}
           />
           <StatTile
             variant="card"
             label={METRICS.co2MassTons.short}
             value={formatQuantity(latest?.co2MassTons, "t")}
-            subtext={formatQuantity(latest?.co2IntensityLbsMWh, "lbs/MWh")}
+            subtext={formatQuantity(
+              latest?.co2IntensityLbsMWh,
+              RATES.co2Intensity.unit,
+            )}
           />
           <StatTile
             variant="card"
@@ -188,20 +209,29 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
             sortable
             sortKeys={records.map((r) => [
               r.year,
-              ...Array<undefined>(10),
+              r.operatingHours,
+              r.grossGenerationMWh,
+              r.heatInputMMBtu,
+              r.steamLoadKlb,
+              r.co2MassTons,
+              r.so2MassTons,
+              r.noxMassTons,
+              r.co2IntensityLbsMWh,
+              r.heatRateMMBtuMWh,
+              undefined,
               r.dataset?.importedAt,
             ])}
             head={[
               "Year",
-              "Op. hours",
-              "Gross MWh",
-              "Heat MMBtu",
+              METRICS.operatingHours.column,
+              METRICS.grossGenerationMWh.column,
+              METRICS.heatInputMMBtu.column,
               "Steam klb",
-              "CO₂ t",
-              "SO₂ t",
-              "NOₓ t",
-              "lbs/MWh",
-              "MMBtu/MWh",
+              METRICS.co2MassTons.column,
+              METRICS.so2MassTons.column,
+              METRICS.noxMassTons.column,
+              RATES.co2Intensity.unit,
+              RATES.heatRate.unit,
               "Controls, programs",
               "Source",
             ]}
@@ -233,7 +263,7 @@ export function UnitDetail({ unitInternalId }: { unitInternalId: string }) {
                   key="s"
                   definition={`${datasetOriginLabel(r.dataset)}\n${r.dataset.name}${r.supersededUpload ? `\nReplaced upload: ${r.supersededUpload.originalFilename}` : ""}`}
                 >
-                  {`${r.dataset.source === "API" ? "API" : "Upload"}, ${r.dataset.importedAt.toLocaleDateString()}${r.supersededUpload ? " (replaced upload)" : ""}`}
+                  {`${r.dataset.source === "API" ? "API" : "Upload"}, ${formatDate(r.dataset.importedAt)}${r.supersededUpload ? " (replaced upload)" : ""}`}
                 </Term>
               ) : (
                 "—"
@@ -268,6 +298,7 @@ function YearControls({
     ["PM", record.pmControls],
     ["Hg", record.hgControls],
   ].filter((p): p is [string, string] => Boolean(p[1]));
+  if (!parts.length && !record.programCode) return "None";
   const text = parts.map(([k, v]) => `${k}: ${v}`).join("\n");
   return (
     <Term

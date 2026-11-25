@@ -7,7 +7,9 @@ import { predictMetadata } from "~/lib/export-bundle";
 import { PageTitle } from "~/components/ui/page";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import {
+  normalizeRange,
   predictSearchParams,
+  predictViewRecord,
   type parsePredictParams,
   type PredictView as View,
 } from "~/lib/analysis-state";
@@ -15,6 +17,7 @@ import { DEFAULT_FILTERS } from "~/lib/facility-filters";
 import {
   describeScenario,
   MODEL_COLORS,
+  predictableYears,
   sameScenario,
   WHAT_IF_CHANGES,
   type ScenarioSpec,
@@ -46,16 +49,20 @@ export interface WhatIfProps {
   changeLabel: string;
 }
 
-/** A model in a sentence: "Ridge", "the tree". */
-export const modelName = (m: Model) =>
-  m.kind === "tree" ? "the tree" : m.kind === "ridge" ? "Ridge" : m.name;
+const IN_SENTENCE: Record<string, string> = {
+  baseline: "the baseline",
+  ridge: "Ridge",
+  tree: "the tree",
+};
+/** A model in a sentence: "Ridge", "the tree", "the baseline". */
+export const modelName = (m: Model) => IN_SENTENCE[m.kind] ?? m.name;
 
 /** The chosen models as chart series. */
 export const modelSeries = (chosen: Model[]) =>
   chosen.map((m) => ({
     key: m.kind,
     label: `${shortName(m)} model`,
-    color: MODEL_COLORS[m.kind]!,
+    color: MODEL_COLORS[m.kind],
   }));
 
 const TABS = { models: "Models", whatif: "What-if" } as const;
@@ -70,26 +77,23 @@ export function PredictView({
   const query = predictSearchParams(view);
   useEffect(() => replaceUrlQuery(query), [query]);
   const setView = (patch: Partial<View>) =>
-    setViewState((v) => ({ ...v, ...patch }));
+    setViewState((v) => normalizeRange({ ...v, ...patch }));
 
   const [models] = api.prediction.models.useSuspenseQuery();
   const { data: source } = api.analysis.provenance.useQuery();
-  const trained = models.filter((m) => m.kind !== "baseline");
-  // The model picker is the Models tab's; What-if always answers with both models.
-  const chosen =
-    view.tab === "models" && (view.model === "ridge" || view.model === "tree")
-      ? trained.filter((m) => m.kind === view.model)
-      : trained;
+  // What-if always answers with both trained models; the Models tab shows all three.
+  const trained = useMemo(
+    () => models.filter((m) => m.kind !== "baseline"),
+    [models],
+  );
 
   return (
     <ExportContext
       value={predictMetadata(
         source,
-        view,
-        // The Models tab's comparison charts and table include the baseline, so it is described too.
-        view.tab === "models"
-          ? [...models.filter((m) => m.kind === "baseline"), ...chosen]
-          : chosen,
+        predictViewRecord(view),
+        // Every model a tab's charts and tables include is described.
+        view.tab === "models" ? models : trained,
       )}
     >
       <div className="space-y-6">
@@ -106,7 +110,7 @@ export function PredictView({
           }))}
         />
 
-        {!chosen.length ? (
+        {!trained.length ? (
           <p className="text-fg-muted text-sm">
             No models are registered. Run <code>npm run ml:train</code>.
           </p>
@@ -135,8 +139,18 @@ function WhatIf({
 }: Pick<WhatIfProps, "view" | "setView" | "chosen">) {
   const year = Number(view.year);
   const { data: filterOptions } = api.facilities.getFilterOptions.useQuery();
-  // A prediction needs the previous year as an input, so the first stored year can't be one.
-  const years = (filterOptions?.years ?? []).slice(0, -1);
+  // Last year's NOₓ rate is an input, and the models know 2016–2025: only complete years whose
+  // previous year is stored, within that span (no partial current year, no year after a gap).
+  const model = chosen[0]!;
+  const years = predictableYears(
+    filterOptions?.years ?? [],
+    model.fitYears,
+    model.testYears,
+  );
+  const badYear = years.length > 0 && !years.includes(year);
+  useEffect(() => {
+    if (badYear) setView({ year: String(years[0]) });
+  }, [badYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The current plant's units: its name and state for the sentence, and a unit to fall back on.
   const units = api.prediction.baselineUnits.useQuery(
@@ -222,6 +236,7 @@ function WhatIf({
         </p>
       ) : (
         <div
+          inert={scope.isPlaceholderData}
           className={
             scope.isPlaceholderData ? "space-y-10 opacity-60" : "space-y-10"
           }

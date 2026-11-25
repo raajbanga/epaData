@@ -4,9 +4,9 @@ import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
-/** The dotted underline that says "this word has a definition", shared with table headers. */
+/** The dotted underline that says "this word has a definition". */
 const TERM_CLASS =
-  "decoration-fg-muted/60 underline decoration-dotted underline-offset-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+  "decoration-fg-muted/60 underline decoration-dotted underline-offset-4 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 /**
  * A word with its definition: shown on hover (after a short pause), on keyboard focus, and on

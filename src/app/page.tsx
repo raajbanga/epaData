@@ -37,11 +37,11 @@ const QUESTIONS = [
   {
     href: "/predict?tab=whatif&scope=state&st=TX&burns=Coal",
     label: "What if a plant cleaned up?",
-    body: "Predicted NOₓ if Texas coal plants added a NOₓ scrubber.",
+    body: "Predicted NOₓ if Texas coal plants added SCR, a catalytic NOₓ control.",
   },
   {
     href: "/analyze?tab=impacts",
-    label: "What harm does it do?",
+    label: "What impact could it have?",
     body: "Emissions turned into climate, acid-rain, smog, and health effects.",
   },
 ];

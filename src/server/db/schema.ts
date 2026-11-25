@@ -1,4 +1,5 @@
 import { relations, sql } from "drizzle-orm";
+import type { ModelArtifact, ModelKind } from "~/lib/model";
 import {
   index,
   integer,
@@ -267,7 +268,7 @@ export const traciFactors = sqliteTable(
     traciVersion: text("traci_version").notNull(), // e.g. "2.2"
     pollutant: text("pollutant").notNull(), // CAMPD pollutant: "co2" | "so2" | "nox"
     substance: text("substance").notNull(), // TRACI substance name, e.g. "NITROGEN OXIDES"
-    cas: text("cas").notNull(), // TRACI's formatted CAS number ("x" when TRACI lists none)
+    cas: text("cas").notNull(), // TRACI's CAS number as listed, digits only ("x" when TRACI lists none)
     medium: text("medium").notNull(), // always "air" for CAMPD
     impactCategory: text("impact_category").notNull(),
     factor: real("factor").notNull(),
@@ -290,7 +291,7 @@ export const traciFactors = sqliteTable(
 export const models = sqliteTable("models", {
   id: text("id").primaryKey(), // e.g. "nox-ridge"
   name: text("name").notNull(),
-  kind: text("kind").notNull(), // "baseline" | "ridge" | "tree"
+  kind: text("kind").$type<ModelKind>().notNull(),
   target: text("target").notNull(),
   features: text("features", { mode: "json" }).$type<string[]>().notNull(),
   params: text("params", { mode: "json" })
@@ -305,16 +306,14 @@ export const models = sqliteTable("models", {
   metrics: text("metrics", { mode: "json" })
     .$type<Record<string, Record<string, number>>>()
     .notNull(),
-  artifact: text("artifact", { mode: "json" })
-    .$type<Record<string, unknown>>()
-    .notNull(),
+  artifact: text("artifact", { mode: "json" }).$type<ModelArtifact>().notNull(),
   artifactPath: text("artifact_path").notNull(), // ml/models/<id>.joblib
   pipelineVersion: text("pipeline_version").notNull(), // git commit + scikit-learn version
   trainedAt: integer("trained_at", { mode: "timestamp" }).notNull(),
 });
 
 /**
- * Stored results of slow analyses, keyed by procedure, input, and data version, so a view
+ * Stored results of slow analyses, keyed by procedure and input and stamped with the data version, so a view
  * computed once (locally, or by `npm run db:precompute`) is read instead of recomputed. The
  * hosted database is read-only, so it serves what was stored before deploying.
  */

@@ -18,7 +18,7 @@ only work when you run it yourself.
 - **Explore**: search 1,777 facilities and 57,000+ unit-years by name, any field, numeric
   ranges, or a plain-English description ("coal units in Kentucky with high CO2"). Rank the top N
   overall or per state, and compare up to four facilities or units side by side.
-- **Map**: every facility on a 3D globe or a flat map, colored by fuel and sized by capacity or CO₂.
+- **Map**: every facility with coordinates on a 3D globe or a flat map, colored by fuel and sized by capacity or CO₂.
 - **Retrieve and Upload**: pull data from the EPA API or import a CSV or Excel file, review what
   is new, changed, or rejected, and approve before anything is saved. Every record is checked
   against physical-sanity rules.
@@ -216,12 +216,22 @@ erDiagram
         text params "JSON"
         text train_years
         text validation_years
+        text fit_years
         text test_years
         text metrics "JSON"
         text artifact "JSON"
         text artifact_path
         text pipeline_version
         integer trained_at
+    }
+
+    RESULT_CACHE {
+        text key PK "procedure + input"
+        text procedure
+        text input "JSON"
+        text data_version
+        text value "JSON"
+        integer computed_at
     }
 ```
 

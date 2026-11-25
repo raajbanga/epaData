@@ -21,6 +21,7 @@ import {
   RANGE_FIELDS,
   type FacilityFilters,
   type FilterChangeHandler,
+  rangeText,
 } from "~/lib/facility-filters";
 import { AUDIT_RULES, AUDIT_SEVERITIES } from "~/lib/emissions-metrics";
 import { cn, formatNumber, shortNumber } from "~/lib/utils";
@@ -32,10 +33,8 @@ import {
 } from "./facility-search";
 
 type FilterOptions = RouterOutputs["facilities"]["getFilterOptions"];
-type DescribeResult = Pick<
-  RouterOutputs["facilities"]["describeSearch"],
-  "unrecognized" | "via" | "notes"
->;
+type DescribeResponse = RouterOutputs["facilities"]["describeSearch"];
+type DescribeResult = Pick<DescribeResponse, "unrecognized" | "via" | "notes">;
 
 /**
  * Description search wiring for the search box: the text is interpreted into filters
@@ -49,8 +48,6 @@ interface DescribeProps {
   isLoading: boolean;
   result: DescribeResult | null;
 }
-
-type DescribeResponse = RouterOutputs["facilities"]["describeSearch"];
 
 /** Whether a description set anything besides a name search. */
 const setsFilters = (filters: FacilityFilters) =>
@@ -132,13 +129,24 @@ const CHIP_LABELS: Partial<Record<keyof FacilityFilters, string>> = {
   pmControl: "PM control",
   programCode: "Program",
   operatingStatus: "Status",
+  origin: "Origin",
   auditFlag: "Flag",
   auditSeverity: "Severity",
 };
 
+const ORIGINS = [
+  { value: "API", label: "Pulled from the EPA" },
+  { value: "UPLOAD", label: "File upload" },
+];
+const FLAGS = AUDIT_RULES.map((r) => ({ value: r.flagType, label: r.label }));
+/** The menu's name for a coded filter value, so a chip reads as it was picked. */
+const VALUE_LABELS = Object.fromEntries(
+  [...ORIGINS, ...FLAGS].map((o) => [o.value, o.label]),
+) as Record<string, string | undefined>;
+
 const formatBound = (v: string) => {
   const n = Number(v.replace(/,/g, ""));
-  return Number.isFinite(n) ? (shortNumber(n) ?? n.toLocaleString()) : v;
+  return Number.isFinite(n) ? (shortNumber(n) ?? n.toLocaleString("en-US")) : v;
 };
 
 /** One removable chip per active filter (range pairs and ranking combined), built from the filters themselves. */
@@ -160,34 +168,24 @@ function activeChips(filters: FacilityFilters, names: Record<string, string>) {
     string,
   ][]) {
     if (on(key))
-      chips.push({ label: `${label}: ${filters[key]}`, keys: [key] });
+      chips.push({
+        label: `${label}: ${VALUE_LABELS[filters[key]] ?? filters[key]}`,
+        keys: [key],
+      });
   }
   if (on("year")) chips.push({ label: `Year ${filters.year}`, keys: ["year"] });
-  if (on("origin")) {
-    chips.push({
-      label: `Origin: ${filters.origin === "API" ? "EPA API" : "Upload"}`,
-      keys: ["origin"],
-    });
-  }
   for (const { key, label, unit } of RANGE_FIELDS) {
     // Years read as plain numbers ("2015", not "2,015").
     const format = key === "year" ? (v: string) => v.trim() : formatBound;
     const min = on(`${key}Min`) ? format(filters[`${key}Min`]) : undefined;
     const max = on(`${key}Max`) ? format(filters[`${key}Max`]) : undefined;
     if (!min && !max) continue;
-    const minStrict = on(`${key}MinStrict`);
-    const maxStrict = on(`${key}MaxStrict`);
-    const bounds =
-      min && max && !minStrict && !maxStrict
-        ? min === max
-          ? min
-          : `${min}–${max}`
-        : [
-            min && `${minStrict ? ">" : "≥"} ${min}`,
-            max && `${maxStrict ? "<" : "≤"} ${max}`,
-          ]
-            .filter(Boolean)
-            .join(", ");
+    const bounds = rangeText(
+      min,
+      max,
+      on(`${key}MinStrict`),
+      on(`${key}MaxStrict`),
+    );
     chips.push({
       label: `${label} ${bounds}${key === "year" ? "" : ` ${unit}`}`,
       keys: [`${key}Min`, `${key}Max`, `${key}MinStrict`, `${key}MaxStrict`],
@@ -239,7 +237,7 @@ type GroupId = (typeof GROUPS)[number]["id"];
 /** Which group's editor a filter key belongs to (and so which one its chip opens). */
 const groupOf = (key: keyof FacilityFilters): GroupId | null => {
   if (["stateCode", "county", "nercRegion"].includes(key)) return "place";
-  if (key === "year" || key.startsWith("year")) return "years";
+  if (key.startsWith("year")) return "years";
   if (["primaryFuel", "secondaryFuel"].includes(key)) return "fuel";
   if (
     [
@@ -552,13 +550,7 @@ function GroupEditor({ group, ...props }: EditorProps & { group: GroupId }) {
               [
                 "auditFlag",
                 "Audit flag",
-                [
-                  { value: "ALL", label: "Any (or none)" },
-                  ...AUDIT_RULES.map((r) => ({
-                    value: r.flagType,
-                    label: r.label,
-                  })),
-                ],
+                [{ value: "ALL", label: "Any (or none)" }, ...FLAGS],
               ],
               [
                 "auditSeverity",
@@ -568,11 +560,7 @@ function GroupEditor({ group, ...props }: EditorProps & { group: GroupId }) {
               [
                 "origin",
                 "Record origin",
-                [
-                  { value: "ALL", label: "Any" },
-                  { value: "API", label: "Pulled from the EPA" },
-                  { value: "UPLOAD", label: "File upload" },
-                ],
+                [{ value: "ALL", label: "Any" }, ...ORIGINS],
               ],
             ]}
           />
@@ -595,7 +583,6 @@ function EditorBody({ group, ...props }: EditorProps & { group: GroupId }) {
 /** "+ Filter": the groups, then the chosen group's fields in the same popover. */
 function AddFilter(props: EditorProps) {
   const [group, setGroup] = useState<GroupId | null>(null);
-  const shown = GROUPS.filter((g) => props.view !== "flags" || g.id !== "rank");
   return (
     <Popover onOpenChange={() => setGroup(null)}>
       <PopoverTrigger asChild>
@@ -619,7 +606,7 @@ function AddFilter(props: EditorProps) {
           </div>
         ) : (
           <ul>
-            {shown.map((g) => (
+            {GROUPS.map((g) => (
               <li key={g.id}>
                 <button
                   type="button"

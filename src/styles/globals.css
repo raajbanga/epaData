@@ -80,7 +80,7 @@
     background-color: var(--canvas);
     color: var(--fg);
     -webkit-font-smoothing: antialiased;
-    /* Sub-pixel rounding (the home globe) must not scroll the page sideways on a phone. "clip",
+    /* Sub-pixel rounding (the map's globe) must not scroll the page sideways on a phone. "clip",
        unlike "hidden", keeps sticky headers working. */
     overflow-x: clip;
   }

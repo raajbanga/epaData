@@ -10,9 +10,10 @@ import { datasets, resultCache, traciFactors } from "~/server/db/schema";
  * factors, and logic it was computed from (`dataVersion`), so an import makes old results
  * unreachable at once.
  *
- * Locally every computed result is stored; `npm run db:precompute` drops old versions and
- * recomputes the rest, and the committed database ships them. The hosted database is read-only,
- * so there a miss is computed and kept in memory only.
+ * Locally every computed result is stored; `npm run db:precompute` recomputes the entries from
+ * older data versions and drops those whose input no longer parses, and the committed database
+ * ships them. The hosted database is read-only, so there a miss is computed and kept in memory
+ * only.
  */
 
 /**

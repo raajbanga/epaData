@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { GlossedText } from "~/components/ui/glossed-text";
-import { cn } from "~/lib/utils";
 
 /**
  * Page body for the data pages (Retrieve, Upload, Download): title block, sections, and an
@@ -10,15 +9,13 @@ export function PageView({
   header,
   footer,
   children,
-  className,
 }: {
   header: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={cn("space-y-8", className)}>
+    <div className="space-y-8">
       <header className="space-y-2">{header}</header>
       {children}
       {footer && (
@@ -34,14 +31,12 @@ export function PageView({
 export function PageTitle({
   children,
   lead,
-  className,
 }: {
   children: ReactNode;
   lead?: ReactNode;
-  className?: string;
 }) {
   return (
-    <div className={cn("space-y-1.5", className)}>
+    <div className="space-y-1.5">
       <h1 className="text-fg text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
         {children}
       </h1>

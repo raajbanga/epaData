@@ -13,7 +13,9 @@ import {
   changedInputs,
   MODEL_COLORS,
   sameScenario,
+  scenarioSummary,
   scopeTotals,
+  treeGroupSummary,
   treePath,
   WHAT_IF_CHANGES,
   type ScopeTotals,
@@ -24,6 +26,7 @@ import {
   baselineReading,
   breakdownReading,
   otherChangesReading,
+  treeGroupReading,
   treePathReading,
   whatIfAnswer,
 } from "~/lib/takeaways";
@@ -40,9 +43,9 @@ import { SensitivitySection } from "./sensitivity";
 type Totals = { model: Model } & ScopeTotals;
 
 /**
- * The answer, then the detail: a headline with what it means, where the change comes from (or,
- * for one unit, how the tree decided), the same units under the other changes, and how the
- * prediction responds to one input.
+ * The answer, then the detail: a headline with what it means, the same units under the other
+ * changes, where a group's change comes from, how the tree decided (one unit's path, or a group's
+ * most common paths), and how the prediction responds to one input.
  */
 export function WhatIfResults(props: WhatIfProps) {
   const { chosen, scope, spec, unit, view } = props;
@@ -56,6 +59,11 @@ export function WhatIfResults(props: WhatIfProps) {
       })),
     [chosen, rows, spec],
   );
+  // One unit: each input the change sets. A group, or a unit it leaves alone, gets the summary.
+  const changed =
+    unit && rows[0]
+      ? changedInputs(rows[0].inputs, applyScenario(rows[0].inputs, spec))
+      : [];
   const actual = rows.reduce((s, r) => s + r.actual, 0);
   // A state's change reads against the nation; anything inside one state, against that state.
   const share =
@@ -67,7 +75,6 @@ export function WhatIfResults(props: WhatIfProps) {
     share,
     results: totals.map((t) => ({
       model: modelName(t.model),
-      base: t.base,
       diff: t.diff,
       diffPct: t.diffPct,
       outside: t.outside,
@@ -89,6 +96,7 @@ export function WhatIfResults(props: WhatIfProps) {
       </ChartGrid>
 
       {!unit && <Breakdown totals={totals} />}
+      {!unit && <GroupTreePanel {...props} />}
 
       <SensitivitySection {...props} />
 
@@ -114,23 +122,22 @@ export function WhatIfResults(props: WhatIfProps) {
             unit-years, since independent errors partly cancel.
           </p>
           <p>
-            Smog, acidification, and fine-particle potential are TRACI 2.2
+            Smog, acidification, and fine-particle potential are TRACI
             indicators: NOₓ (kg) × a fixed factor per category, so from NOₓ
             alone they change by the same percentage. {IMPACT_DISCLAIMER}
           </p>
         </div>
-        {unit && rows[0] && !sameScenario(spec, AS_REPORTED) && (
+        {rows[0] && !sameScenario(spec, AS_REPORTED) && (
           <div className="space-y-1">
             <p className="text-fg-2 text-sm font-medium">
-              Inputs the change sets for this unit
+              Inputs the change sets for {unit ? "this unit" : "these units"}
             </p>
             <ul className="text-fg-2 list-disc space-y-0.5 pl-5 text-sm">
-              {changedInputs(
-                rows[0].inputs,
-                applyScenario(rows[0].inputs, spec),
-              ).map((c) => (
-                <li key={c}>{c}</li>
-              ))}
+              {(changed.length ? changed : scenarioSummary(rows, spec)).map(
+                (c) => (
+                  <li key={c}>{c}</li>
+                ),
+              )}
             </ul>
           </div>
         )}
@@ -158,12 +165,12 @@ function BeforeAfter({
       filename="whatif-before-after"
       height={totals.length * 40 + 60}
       table={{
-        head: ["bar", "nox_tons", "change_pct"],
+        head: ["bar", "nox_tons", "change_tons", "change_pct"],
         rows: [
-          [`reported ${view.year}`, actual, null],
+          [`reported ${view.year}`, actual, null, null],
           ...totals.flatMap((t) => [
-            [`${t.model.id} as reported`, t.base, null],
-            [`${t.model.id} with the change`, t.scenario, t.diffPct],
+            [`${t.model.id} as reported`, t.base, null, null],
+            [`${t.model.id} with the change`, t.scenario, t.diff, t.diffPct],
           ]),
         ],
       }}
@@ -178,42 +185,52 @@ function BeforeAfter({
           label: `${shortName(t.model)} model`,
           from: t.base,
           to: t.scenario,
-          color: MODEL_COLORS[t.model.kind] ?? "var(--chart-slate)",
-          note: formatPct(t.diffPct),
+          color: MODEL_COLORS[t.model.kind],
+          note: zeroNote(t) ?? formatPct(t.diffPct),
         }))}
       />
     </ChartFrame>
   );
 }
 
+/** From a prediction of 0 there is no percentage, so the change is read in tons. */
+function zeroNote(t: { diff: number; diffPct: number | null }) {
+  if (t.diffPct !== null) return undefined;
+  return Math.abs(t.diff) < 0.05
+    ? "no change (0 t)"
+    : `from 0 t: ${formatSigned(Number(t.diff.toPrecision(3)), "t")}, no %`;
+}
+
 /** A group: the plants (or, within one plant, the units) the change comes from. */
 function Breakdown({ totals }: { totals: Totals[] }) {
-  const placeCount = (t: Totals) =>
-    new Set(t.units.map((u) => (onePlant ? u.row.unitId : u.row.facilityId)))
-      .size;
-  const onePlant =
-    new Set(totals[0]?.units.map((u) => u.row.facilityId)).size === 1;
+  const units = totals[0]?.units ?? [];
+  const plants = new Set(units.map((u) => u.row.facilityId)).size;
+  const onePlant = plants === 1;
   const by = onePlant ? "unit" : "plant";
   const TOP = 8;
-  const lists = totals.map((t) => {
-    const groups = new Map<string, number>();
-    for (const u of t.units) {
-      const key = onePlant
-        ? `Unit ${u.row.unitId}`
-        : `${u.row.facilityName} (${u.row.stateCode})`;
-      groups.set(key, (groups.get(key) ?? 0) + u.diff);
-    }
-    return {
-      model: t.model,
-      rows: [...groups]
-        .filter(([, d]) => Math.abs(d) >= 0.05)
-        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])),
-    };
-  });
+  const lists = useMemo(
+    () =>
+      totals.map((t) => {
+        const groups = new Map<string, number>();
+        for (const u of t.units) {
+          const key = onePlant
+            ? `Unit ${u.row.unitId}`
+            : `${u.row.facilityName} (${u.row.stateCode})`;
+          groups.set(key, (groups.get(key) ?? 0) + u.diff);
+        }
+        return {
+          model: t.model,
+          rows: [...groups]
+            .filter(([, d]) => Math.abs(d) >= 0.05)
+            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])),
+        };
+      }),
+    [totals, onePlant],
+  );
 
   return (
     <ChartFrame
-      title={`Where the change comes from`}
+      title="Where the change comes from"
       subtitle={`The ${by}s whose predicted NOₓ changes the most, in short tons a year. Each model has its own list.`}
       reading={breakdownReading(
         lists.map((l) => ({
@@ -222,7 +239,7 @@ function Breakdown({ totals }: { totals: Totals[] }) {
           rows: l.rows,
         })),
         by,
-        totals[0] ? placeCount(totals[0]) : 0,
+        onePlant ? units.length : plants,
       )}
       filename={`whatif-change-by-${by}`}
       height={TOP * 26}
@@ -240,7 +257,7 @@ function Breakdown({ totals }: { totals: Totals[] }) {
               <span className="text-fg-2 font-medium">
                 {shortName(l.model)}
               </span>{" "}
-              · {formatNumber(l.rows.length)} {by}s change
+              · {plural(l.rows.length, by)} with a change
             </p>
             {l.rows.length ? (
               <BarList
@@ -271,9 +288,7 @@ function TreePathPanel({ chosen, scope, spec }: WhatIfProps) {
   if (!tree || !row) return null;
   const before = treePath(tree.artifact, row.inputs)!;
   const after = treePath(tree.artifact, applyScenario(row.inputs, spec))!;
-  const same =
-    before.steps.length === after.steps.length &&
-    before.steps.every((s, i) => s.text === after.steps[i]!.text);
+  const same = before.leaf === after.leaf;
   const path = (p: typeof before, title: string) => (
     <div className="min-w-0 space-y-2">
       <p className="text-fg-2 text-sm font-medium">{title}</p>
@@ -294,6 +309,20 @@ function TreePathPanel({ chosen, scope, spec }: WhatIfProps) {
       filename="whatif-tree-path"
       height={260}
       reading={treePathReading(before, after)}
+      table={{
+        head: ["step", "as_reported", "with_the_change"],
+        rows: [
+          ...Array.from(
+            { length: Math.max(before.steps.length, after.steps.length) },
+            (_, i) => [
+              i + 1,
+              before.steps[i]?.text ?? null,
+              after.steps[i]?.text ?? null,
+            ],
+          ),
+          ["predicted_nox_tons", before.value, after.value],
+        ],
+      }}
     >
       {same ? (
         <div className="space-y-3">
@@ -354,11 +383,15 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
         )
         .join(
           " and ",
-        )}; bars show how much that would go down (left) or up (right), one per model. ⚠ marks a change that takes units outside the training data.`}
+        )}; bars show how much that would go down (left) or up (right), one per model. ⚠ marks a change that takes units outside the training data; a hatched bar is a change from a prediction of 0, which has no percentage.`}
       reading={otherChangesReading(
         results.map((r) => ({
           label: r.change.label,
-          pcts: chosen.map((m) => r.byModel[m.kind]!.diffPct ?? 0),
+          results: chosen.map((m) => ({
+            model: modelName(m),
+            pct: r.byModel[m.kind]!.diffPct,
+            tons: r.byModel[m.kind]!.diff,
+          })),
         })),
         results.find((r) => sameScenario(r.change.spec, spec))?.change.label,
       )}
@@ -388,7 +421,7 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
       <DivergingRows
         less="less NOₓ"
         more="more NOₓ"
-        format={(v) => formatPct(v)}
+        format={formatPct}
         rows={results.map((r) => ({
           label: r.change.label,
           description: (() => {
@@ -402,15 +435,151 @@ function OtherChanges({ chosen, scope, spec, changeLabel }: WhatIfProps) {
           highlight: sameScenario(r.change.spec, spec),
           bars: chosen.map((m) => {
             const t = r.byModel[m.kind]!;
+            const fromZero = t.diffPct === null;
             return {
               key: m.kind,
-              value: t.diffPct ?? 0,
-              color: MODEL_COLORS[m.kind] ?? "var(--chart-slate)",
-              title: `${shortName(m)} model: ${formatStat(t.base)} → ${formatStat(t.scenario)} t a year (${formatSigned(t.diff, "t")}, ${formatPct(t.diffPct)})`,
+              value: t.diffPct,
+              sign: Math.abs(t.diff) < 0.05 ? 0 : Math.sign(t.diff),
+              text: zeroNote(t),
+              color: MODEL_COLORS[m.kind],
+              title: `${shortName(m)} model: ${formatStat(t.base)} → ${formatStat(t.scenario)} t a year (${formatSigned(t.diff, "t")}, ${fromZero ? "no percentage from 0" : formatPct(t.diffPct)})`,
             };
           }),
         }))}
       />
+    </ChartFrame>
+  );
+}
+
+/**
+ * A group: the tree's most common paths (the answers its units give), with how many units and how
+ * much predicted NOₓ end in each, the answers the change flips, and the checks that split the group.
+ */
+function GroupTreePanel({ chosen, scope, spec }: WhatIfProps) {
+  const tree = chosen.find((m) => m.kind === "tree");
+  const g = useMemo(
+    () => (tree ? treeGroupSummary(tree.artifact, scope.rows, spec) : null),
+    [tree, scope.rows, spec],
+  );
+  if (!tree || !g) return null;
+  const TOP = 5;
+  const used = g.paths.filter((p) => p.before.units);
+  const total = used.reduce((s, p) => s + p.before.tons, 0);
+  const changed = !sameScenario(spec, AS_REPORTED);
+  const tons = (v: number) => `${formatStat(v)} t`;
+  return (
+    <ChartFrame
+      title="Why the tree predicts what it does"
+      subtitle={`The tree model works like a flowchart: it asks each unit **a few yes/no questions**, then predicts the average NOₓ of past units that gave the same answers. Each set of answers is a path; the ${plural(Math.min(TOP, used.length), "path")} with the most predicted NOₓ ${used.length === 1 ? "is" : "are"} shown.`}
+      reading={treeGroupReading(g, scope.rows.length)}
+      note="Each path is one leaf of the tree: every unit on it gets the same prediction, the leaf's value. The download lists every leaf any unit reaches, as reported and with the change."
+      filename="whatif-tree-paths"
+      height={TOP * 80}
+      table={{
+        head: [
+          "leaf",
+          "path",
+          "leaf_nox_tons",
+          "units_as_reported",
+          "nox_as_reported_tons",
+          "units_with_the_change",
+          "nox_with_the_change_tons",
+        ],
+        rows: g.paths.map((p) => [
+          p.leaf,
+          p.steps.join("; "),
+          p.value,
+          p.before.units,
+          p.before.tons,
+          p.after.units,
+          p.after.tons,
+        ]),
+      }}
+    >
+      <ChartGrid>
+        <div className="min-w-0 space-y-2">
+          <p className="text-fg-2 text-sm font-medium">
+            Paths with the most predicted NOₓ
+          </p>
+          {used.slice(0, TOP).map((p, i) => (
+            <details
+              key={p.leaf}
+              open={i === 0}
+              className="border-edge rounded-sm border px-3 py-2"
+            >
+              <summary className="text-fg cursor-pointer text-sm tabular-nums">
+                <span className="font-medium">
+                  {plural(p.before.units, "unit")}
+                </span>
+                ,{" "}
+                {p.before.units === 1
+                  ? tons(p.value)
+                  : `${tons(p.value)} each: ${tons(p.before.tons)}`}
+                {total > 0 &&
+                  ` (${Math.round((p.before.tons / total) * 100)} % of the tree's total)`}
+                {changed &&
+                  p.after.units !== p.before.units &&
+                  ` · with the change, ${plural(p.after.units, "unit")}`}
+              </summary>
+              <ol className="text-fg-2 marker:text-fg-muted mt-2 list-decimal space-y-0.5 pl-5 text-sm">
+                {p.steps.map((s, j) => (
+                  <li key={j}>{s}</li>
+                ))}
+              </ol>
+            </details>
+          ))}
+        </div>
+        <div className="min-w-0 space-y-6">
+          <div className="space-y-2">
+            <p className="text-fg-2 text-sm font-medium">
+              Checks that split these units
+            </p>
+            {g.splits.length ? (
+              <ul className="text-fg-2 space-y-1.5 text-sm">
+                {g.splits.slice(0, TOP).map((s, i) => (
+                  <li key={i}>
+                    {s.question}?{" "}
+                    <span className="text-fg-muted tabular-nums">
+                      Yes: {plural(s.yes.units, "unit")}, {tons(s.yes.tons)};
+                      no: {formatNumber(s.no.units)}, {tons(s.no.tons)}
+                      {s.yes.units + s.no.units < scope.rows.length &&
+                        ` (of the ${formatNumber(s.yes.units + s.no.units)} that reach it)`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-fg-muted text-sm">
+                Every unit answers every check the same way.
+              </p>
+            )}
+          </div>
+          {changed && (
+            <div className="space-y-2">
+              <p className="text-fg-2 text-sm font-medium">
+                Answers the change flips, by tons moved
+              </p>
+              {g.flips.length ? (
+                <ul className="text-fg-2 space-y-1.5 text-sm">
+                  {g.flips.slice(0, TOP).map((f) => (
+                    <li key={f.text}>
+                      To “{f.text}”{" "}
+                      <span className="text-fg-muted tabular-nums">
+                        {plural(f.units, "unit")}, {formatSigned(f.diff, "t")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-fg-muted text-sm">
+                  None: every unit keeps its answers, so the tree&apos;s
+                  prediction doesn&apos;t move.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </ChartGrid>
     </ChartFrame>
   );
 }

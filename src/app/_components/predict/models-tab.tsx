@@ -4,30 +4,22 @@ import { BarList } from "~/components/charts/bars";
 import { ScatterPlot } from "~/components/charts/scatter";
 import { ChartGrid, ChartFrame, queryStatus } from "~/components/ui/chart";
 import { Takeaways } from "~/components/ui/takeaways";
-import { modelSentence } from "~/lib/takeaways";
 import { ExportButton, ExportContext } from "~/components/ui/export-button";
 import { Button } from "~/components/ui/button";
-import { downloadBundle } from "~/lib/export-bundle";
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
 import { QuestionSentence } from "~/components/ui/question-sentence";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import { formatSigned, formatStat } from "~/lib/analysis";
-import { modelMetadata } from "~/lib/export-bundle";
+import { downloadBundle } from "~/lib/export-bundle";
 import type { PredictView } from "~/lib/analysis-state";
 import { getFuelTheme } from "~/lib/map-utils";
-import {
-  featureLabel,
-  MODEL_COLORS,
-  residualsByGroup,
-  shortName,
-} from "~/lib/model";
-import { formatNumber } from "~/lib/utils";
+import { featureLabel, MODEL_COLORS, residualsByGroup } from "~/lib/model";
+import { modelSentence } from "~/lib/takeaways";
+import { formatDate, formatNumber, inSentence } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import type { Model } from "./predict-view";
-
-const KIND_ORDER = ["baseline", "ridge", "tree"];
+import { modelName, type Model } from "./predict-view";
 
 const metric = (m: Model, split: string, key: string) =>
   m.metrics[split]?.[key] ?? null;
@@ -38,26 +30,22 @@ const interval = (m: Model, key: string) => {
   const hi = metric(m, "test_ci_high", key);
   return lo === null || hi === null ? null : ([lo, hi] as const);
 };
-const formatInterval = (
-  ci: readonly [number, number] | null,
-  format: (v: number) => string = formatStat,
-) => (ci ? `${format(ci[0])}–${format(ci[1])}` : "—");
 
 /** R² as a share: 0.951 → "95.1 %". */
 const formatR2 = (v: number | null) =>
   v === null ? "—" : `${(v * 100).toFixed(1)} %`;
 
 /** Test metrics exported with their intervals (the table shows them under the value). */
-const CI_METRICS = ["mae", "rmse", "r2"] as const;
+const CI_SCORES = ["mae", "rmse", "r2"] as const;
 
 /** The comparison table's columns: which split and metric, and which direction is better. */
-const METRICS: {
+const SCORES: {
   key: string;
   label: string;
   get: (m: Model) => number | null;
   lowerIsBetter?: boolean;
   /** A test metric with a bootstrap interval, drawn under its value. */
-  ci?: (typeof CI_METRICS)[number];
+  ci?: (typeof CI_SCORES)[number];
   format: (v: number | null) => string;
 }[] = [
   {
@@ -130,40 +118,54 @@ export function ModelsTab({
   view: PredictView;
   setView: (patch: Partial<PredictView>) => void;
 }) {
-  const sorted = [...models].sort(
-    (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind),
-  );
-  // "Both" (What-if's default) shows Ridge here.
-  const chosen =
-    sorted.find((m) => m.kind === view.model) ??
-    sorted.find((m) => m.kind === "ridge") ??
-    sorted[0]!;
+  const chosen = models.find((m) => m.kind === view.model) ?? models[0]!;
   const [from, to] = chosen.testYears.split("-").map(Number);
   const tests = api.prediction.testPredictions.useQuery({
     from: from!,
     to: to!,
   });
   const points = tests.data ?? [];
-  const fuels = [...new Set(points.map((p) => p.fuel))];
-  const residuals = residualsByGroup(
-    points.map((p) => ({
-      group: p.fuel,
-      actual: p.actual,
-      predicted: p.predicted[chosen.kind] ?? null,
-    })),
+  const zeros = points.filter((p) => p.actual <= 0).length;
+  const { fuels, residuals } = useMemo(() => {
+    const rows = tests.data ?? [];
+    return {
+      fuels: [...new Set(rows.map((p) => p.fuel))],
+      residuals: residualsByGroup(
+        rows.map((p) => ({
+          group: p.fuel,
+          actual: p.actual,
+          predicted: p.predicted[chosen.kind] ?? null,
+        })),
+      ),
+    };
+  }, [tests.data, chosen.kind]);
+  const scatter = useMemo(
+    () =>
+      fuels.map((fuel) => ({
+        label: fuel,
+        color: getFuelTheme(fuel).color,
+        points: (tests.data ?? [])
+          .filter((p) => p.fuel === fuel && p.actual > 0)
+          .map((p) => ({
+            x: p.actual,
+            y: Math.max(p.predicted[chosen.kind] ?? 0, 0.01),
+            label: p.label,
+          })),
+      })),
+    [tests.data, fuels, chosen.kind],
   );
   const worst = residuals[0];
   const residualReading = worst
-    ? `Largest errors on ${worst.group} (${formatStat(worst.mae)} t per unit-year on average), where ${chosen.name.toLowerCase().startsWith("ridge") ? "Ridge" : `the ${chosen.name.toLowerCase()}`} ${worst.bias > 0 ? "over" : "under"}-predicts by ${formatStat(Math.abs(worst.bias))} t on average.`
+    ? `Largest errors on ${worst.group} (${formatStat(worst.mae)} t per unit-year on average), where ${modelName(chosen)} ${worst.bias > 0 ? "over" : "under"}-predicts by ${formatStat(Math.abs(worst.bias))} t on average.`
     : "";
-  const base = sorted.find((m) => m.kind === "baseline");
-  const gains = sorted
+  const base = models.find((m) => m.kind === "baseline");
+  const gains = models
     .filter((m) => m !== base && base)
     .map((m) => {
       const b = metric(base!, "test", "mae");
       const t = metric(m, "test", "mae");
       return b && t !== null
-        ? `**${((1 - t / b) * 100).toFixed(0)} % lower** for the ${shortName(m).toLowerCase()} model`
+        ? `**${((1 - t / b) * 100).toFixed(0)} % lower** for ${modelName(m)}`
         : null;
     })
     .filter(Boolean);
@@ -172,7 +174,7 @@ export function ModelsTab({
     .slice(0, 15);
 
   // The plain answer: how far off the best model is, in tons and relative to the actual value.
-  const best = sorted
+  const best = models
     .filter((m) => m !== base)
     .sort(
       (a, b) =>
@@ -188,7 +190,7 @@ export function ModelsTab({
   const reading =
     chosen.kind === "tree"
       ? first &&
-        `The tree leans most on ${featureLabel(first[0]).toLowerCase()} (${(first[1] * 100).toFixed(0)} % of its error reduction)${second ? ` and ${featureLabel(second[0]).toLowerCase()} (${(second[1] * 100).toFixed(0)} %)` : ""}.`
+        `The tree leans most on ${inSentence(featureLabel(first[0]))} (${(first[1] * 100).toFixed(0)} % of its error reduction)${second ? ` and ${inSentence(featureLabel(second[0]))} (${(second[1] * 100).toFixed(0)} %)` : ""}.`
       : [
           up && `${featureLabel(up[0])} raises predicted NOₓ the most`,
           cut && `${featureLabel(cut[0])} lowers it the most`,
@@ -222,7 +224,7 @@ export function ModelsTab({
           subtitle={`**How many tons each model is off by**, on average, for one unit-year it never saw. Shorter is better. Compared with the simple baseline, the error is ${gains.join(" and ")}.`}
           note={`Chronological split: trained on ${chosen.trainYears}, tuned on ${chosen.validationYears}, then refit on both and tested once on ${chosen.testYears}. The baseline predicts the training median of unit-years with the same fuel and unit type. Intervals come from resampling test units (a unit's two test years together).`}
           filename="test-mae"
-          height={sorted.length * 26}
+          height={models.length * 26}
           table={{
             head: [
               "model",
@@ -230,7 +232,7 @@ export function ModelsTab({
               "test_mae_ci_low",
               "test_mae_ci_high",
             ],
-            rows: sorted.map((m) => [
+            rows: models.map((m) => [
               m.id,
               metric(m, "test", "mae"),
               ...(interval(m, "mae") ?? [null, null]),
@@ -240,7 +242,7 @@ export function ModelsTab({
           <BarList
             unit="t"
             format={(v) => `${formatStat(v)} t`}
-            rows={sorted.map((m) => {
+            rows={models.map((m) => {
               const [low, high] = interval(m, "mae") ?? [];
               return {
                 label: m.name,
@@ -257,10 +259,10 @@ export function ModelsTab({
           subtitle="**How much of the difference between units each model explains.** 100 % would be perfect; 0 % is no better than guessing the average every time. Longer is better."
           note="R² = 1 − (squared prediction errors ÷ squared differences from the test mean). It rewards getting the large units right, so it can be high while the error in tons on small units is still large; read it with the error chart."
           filename="test-r2"
-          height={sorted.length * 26}
+          height={models.length * 26}
           table={{
             head: ["model", "test_r2", "test_r2_ci_low", "test_r2_ci_high"],
-            rows: sorted.map((m) => [
+            rows: models.map((m) => [
               m.id,
               metric(m, "test", "r2"),
               ...(interval(m, "r2") ?? [null, null]),
@@ -270,7 +272,7 @@ export function ModelsTab({
           <BarList
             unit="%"
             format={(v) => `${v.toFixed(0)} %`}
-            rows={sorted.map((m) => {
+            rows={models.map((m) => {
               const r2 = metric(m, "test", "r2");
               const [low, high] = interval(m, "r2") ?? [];
               return {
@@ -290,7 +292,6 @@ export function ModelsTab({
         hint="Validation and test error, R², MAPE, intervals, and the ablation, per model"
       >
         <Section
-          title=""
           note="Best value per column in bold. MAPE counts unit-years of at least 1 ton; the ablation column refits without same-year heat input, load, and hours; small print under a test value is its 95 % bootstrap interval over test units."
           actions={
             <ExportButton
@@ -300,33 +301,32 @@ export function ModelsTab({
                 head: [
                   "model",
                   "settings",
-                  ...METRICS.map((m) => m.key),
-                  ...CI_METRICS.flatMap((k) => [
+                  ...SCORES.map((m) => m.key),
+                  ...CI_SCORES.flatMap((k) => [
                     `test_${k}_ci_low`,
                     `test_${k}_ci_high`,
                   ]),
                 ],
-                rows: sorted.map((m) => [
+                rows: models.map((m) => [
                   m.id,
                   settings(m),
-                  ...METRICS.map((c) => c.get(m)),
-                  ...CI_METRICS.flatMap((k) => interval(m, k) ?? [null, null]),
+                  ...SCORES.map((c) => c.get(m)),
+                  ...CI_SCORES.flatMap((k) => interval(m, k) ?? [null, null]),
                 ]),
               }}
-              meta={{ models: sorted.map(modelMetadata) }}
             />
           }
         >
           <ReportTable
-            head={["Model", "Settings", ...METRICS.map((m) => m.label)]}
-            rows={sorted.map((m) => [
+            head={["Model", "Settings", ...SCORES.map((m) => m.label)]}
+            rows={models.map((m) => [
               <span key="n" className="text-fg font-medium">
                 {m.name}
               </span>,
               settings(m),
-              ...METRICS.map((c) => {
+              ...SCORES.map((c) => {
                 const v = c.get(m);
-                const values = sorted.map(c.get).filter((x) => x !== null);
+                const values = models.map(c.get).filter((x) => x !== null);
                 const best = c.lowerIsBetter
                   ? Math.min(...values)
                   : Math.max(...values);
@@ -341,7 +341,7 @@ export function ModelsTab({
                   <span key={c.key} title="95 % bootstrap interval">
                     {text}
                     <span className="text-fg-muted block text-xs">
-                      {formatInterval(ci, (x) => c.format(x))}
+                      {c.format(ci[0])}–{c.format(ci[1])}
                     </span>
                   </span>
                 ) : (
@@ -358,7 +358,7 @@ export function ModelsTab({
         <SegmentedControl
           value={chosen.kind}
           onChange={(model) => setView({ model })}
-          options={sorted.map((m) => ({ value: m.kind, label: m.name }))}
+          options={models.map((m) => ({ value: m.kind, label: m.name }))}
         />
         <span>predict, and where does it miss?</span>
       </QuestionSentence>
@@ -366,7 +366,7 @@ export function ModelsTab({
       <ChartGrid>
         <ChartFrame
           title={`Predicted vs actual NOₓ, ${chosen.testYears}`}
-          subtitle={`Each dot is one unit-year the model never saw (${formatNumber(points.length)}, an even sample). **Dots on the dashed line were predicted exactly**; above it, the model guessed too high; below, too low.`}
+          subtitle={`Each dot is one unit-year the model never saw (${formatNumber(points.length - zeros)}, an even sample${zeros ? `; a log scale can't show the ${formatNumber(zeros)} that reported 0` : ""}). **Dots on the dashed line were predicted exactly**; above it, the model guessed too high; below, too low.`}
           note="Predictions below 0.01 t are drawn at 0.01 so they fit the log scale. Log scales let small and large units show on one chart."
           legend={fuels.map((fuel) => ({
             key: fuel,
@@ -375,7 +375,7 @@ export function ModelsTab({
           }))}
           filename={`predicted-vs-actual-${chosen.id}`}
           actions={
-            <AllPredictionsButton from={from!} to={to!} models={sorted} />
+            <AllPredictionsButton from={from!} to={to!} models={models} />
           }
           height={540}
           {...queryStatus(tests)}
@@ -384,13 +384,13 @@ export function ModelsTab({
               "unit_year",
               "fuel_class",
               "actual_tons",
-              ...sorted.map((m) => `${m.kind}_predicted_tons`),
+              ...models.map((m) => `${m.kind}_predicted_tons`),
             ],
             rows: points.map((p) => [
               p.label,
               p.fuel,
               p.actual,
-              ...sorted.map((m) => p.predicted[m.kind]),
+              ...models.map((m) => p.predicted[m.kind]),
             ]),
           }}
         >
@@ -401,21 +401,12 @@ export function ModelsTab({
             diagonal={[1e-6, 1e9]}
             x={{ title: "Actual NOₓ (short tons)", unit: "t" }}
             y={{ title: "Predicted NOₓ (short tons)", unit: "t" }}
-            groups={fuels.map((fuel) => ({
-              label: fuel,
-              color: getFuelTheme(fuel).color,
-              points: points
-                .filter((p) => p.fuel === fuel && p.actual > 0)
-                .map((p) => ({
-                  x: p.actual,
-                  y: Math.max(p.predicted[chosen.kind] ?? 0, 0.01),
-                  label: p.label,
-                })),
-            }))}
+            groups={scatter}
           />
         </ChartFrame>
         {/* The two shorter charts stack beside the scatter, so the columns end together. */}
         <div className="min-w-0 space-y-6">
+          {chosen.kind === "baseline" && <BaselineTable model={chosen} />}
           {chosen.kind !== "baseline" && (
             <ChartFrame
               title={
@@ -514,7 +505,7 @@ export function ModelsTab({
             ],
             ["Saved model", chosen.artifactPath],
             ["Pipeline", chosen.pipelineVersion],
-            ["Trained", new Date(chosen.trainedAt).toLocaleString()],
+            ["Trained", formatDate(chosen.trainedAt)],
             ["Target", chosen.target],
           ]}
         />
@@ -540,14 +531,19 @@ function AllPredictionsButton({
   const utils = api.useUtils();
   const shared = use(ExportContext);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <Button
       variant="ghost"
       size="sm"
       disabled={busy}
-      title="Every test unit-year with each model's prediction and error, as CSV in a ZIP with metadata.json"
+      title={
+        error ??
+        "Every test unit-year with each model's prediction and error, as CSV in a ZIP with metadata.json"
+      }
       onClick={async () => {
         setBusy(true);
+        setError(null);
         try {
           const rows = await utils.prediction.testPredictions.fetch({
             from,
@@ -585,13 +581,58 @@ function AllPredictionsButton({
               title: `NOₓ test predictions, ${from}–${to} (every unit-year, every model)`,
             },
           );
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
         } finally {
           setBusy(false);
         }
       }}
     >
       <Download className="h-3.5 w-3.5" />
-      {busy ? "Preparing…" : "All test predictions"}
+      {busy
+        ? "Preparing…"
+        : error
+          ? "Failed, try again"
+          : "All test predictions"}
     </Button>
+  );
+}
+
+/**
+ * The baseline has no coefficients or splits: it looks up the training median of unit-years with
+ * the same fuel and unit type. This shows that lookup, the largest first.
+ */
+function BaselineTable({ model }: { model: Model }) {
+  const entries = Object.entries(model.artifact.table ?? {})
+    .map(([key, value]) => {
+      const [fuel = "", type = ""] = key.split("|");
+      return { label: `${fuel} · ${type}`, fuel, type, value };
+    })
+    .sort((a, b) => b.value - a.value);
+  const top = entries.slice(0, 15);
+  const overall = model.artifact.overall ?? null;
+  return (
+    <ChartFrame
+      title="What the baseline looks up"
+      subtitle={`The baseline weighs no inputs: it predicts **the median NOₓ of training unit-years with the same fuel and unit type**. ${entries.length} combinations; the 15 highest are shown${overall === null ? "" : `, and any other combination gets the overall median, ${formatStat(overall)} t`}.`}
+      filename={`lookup-${model.id}`}
+      height={top.length * 26}
+      table={{
+        head: ["primary_fuel", "unit_type", "median_nox_tons"],
+        rows: [
+          ...entries.map((e) => [e.fuel, e.type, e.value]),
+          ...(overall === null
+            ? []
+            : [["(any other)", "(any other)", overall]]),
+        ],
+      }}
+    >
+      <BarList
+        unit="t"
+        format={(v) => `${formatStat(v)} t`}
+        color={MODEL_COLORS.baseline}
+        rows={top.map((e) => ({ label: e.label, value: e.value }))}
+      />
+    </ChartFrame>
   );
 }

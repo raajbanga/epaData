@@ -1,5 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
-import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { env } from "~/env";
 import {
@@ -15,12 +14,8 @@ import {
   type Granularity,
 } from "~/lib/campd-reporting-period";
 import {
-  addTotals,
-  deriveRates,
-  emptyTotals,
-  sumTotals,
   TOTAL_KEYS,
-  type EmissionTotals,
+  totalsAndRates,
   type ReportedTotals,
 } from "~/lib/emissions-metrics";
 import {
@@ -87,7 +82,7 @@ const pick = (row: CampdRow, ...keys: string[]) =>
     .find((v) => v !== undefined && v !== null && v !== "");
 
 /** CAMPD apportioned-emissions fields per metric (annual/daily/monthly report sumOpTime, hourly opTime). */
-const METRIC_FIELDS: Record<keyof EmissionTotals, string[]> = {
+const METRIC_FIELDS: Record<keyof ReportedTotals, string[]> = {
   operatingHours: ["sumOpTime", "opTime"],
   grossGenerationMWh: ["grossLoad"],
   heatInputMMBtu: ["heatInput"],
@@ -109,21 +104,14 @@ const UNIT_FIELDS = {
   programCode: "programCodeInfo",
 };
 
-/** A row's metrics; null where CAMPD left the value out (`missingHours` stands in for absent hours). */
-function readMetrics(
-  row: CampdRow,
-  missingHours: number | null = null,
-): ReportedTotals {
-  const totals: ReportedTotals = { ...emptyTotals() };
-  for (const key of TOTAL_KEYS) {
-    const n = parseNum(pick(row, ...METRIC_FIELDS[key]), Number.NaN);
-    totals[key] = Number.isNaN(n)
-      ? key === "operatingHours"
-        ? missingHours
-        : null
-      : n;
-  }
-  return totals;
+/** A row's metrics; null where CAMPD left the value out. */
+function readMetrics(row: CampdRow): ReportedTotals {
+  return Object.fromEntries(
+    TOTAL_KEYS.map((key) => {
+      const n = parseNum(pick(row, ...METRIC_FIELDS[key]), Number.NaN);
+      return [key, Number.isNaN(n) ? null : n];
+    }),
+  ) as ReportedTotals;
 }
 
 const rawCampdRecordSchema = z.record(z.unknown()).transform((raw, ctx) => {
@@ -549,7 +537,7 @@ async function fetchWithPublishedRetry(
   return learned && learned !== publishedThrough ? request(learned) : result;
 }
 
-type RoundedTotals = EmissionTotals & ReturnType<typeof deriveRates>;
+type RoundedTotals = ReturnType<typeof totalsAndRates>;
 
 interface GranularEmissionsItem extends RoundedTotals {
   periodKey: string;
@@ -565,7 +553,8 @@ interface GranularEmissionsResult {
   items: GranularEmissionsItem[];
 }
 
-const round = (n: number, decimals = 0) => {
+const round = (n: number | null, decimals = 0) => {
+  if (n === null) return null;
   const f = 10 ** decimals;
   return Math.round(n * f) / f;
 };
@@ -580,10 +569,12 @@ const DECIMALS: Record<Granularity, readonly [number, number, number]> = {
 };
 
 function roundTotals(
-  t: EmissionTotals,
+  records: ReportedTotals[],
   [hours, co2, pollutants]: readonly [number, number, number],
 ): RoundedTotals {
+  const t = totalsAndRates(records);
   return {
+    ...t,
     operatingHours: round(t.operatingHours, hours),
     grossGenerationMWh: round(t.grossGenerationMWh),
     heatInputMMBtu: round(t.heatInputMMBtu),
@@ -591,7 +582,6 @@ function roundTotals(
     co2MassTons: round(t.co2MassTons, co2),
     so2MassTons: round(t.so2MassTons, pollutants),
     noxMassTons: round(t.noxMassTons, pollutants),
-    ...deriveRates(t),
   };
 }
 
@@ -605,7 +595,6 @@ interface GranularPlan {
   request: (publishedThrough: string) => Promise<CampdFetchResult>;
   periods: (publishedThrough: string) => Period[];
   periodIndex: (row: CampdRow) => number;
-  missingHours?: number;
 }
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
@@ -642,7 +631,6 @@ function planGranularFetch(
             subLabel: date,
           })),
         periodIndex: (row) => Number(row.hour),
-        missingHours: 1,
       };
 
     case "daily": {
@@ -664,7 +652,6 @@ function planGranularFetch(
           }));
         },
         periodIndex: (row) => Number(rowDate(row).slice(8, 10)) - 1,
-        missingHours: 1,
       };
     }
 
@@ -676,7 +663,7 @@ function planGranularFetch(
         periods: () =>
           range(52).map((w) => ({
             label: `Week ${w + 1}`,
-            subLabel: `${mmdd(w * 7 + 1)} - ${mmdd(Math.min(w * 7 + 7, 365))}`,
+            subLabel: `${mmdd(w * 7 + 1)} - ${w === 51 ? "12-31" : mmdd(w * 7 + 7)}`,
           })),
         periodIndex: (row) => {
           const day = Date.parse(rowDate(row).slice(0, 10));
@@ -723,14 +710,14 @@ function buildResult(
   source: GranularEmissionsResult["source"],
   publishedThrough: string,
   periods: Period[],
-  totals: EmissionTotals[],
+  records: ReportedTotals[][], // each period's rows
   error?: string,
 ): GranularEmissionsResult {
   return {
     publishedThrough,
     source,
     error,
-    summary: roundTotals(sumTotals(totals), [
+    summary: roundTotals(records.flat(), [
       granularity === "hourly" ? 1 : 0,
       0,
       1,
@@ -739,7 +726,7 @@ function buildResult(
       periodKey: `${granularity}_${i}`,
       periodLabel: period.label,
       subLabel: period.subLabel,
-      ...roundTotals(totals[i]!, DECIMALS[granularity]),
+      ...roundTotals(records[i]!, DECIMALS[granularity]),
     })),
   };
 }
@@ -755,26 +742,23 @@ export async function fetchGranularEmissionsForFacility(options: {
   date?: string;
   unitId?: string;
 }): Promise<GranularEmissionsResult> {
-  const { facilityId, granularity } = options;
+  const { facilityId, granularity, unitId } = options;
   const publishedThrough = await resolveCampdPublishedThrough(facilityId);
   const publishedYear = getCampdPublishedYear(publishedThrough);
   const year = Math.min(options.year ?? publishedYear, publishedYear);
-  const unitId =
-    options.unitId && options.unitId !== "ALL" ? options.unitId : undefined;
   const current = () => publishedThroughCache?.iso ?? publishedThrough;
 
   if (granularity === "yearly") {
-    const sum = (col: SQLiteColumn) => sql<number>`sum(${col})`;
     const rows = await db
       .select({
         year: annualRecords.year,
-        operatingHours: sum(annualRecords.operatingHours),
-        grossGenerationMWh: sum(annualRecords.grossGenerationMWh),
-        heatInputMMBtu: sum(annualRecords.heatInputMMBtu),
-        steamLoadKlb: sum(annualRecords.steamLoadKlb),
-        co2MassTons: sum(annualRecords.co2MassTons),
-        so2MassTons: sum(annualRecords.so2MassTons),
-        noxMassTons: sum(annualRecords.noxMassTons),
+        operatingHours: annualRecords.operatingHours,
+        grossGenerationMWh: annualRecords.grossGenerationMWh,
+        heatInputMMBtu: annualRecords.heatInputMMBtu,
+        steamLoadKlb: annualRecords.steamLoadKlb,
+        co2MassTons: annualRecords.co2MassTons,
+        so2MassTons: annualRecords.so2MassTons,
+        noxMassTons: annualRecords.noxMassTons,
       })
       .from(annualRecords)
       .innerJoin(units, eq(annualRecords.unitInternalId, units.id))
@@ -784,18 +768,15 @@ export async function fetchGranularEmissionsForFacility(options: {
           unitId ? eq(units.unitId, unitId) : undefined,
         ),
       )
-      .groupBy(annualRecords.year)
       .orderBy(annualRecords.year);
+    const years = [...new Set(rows.map((r) => r.year))];
 
     return buildResult(
       granularity,
       "LOCAL_RECORDS",
       current(),
-      rows.map((r) => ({
-        label: String(r.year),
-        subLabel: "Annual Aggregate",
-      })),
-      rows,
+      years.map((y) => ({ label: String(y), subLabel: "Annual Aggregate" })),
+      years.map((y) => rows.filter((r) => r.year === y)),
     );
   }
 
@@ -824,17 +805,15 @@ export async function fetchGranularEmissionsForFacility(options: {
   }
 
   const periods = plan.periods(current());
-  const totals = periods.map(() => emptyTotals());
-  for (const row of rows) {
-    const bucket = totals[plan.periodIndex(row)];
-    if (bucket) addTotals(bucket, readMetrics(row, plan.missingHours));
-  }
+  const records = periods.map((): ReportedTotals[] => []);
+  for (const row of rows)
+    records[plan.periodIndex(row)]?.push(readMetrics(row));
   return buildResult(
     granularity,
     "EPA_CAMPD_API",
     current(),
     periods,
-    totals,
+    records,
     result.error, // a failure part-way: the rows received, plus why the rest are missing
   );
 }

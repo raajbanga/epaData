@@ -8,6 +8,7 @@ import {
   modelInputs,
   outOfRange,
   percentChange,
+  predictableYears,
   predict,
   residualsByGroup,
   applyScenario,
@@ -18,7 +19,10 @@ import {
   scopeTotals,
   sensitivityGrid,
   treeBreakpoints,
+  treeGroupSummary,
   treePath,
+  sameScenario,
+  scenarioSummary,
   type ModelArtifact,
   type ModelRaw,
   type ScopeRow,
@@ -217,6 +221,86 @@ void test("treePath: ends at the tree's own prediction, in words", () => {
   assert.ok(path.steps.length > 0);
   assert.ok(path.steps.every((s) => !s.text.includes("=")));
   assert.equal(treePath(models.ridge!, base), null);
+});
+
+void test("treeGroupSummary: a group's leaves, moves, flips, and splits add up", () => {
+  const tree = models.tree!;
+  const spec = { ...AS_REPORTED, scr: "add" as const, heat: -5 };
+  const g = treeGroupSummary(tree, scopeRows, spec)!;
+  const sum = (k: "before" | "after", f: "units" | "tons") =>
+    g.paths.reduce((s, p) => s + p[k][f], 0);
+  const t = scopeTotals(tree, scopeRows, spec);
+  // Every unit ends in one leaf, as reported and with the change: the tons are the tree's totals.
+  assert.equal(sum("before", "units"), scopeRows.length);
+  assert.equal(sum("after", "units"), scopeRows.length);
+  assert.ok(Math.abs(sum("before", "tons") - t.base) < 1e-6);
+  assert.ok(Math.abs(sum("after", "tons") - t.scenario) < 1e-6);
+  // The flips account for every moved unit and the whole change.
+  const moved = scopeRows.filter(
+    (r) =>
+      treePath(tree, r.inputs)!.leaf !==
+      treePath(tree, applyScenario(r.inputs, spec))!.leaf,
+  ).length;
+  assert.equal(g.moved, moved);
+  assert.equal(
+    g.flips.reduce((s, f) => s + f.units, 0),
+    moved,
+  );
+  assert.ok(Math.abs(g.flips.reduce((s, f) => s + f.diff, 0) - t.diff) < 1e-6);
+  // A split divides the group: units on both sides, adding to at most the group.
+  for (const s of g.splits) {
+    assert.ok(s.yes.units > 0 && s.no.units > 0);
+    assert.ok(s.yes.units + s.no.units <= scopeRows.length);
+    assert.ok(!s.question.includes("="));
+  }
+  assert.deepEqual(treeGroupSummary(tree, scopeRows, AS_REPORTED)!.flips, []);
+  assert.equal(treeGroupSummary(models.ridge!, scopeRows, spec), null);
+});
+
+void test("scenarioSummary: what a change sets, counted over a group", () => {
+  const [a, b] = scopeRows;
+  const rows = [
+    { ...a!, inputs: { ...a!.inputs, scr: 1, primary_fuel: "Coal" } },
+    { ...b!, inputs: { ...b!.inputs, scr: 0, heat_input_mmbtu: null } },
+  ];
+  assert.deepEqual(
+    scenarioSummary(rows, { load: 0, heat: -5, scr: "add", fuel: "Coal" }),
+    [
+      "Heat input -5 % on 1 of 2 units (1 reports none)",
+      "SCR added on 1 of 2 units (1 already had it)",
+      "Primary fuel set to Coal on 1 of 2 units (1 already burns it)",
+    ],
+  );
+  assert.deepEqual(
+    scenarioSummary(rows.slice(0, 1), { ...AS_REPORTED, scr: "add" }),
+    ["SCR added (the unit already had it)"],
+  );
+  assert.deepEqual(scenarioSummary(rows, AS_REPORTED), []);
+  // A named change is highlighted when the question sets exactly the same inputs.
+  assert.equal(
+    sameScenario(
+      { ...AS_REPORTED, scr: "add" },
+      { ...AS_REPORTED, scr: "add" },
+    ),
+    true,
+  );
+  assert.equal(
+    sameScenario({ ...AS_REPORTED, scr: "add" }, { ...AS_REPORTED, heat: -5 }),
+    false,
+  );
+});
+
+void test("predictableYears: complete years after a stored year, within the models' span", () => {
+  const stored = [2026, 2025, 2024, 2016, 2015, 2008, 2007, 2006, 1998, 1997];
+  // 2026 is past the test years, 2024 lacks 2023, 2015 and 2008 are before the fit years.
+  assert.deepEqual(
+    predictableYears(stored, "2016-2023", "2024-2025"),
+    [2025, 2016],
+  );
+  assert.deepEqual(
+    predictableYears([2016, 2018], "2016-2023", "2024-2025"),
+    [],
+  );
 });
 
 void test("sensitivityGrid: min to max by step, the baseline once, bad input corrected", () => {

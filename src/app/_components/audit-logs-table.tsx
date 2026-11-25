@@ -18,12 +18,14 @@ import {
 } from "~/components/ui/table";
 import { AUDIT_RULES, AUDIT_THRESHOLDS } from "~/lib/emissions-metrics";
 import type { AuditSortField, SortDirection } from "~/lib/facility-filters";
+import { Term } from "~/components/ui/term";
+import { RATES } from "~/lib/metrics";
 import { cn, formatNumber, sortRows, type SortValue } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 import { DetailLink } from "./detail-link";
 
 /**
- * A physical-sanity flag. Context fields are optional: the Audits tab has all of them, detail
+ * A physical-sanity flag. Context fields are optional: the Audit flags tab has all of them, detail
  * dialogs add the year, unit, and measured values, and the upload preview has only the flag.
  */
 interface AuditLog {
@@ -64,7 +66,7 @@ function flaggedValue(log: AuditLog) {
     case "PHANTOM_GENERATION":
       return `${formatNumber(log.grossGenerationMWh)} MWh · ${formatNumber(log.operatingHours, 1)} h`;
     case "EXTREME_HEAT_RATE":
-      return `${log.heatRateMMBtuMWh?.toFixed(2) ?? "—"} MMBtu/MWh (${AUDIT_THRESHOLDS.HEAT_RATE_MIN_MMBTU_MWH}–${AUDIT_THRESHOLDS.HEAT_RATE_MAX_MMBTU_MWH})`;
+      return `${log.heatRateMMBtuMWh?.toFixed(2) ?? "—"} ${RATES.heatRate.unit} (${AUDIT_THRESHOLDS.HEAT_RATE_MIN_MMBTU_MWH}–${AUDIT_THRESHOLDS.HEAT_RATE_MAX_MMBTU_MWH})`;
     default:
       return "—";
   }
@@ -80,7 +82,7 @@ const SORT_KEYS: Record<AuditSortField, (log: AuditLog) => SortValue> = {
 };
 
 /**
- * Flag table with sortable columns. With `sort` the parent sorts (the paged Audits tab, server-side);
+ * Flag table with sortable columns. With `sort` the parent sorts (the paged Audit flags tab, server-side);
  * without it, the rows given are sorted here. Columns appear for the context the rows carry.
  */
 export function AuditTable({
@@ -192,9 +194,12 @@ export function AuditTable({
                 "max-w-md",
                 showValue ? "text-fg-2 tabular-nums" : "text-fg-muted",
               )}
-              title={showValue ? log.details : undefined}
             >
-              {showValue ? flaggedValue(log) : log.details}
+              {showValue ? (
+                <Term definition={log.details}>{flaggedValue(log)}</Term>
+              ) : (
+                log.details
+              )}
             </TableCell>
             {has("origin") && (
               <TableCell>
@@ -213,27 +218,29 @@ export function AuditTable({
   );
 }
 
-/** Audits tab: flags matching the explorer filters, server-sorted and paged, with per-rule counts. */
+/** Audit flags tab: flags matching the explorer filters, server-sorted and paged, with per-rule counts. */
 export function AuditLogsTable({
   data,
   paging,
   sortBy,
   sortDir,
   onSortChange,
+  onResetFilters,
 }: {
   data?: AuditPage;
   paging: Paging;
   sortBy: AuditSortField;
   sortDir: SortDirection;
   onSortChange: (field: AuditSortField) => void;
+  onResetFilters: () => void;
 }) {
   const logs = data?.items ?? [];
   return (
     <div className="space-y-3">
       <p className="text-fg-2 text-sm">
         Unit-years that broke a physical-sanity rule when they were stored. The
-        values shown are the ones that tripped the rule; hover a row for the
-        full explanation.
+        values shown are the ones that tripped the rule; hover or tap them for
+        the full explanation.
         {data && data.summary.length > 0 && (
           <>
             {" "}
@@ -251,7 +258,12 @@ export function AuditLogsTable({
           </>
         )}
       </p>
-      <ResultsPanel paging={paging} data={data} itemLabel="flags">
+      <ResultsPanel
+        paging={paging}
+        data={data}
+        itemLabel="flags"
+        onResetFilters={onResetFilters}
+      >
         <div className="hidden sm:block">
           <AuditTable logs={logs} sort={{ sortBy, sortDir, onSortChange }} />
         </div>

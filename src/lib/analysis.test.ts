@@ -8,6 +8,8 @@ import {
   buildVariables,
   findVariable,
   formatPct,
+  formatSigned,
+  formatStat,
   hoursInYear,
   noxControlClass,
   so2ControlClass,
@@ -17,9 +19,13 @@ import {
 import {
   analysisFilterRecord,
   analysisSearchParams,
+  analysisViewRecord,
   DEFAULT_VIEW,
   parseAnalysisParams,
+  detailLinks,
   parsePredictParams,
+  normalizeRange,
+  predictViewRecord,
   predictSearchParams,
 } from "./analysis-state";
 import { SHORT_TON_KG, type TraciFactor } from "./traci";
@@ -147,8 +153,8 @@ void test("TRACI impacts: hand-computed, categories kept apart, missing propagat
     v("impactAcidificationPerMWh").value(row({ grossGenerationMWh: 0 })),
     null,
   );
-  assert.equal(v("impactGlobalwarming").unit, "kg CO2 eq");
-  assert.equal(v("impactAcidification").unit, "kg SO2 eq");
+  assert.equal(v("impactGlobalwarming").unit, "kg CO₂ eq");
+  assert.equal(v("impactAcidification").unit, "kg SO₂ eq");
 });
 
 void test("control classes", () => {
@@ -163,13 +169,22 @@ void test("control classes", () => {
   assert.equal(so2ControlClass("Dry Sorbent Injection"), "Sorbent injection");
 });
 
-void test("formatPct: signed, one decimal, dash when undefined", () => {
+void test("formatPct and formatStat: signed percent; short, whole, or 4 digits", () => {
   assert.equal(formatPct(12.345), "+12.3 %");
   assert.equal(formatPct(-4), "-4.0 %");
   assert.equal(formatPct(null), "—");
   assert.equal(formatPct(0.04), "0.0 %");
   assert.equal(formatPct(-0.04), "0.0 %");
   assert.equal(formatPct(Infinity), "—");
+  // formatStat: short form from 10,000, whole numbers from 1,000, else 4 significant digits.
+  assert.equal(formatStat(19_500_000_000), "19.5B");
+  assert.equal(formatStat(9193.4), "9,193");
+  assert.equal(formatStat(0.123456), "0.1235");
+  assert.equal(formatStat(0), "0");
+  assert.equal(formatStat(null), "—");
+  assert.equal(formatSigned(1234.5, "t"), "+1,235 t");
+  assert.equal(formatSigned(-0.5), "-0.5");
+  assert.equal(formatSigned(Number.NaN), "—");
 });
 
 void test("parseAnalysisParams: defaults stay unless the URL changes them", () => {
@@ -246,6 +261,7 @@ void test("old Predict tab links open What-if", () => {
   assert.equal(parsePredictParams({ tab: "sensitivity" }).tab, "whatif");
   assert.equal(parsePredictParams({ tab: "scenarios" }).tab, "whatif");
   assert.equal(parsePredictParams({ tab: "nope" }).tab, "models");
+  assert.equal(parsePredictParams({ model: "both" }).model, "ridge");
 });
 
 void test("a What-if question round-trips through the URL", () => {
@@ -262,6 +278,92 @@ void test("a What-if question round-trips through the URL", () => {
   assert.equal(query.get("burns"), "Coal");
   assert.equal(query.has("scr"), false);
   assert.equal(parsePredictParams({ scope: "nope" }).scope, "unit");
+  // A range in tons or MMBtu left from a one-unit question reads as the default percentages.
+  const group = parsePredictParams({
+    tab: "whatif",
+    scope: "state",
+    st: "TX",
+    by: "unit",
+    from: "13000000",
+    to: "40000000",
+    step: "1000000",
+  });
+  assert.deepEqual(
+    [group.by, group.from, group.to, group.step],
+    ["pct", "-50", "50", "5"],
+  );
+  // So does one left behind by switching the scope on the page.
+  assert.deepEqual(
+    normalizeRange({ ...view, by: "unit", from: "13000000" }),
+    view,
+  );
+  // Not an ID or a state: the defaults, never every plant.
+  for (const bad of ["abc", "", "1.5"])
+    assert.equal(parsePredictParams({ fid: bad, st: bad }).fid, "1356");
+  assert.equal(parsePredictParams({ st: "" }).st, "KY");
+  const bad = parsePredictParams({ model: "nope", scr: "nope" });
+  assert.deepEqual([bad.model, bad.scr], ["ridge", ""]);
+  const unit = parsePredictParams({ by: "unit", from: "13000000" });
+  assert.deepEqual([unit.by, unit.from], ["unit", "13000000"]);
+  // Exported metadata keeps only what the question uses, and reads back as the same question.
+  const record = predictViewRecord(group);
+  assert.equal(record.st, "TX");
+  assert.equal("uid" in record, false);
+  assert.deepEqual(
+    predictViewRecord(parsePredictParams(record as Record<string, string>)),
+    record,
+  );
+  // A detail page's links open the same plant or unit on Analyze (every year) and What-if.
+  const links = detailLinks(1356, "2", [new Date().getFullYear(), 2025]);
+  assert.equal(
+    links.analyze,
+    "/analyze?facilityId=1356&unitId=2&yearMin=&yearMax=",
+  );
+  const opened = parsePredictParams(
+    Object.fromEntries(new URLSearchParams(links.predict.split("?")[1])),
+  );
+  assert.deepEqual(
+    [opened.tab, opened.scope, opened.fid, opened.uid, opened.year],
+    ["whatif", "unit", "1356", "2", "2025"],
+  );
+  assert.equal(
+    parsePredictParams(
+      Object.fromEntries(
+        new URLSearchParams(
+          detailLinks(3, undefined, []).predict.split("?")[1],
+        ),
+      ),
+    ).scope,
+    "plant",
+  );
+  // An unknown input, even one named like a built-in property, falls back to the default.
+  for (const input of ["constructor", "toString", "nope"])
+    assert.equal(
+      parsePredictParams({ tab: "whatif", input }).input,
+      parsePredictParams({}).input,
+    );
+  assert.deepEqual(predictViewRecord(parsePredictParams({})), {
+    tab: "models",
+    model: "ridge",
+  });
+  // Analyze's metadata keeps only the open tab's choices, and reads back as the same view.
+  const { view: impacts } = parseAnalysisParams({
+    tab: "impacts",
+    perMWh: "1",
+    x: "grossLoadMWh",
+  });
+  const analysisRecord = analysisViewRecord(impacts);
+  assert.deepEqual(analysisRecord, {
+    tab: "impacts",
+    impactBy: "state",
+    perMWh: "1",
+  });
+  assert.deepEqual(
+    analysisViewRecord(
+      parseAnalysisParams(analysisRecord as Record<string, string>).view,
+    ),
+    analysisRecord,
+  );
 });
 
 void test("changing Compare's field without groups drops the default groups", () => {

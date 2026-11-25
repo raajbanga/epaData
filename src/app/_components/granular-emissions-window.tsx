@@ -4,7 +4,11 @@ import { useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { SourceBadge } from "~/components/ui/badge";
 import { DataPanel } from "~/components/ui/data-panel";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { percentOf, ProgressBar } from "~/components/ui/metric-bar";
 import { Select, toOptions } from "~/components/ui/select";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
@@ -28,10 +32,14 @@ import {
 import type { SortDirection } from "~/lib/facility-filters";
 import { cn, formatNumber, formatQuantity, sortRows } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
-import { METRICS } from "~/lib/metrics";
+import { METRICS, RATES } from "~/lib/metrics";
 
 interface GranularPlant {
   id: number;
+  /** Set for a compared plant or unit: two units of one plant share an ID. */
+  key?: string;
+  /** Set when this is one unit of the plant, whose data is then the only choice. */
+  unitInternalId?: string | null;
   name: string;
   units?: { unitId: string; primaryFuel?: string | null }[];
   availableYears?: number[];
@@ -42,16 +50,20 @@ type Item =
     order: number;
   };
 
-/** Header, width, and sort key per column; "Time Interval" sorts chronologically. */
+/** Header, width, and sort key per column; "Period" sorts chronologically. */
 const COLUMNS = [
   ["Period", "w-28 text-left", (i: Item) => i.order],
-  ["Op. hours", "w-16", (i: Item) => i.operatingHours],
-  ["Gross MWh", "w-24", (i: Item) => i.grossGenerationMWh],
-  ["Heat MMBtu", "w-20", (i: Item) => i.heatInputMMBtu],
-  ["CO₂ t", "w-20", (i: Item) => i.co2MassTons],
-  ["SO₂ t", "w-12", (i: Item) => i.so2MassTons],
-  ["NOₓ t", "w-12", (i: Item) => i.noxMassTons],
-  ["lbs/MWh", "w-20", (i: Item) => i.co2IntensityLbsMWh],
+  [METRICS.operatingHours.column, "w-16", (i: Item) => i.operatingHours],
+  [
+    METRICS.grossGenerationMWh.column,
+    "w-24",
+    (i: Item) => i.grossGenerationMWh,
+  ],
+  [METRICS.heatInputMMBtu.column, "w-20", (i: Item) => i.heatInputMMBtu],
+  [METRICS.co2MassTons.column, "w-20", (i: Item) => i.co2MassTons],
+  [METRICS.so2MassTons.column, "w-12", (i: Item) => i.so2MassTons],
+  [METRICS.noxMassTons.column, "w-12", (i: Item) => i.noxMassTons],
+  [RATES.co2Intensity.unit, "w-20", (i: Item) => i.co2IntensityLbsMWh],
 ] as const;
 type ColumnLabel = (typeof COLUMNS)[number][0];
 
@@ -60,7 +72,7 @@ export function GranularEmissionsWindow({
 }: {
   plants: GranularPlant[];
 }) {
-  const [activeFacilityId, setActiveFacilityId] = useState(plants[0]?.id);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("monthly");
   // `null` means "use the default for the current plant / published window".
   const [pickedYear, setPickedYear] = useState<number | null>(null);
@@ -72,8 +84,14 @@ export function GranularEmissionsWindow({
   });
   const head = localSortProps(sort, setSort, (f) => f !== "Period");
 
-  const plant = plants.find((p) => p.id === activeFacilityId) ?? plants[0]!;
+  const keyOf = (p: GranularPlant) => p.key ?? String(p.id);
+  const plant = plants.find((p) => keyOf(p) === activeKey) ?? plants[0]!;
   const units = plant.units ?? [];
+  const unitId = plant.unitInternalId
+    ? units[0]?.unitId
+    : selectedUnit === "ALL"
+      ? undefined
+      : selectedUnit;
 
   const { data: availability } =
     api.facilities.getCampdPublishedThrough.useQuery(
@@ -100,14 +118,14 @@ export function GranularEmissionsWindow({
       : `${year}-12-31`);
   const needsDate = granularity === "hourly" || granularity === "daily";
 
-  const { data, isLoading, isFetching } =
+  const { data, isLoading, isFetching, error, refetch } =
     api.facilities.getGranularEmissions.useQuery(
       {
         facilityId: plant.id,
         granularity,
         year,
         date: needsDate ? date : undefined,
-        unitId: selectedUnit === "ALL" ? undefined : selectedUnit,
+        unitId,
       },
       { placeholderData: (prev) => prev },
     );
@@ -120,11 +138,11 @@ export function GranularEmissionsWindow({
 
   const items = data?.items ?? [];
   const summary = data?.summary;
-  const maxGen = Math.max(...items.map((i) => i.grossGenerationMWh), 1);
-  const maxCo2 = Math.max(...items.map((i) => i.co2MassTons), 1);
+  const maxGen = Math.max(...items.map((i) => i.grossGenerationMWh ?? 0), 1);
+  const maxCo2 = Math.max(...items.map((i) => i.co2MassTons ?? 0), 1);
 
-  const selectPlant = (id: string) => {
-    setActiveFacilityId(Number(id));
+  const selectPlant = (key: string) => {
+    setActiveKey(key);
     setPickedYear(null);
     setPickedDate(null);
     setSelectedUnit("ALL");
@@ -153,10 +171,10 @@ export function GranularEmissionsWindow({
         <div className="flex flex-wrap items-center gap-2">
           {plants.length > 1 && (
             <Select
-              value={String(plant.id)}
+              value={keyOf(plant)}
               onValueChange={selectPlant}
               options={plants.map((p) => ({
-                value: String(p.id),
+                value: keyOf(p),
                 label: p.name,
               }))}
               className="w-[280px] sm:w-[320px]"
@@ -185,7 +203,7 @@ export function GranularEmissionsWindow({
               className="w-[82px]"
             />
           )}
-          {units.length > 0 && (
+          {units.length > 0 && !plant.unitInternalId && (
             <Select
               value={selectedUnit}
               onValueChange={setSelectedUnit}
@@ -221,40 +239,36 @@ export function GranularEmissionsWindow({
             value={formatQuantity(
               summary.grossGenerationMWh,
               METRICS.grossGenerationMWh.unit,
-              {
-                fallback: `0 ${METRICS.grossGenerationMWh.unit}`,
-              },
             )}
             subtext={`${formatNumber(summary.operatingHours)} operating hours`}
           />
           <StatTile
             label={METRICS.co2MassTons.short}
-            value={formatQuantity(summary.co2MassTons, "t", {
-              fallback: "0 t",
-            })}
+            value={formatQuantity(summary.co2MassTons, "t")}
             subtext={`${formatNumber(summary.heatInputMMBtu)} MMBtu heat input`}
           />
           <StatTile
-            label="CO₂ rate"
-            value={
-              summary.co2IntensityLbsMWh !== null
-                ? `${formatNumber(summary.co2IntensityLbsMWh)} lbs/MWh`
-                : "—"
-            }
+            label={RATES.co2Intensity.label}
+            value={formatQuantity(
+              summary.co2IntensityLbsMWh,
+              RATES.co2Intensity.unit,
+            )}
           />
           <StatTile
-            label="Heat rate"
-            value={
-              summary.heatRateMMBtuMWh !== null
-                ? `${summary.heatRateMMBtuMWh.toFixed(2)} MMBtu/MWh`
-                : "—"
-            }
+            label={RATES.heatRate.label}
+            value={formatQuantity(
+              summary.heatRateMMBtuMWh,
+              RATES.heatRate.unit,
+              { digits: 2 },
+            )}
           />
         </KpiStrip>
       )}
 
       <DataPanel>
-        {isLoading ? (
+        {error ? (
+          <QueryError error={error} onRetry={() => void refetch()} />
+        ) : isLoading ? (
           <InlineLoading title={`Loading ${granularity} data from the EPA…`} />
         ) : items.length === 0 ? (
           <EmptyState
@@ -307,7 +321,7 @@ export function GranularEmissionsWindow({
                         { value: item.grossGenerationMWh, max: maxGen },
                         { value: item.heatInputMMBtu },
                         { value: item.co2MassTons, max: maxCo2 },
-                      ] satisfies { value: number; max?: number }[]
+                      ] satisfies { value: number | null; max?: number }[]
                     ).map(({ value, max }, i) => (
                       <TableCell key={i} className="px-2 py-1 text-right">
                         <span className={max ? "text-fg" : "text-fg-2"}>
@@ -315,7 +329,7 @@ export function GranularEmissionsWindow({
                         </span>
                         {max && (
                           <ProgressBar
-                            percent={percentOf(value, max)}
+                            percent={percentOf(value ?? 0, max)}
                             className="mt-0.5 ml-auto h-1 w-12"
                           />
                         )}
@@ -326,7 +340,7 @@ export function GranularEmissionsWindow({
                         key={i}
                         className="text-fg-muted px-2 py-1 text-right whitespace-nowrap"
                       >
-                        {value.toFixed(1)}
+                        {value?.toFixed(1) ?? "—"}
                       </TableCell>
                     ))}
                     <TableCell className="text-fg-2 px-2 py-1 text-right whitespace-nowrap">

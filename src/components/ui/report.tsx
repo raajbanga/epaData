@@ -22,31 +22,21 @@ import { cn, isNumericValue, sortRows, type SortValue } from "~/lib/utils";
 /** Caption above a form control or group of controls. */
 export const FIELD_LABEL = "text-fg-2 text-xs font-medium";
 
-/**
- * A form control with its caption. `group` is for a set of buttons (a segmented control): a
- * <label> around buttons would forward a click on the caption to the first button.
- */
+/** A form control with its caption. */
 export function Field({
   label,
   className,
-  group,
   children,
 }: {
   label: string;
   className?: string;
-  group?: boolean;
   children: ReactNode;
 }) {
-  const Tag = group ? "div" : "label";
   return (
-    <Tag
-      className={cn("block max-w-full min-w-0 space-y-1", className)}
-      role={group ? "group" : undefined}
-      aria-label={group ? label || undefined : undefined}
-    >
+    <label className={cn("block max-w-full min-w-0 space-y-1", className)}>
       {label && <span className={cn(FIELD_LABEL, "block")}>{label}</span>}
       {children}
-    </Tag>
+    </label>
   );
 }
 
@@ -57,7 +47,7 @@ export function Section({
   actions,
   children,
 }: {
-  title: string;
+  title?: string;
   note?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
@@ -112,7 +102,7 @@ function Glossed({ term }: { term: string }) {
 }
 
 /**
- * Compact monospace table for validation reports, histories, and record lists. With `sortable`,
+ * Compact table for validation reports, histories, and record lists. With `sortable`,
  * headers sort ↑/↓ on click: text and number cells sort by their own value, other cells (badges,
  * links) by `sortKeys[row][column]`, and a column with no value at all stays fixed. Numeric columns
  * start highest-first. Columns of numbers (and percentages, ranges, dashes) are right-aligned;
@@ -282,17 +272,15 @@ export function Disclosure({
   title,
   hint,
   children,
-  className,
 }: {
   title: ReactNode;
   hint?: ReactNode;
   children: ReactNode;
-  className?: string;
 }) {
   const [opened, setOpened] = useState(false);
   return (
     <details
-      className={cn("border-edge rounded-md border", className)}
+      className="border-edge rounded-md border"
       onToggle={(e) => e.currentTarget.open && setOpened(true)}
     >
       <summary className="hover:bg-surface flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3">

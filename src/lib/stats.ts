@@ -339,12 +339,11 @@ function tQuantile(p: number, df: number) {
 // ─── Tests ───────────────────────────────────────────────────────────────
 
 /** Mean with its 95 % t confidence interval; null below two values. */
-export function meanCi(xs: readonly number[], level = 0.95) {
+export function meanCi(xs: readonly number[]) {
   const m = mean(xs);
   const v = variance(xs);
   if (m === null || v === null) return null;
-  const half =
-    tQuantile(1 - (1 - level) / 2, xs.length - 1) * Math.sqrt(v / xs.length);
+  const half = tQuantile(0.975, xs.length - 1) * Math.sqrt(v / xs.length);
   return { mean: m, low: m - half, high: m + half };
 }
 
@@ -413,7 +412,9 @@ export function kruskalWallis(groups: readonly (readonly number[])[]) {
   }
   h = (12 / (n * (n + 1))) * h - 3 * (n + 1);
   const ties = tieSum(all);
-  if (ties) h /= 1 - ties / (n ** 3 - n);
+  const untied = 1 - ties / (n ** 3 - n);
+  if (!untied) return null; // every value is the same
+  h /= untied;
   const df = groups.length - 1;
   return { h, df, p: chiSquareUpper(h, df) };
 }

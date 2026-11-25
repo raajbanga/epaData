@@ -1,7 +1,5 @@
 "use client";
 
-import { Field } from "~/components/ui/report";
-import { SegmentedControl } from "~/components/ui/segmented-control";
 import { BLANK } from "~/components/ui/question-sentence";
 import { Select } from "~/components/ui/select";
 import {
@@ -12,9 +10,7 @@ import {
 import type { AnalysisView } from "~/lib/analysis-state";
 import type { FacilityFilters } from "~/lib/facility-filters";
 import type { RouterOutputs } from "~/trpc/react";
-import { inSentence } from "~/lib/utils";
-
-export { inSentence };
+import { inSentence, formatNumber } from "~/lib/utils";
 
 type Catalog = RouterOutputs["analysis"]["catalog"];
 
@@ -39,6 +35,12 @@ export const variableLabel = (v?: VariableInfo) =>
 export const valueColumn = (v?: VariableInfo) =>
   v ? `${v.key} (${v.unit})` : "";
 
+/** "; the 8 largest of 15 groups" when a chart shows only part of its groups. */
+export const shownOf = (shown: number, total = 0) =>
+  total > shown
+    ? `; the ${shown} largest of ${formatNumber(total)} groups`
+    : "";
+
 /** "Total", "Mean", or "Pooled rate" for the variable. */
 export const combinedLabel = (v?: VariableInfo) =>
   v ? AGGREGATION_LABELS[v.aggregation] : "Value";
@@ -59,44 +61,34 @@ export const findInfo = (catalog: Catalog, key: string) =>
 export const dimensionLabel = (catalog: Catalog, key: string) =>
   catalog.dimensions.find((d) => d.key === key)?.label ?? key;
 
-/** A variable picker over the catalog, optionally limited to some groups. */
+/** A variable picker over the catalog, as a blank in a QuestionSentence. */
 export function VariableField({
   label = "Variable",
   value,
   onChange,
   catalog,
-  groups,
-  className = "w-80",
-  inline,
 }: {
   label?: string;
   value: string;
   onChange: (key: string) => void;
   catalog: Catalog;
-  groups?: VariableInfo["group"][];
-  className?: string;
-  /** A blank in a QuestionSentence: no caption, as wide as its text, labels in sentence case. */
-  inline?: boolean;
 }) {
-  const select = (
+  return (
     <Select
       value={value}
       onValueChange={onChange}
-      aria-label={inline ? label : undefined}
-      className={inline ? BLANK : className}
-      options={catalog.variables
-        .filter((v) => !groups || groups.includes(v.group))
-        .map((v) => ({
-          value: v.key,
-          label: inline ? inSentence(variableLabel(v)) : variableLabel(v),
-          group: v.group,
-        }))}
+      aria-label={label}
+      className={BLANK}
+      options={catalog.variables.map((v) => ({
+        value: v.key,
+        label: inSentence(variableLabel(v)),
+        group: v.group,
+      }))}
     />
   );
-  return inline ? select : <Field label={label}>{select}</Field>;
 }
 
-/** A dimension picker; `none` adds a "None" choice stored as "". */
+/** A dimension picker, as wide as its text; `none` adds a "None" choice stored as "". */
 export function DimensionField({
   label = "Group by",
   value,
@@ -104,8 +96,6 @@ export function DimensionField({
   catalog,
   none,
   exclude = [],
-  className = "w-44",
-  inline,
   prefix = "",
 }: {
   label?: string;
@@ -114,64 +104,29 @@ export function DimensionField({
   catalog: Catalog;
   none?: string;
   exclude?: string[];
-  className?: string;
-  /** A blank in a QuestionSentence: no caption, as wide as its text, labels in sentence case. */
-  inline?: boolean;
   /** Words before each option inside the sentence: "by " gives "by fuel class". */
   prefix?: string;
 }) {
-  const select = (
+  return (
     <Select
       value={value || "NONE"}
       onValueChange={(v) => onChange(v === "NONE" ? "" : v)}
-      aria-label={inline ? label : undefined}
-      className={inline ? BLANK : className}
+      aria-label={label}
+      className={BLANK}
       options={[
         ...(none ? [{ value: "NONE", label: none }] : []),
         ...catalog.dimensions
           .filter((d) => !exclude.includes(d.key))
           .map((d) => ({
             value: d.key,
-            label: inline ? `${prefix}${inSentence(d.label)}` : d.label,
+            label: `${prefix}${inSentence(d.label)}`,
           })),
       ]}
     />
   );
-  return inline ? select : <Field label={label}>{select}</Field>;
 }
 
 /** A row of tab controls. */
 export function Controls({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-wrap items-end gap-3">{children}</div>;
-}
-
-/** An on/off choice ("1" or "") as a two-way segmented control. */
-export function Toggle({
-  label,
-  value,
-  onChange,
-  off,
-  on,
-  titles,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  off: string;
-  on: string;
-  /** What each choice means, shown on hover. */
-  titles?: [string, string];
-}) {
-  return (
-    <Field group label={label}>
-      <SegmentedControl
-        value={value === "1" ? "1" : "0"}
-        onChange={(v) => onChange(v === "1" ? "1" : "")}
-        options={[
-          { value: "0", label: off, title: titles?.[0] },
-          { value: "1", label: on, title: titles?.[1] },
-        ]}
-      />
-    </Field>
-  );
 }

@@ -46,23 +46,20 @@ export function EmptyState({
 
 export function InlineLoading({
   title,
-  subtitle,
   className,
 }: {
   title: string;
-  subtitle?: string;
   className?: string;
 }) {
   return (
     <div className={cn("text-fg-muted py-10 text-center", className)}>
       <RefreshCw className="text-fg-muted mx-auto mb-2 h-4 w-4 animate-spin" />
       <p className="text-fg-2 text-sm">{title}</p>
-      {subtitle && <p className="text-fg-muted mt-1 text-sm">{subtitle}</p>}
     </div>
   );
 }
 
-/** A failed query, with what went wrong and a retry (every Phase 2 view uses this). */
+/** A failed query, with what went wrong and a retry. */
 export function QueryError({
   error,
   onRetry,

@@ -1,6 +1,6 @@
 import { type Metadata } from "next";
 import { MapPage } from "~/app/_components/facilities-map";
-import { parseExplorerParams } from "~/lib/facility-filters";
+import { parseExplorerParams, type Params } from "~/lib/facility-filters";
 import { api, HydrateClient } from "~/trpc/server";
 
 export const metadata: Metadata = { title: "Map" };
@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Map" };
 export default async function Map({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<Params>;
 }) {
   const initialState = parseExplorerParams(await searchParams);
   await Promise.all([

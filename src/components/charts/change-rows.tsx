@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
 /**
- * One arrow per row, from a starting value to an ending value on a shared axis from zero, with an
+ * One arrow per row, from a starting value to an ending value on a shared axis zoomed to the values, with an
  * optional dashed reference line (e.g. what was actually reported). Reads as "it goes from here to
  * there", which a pair of bars doesn't.
  */
@@ -22,8 +22,7 @@ export function ArrowRows({
   reference?: { value: number; label: string };
   format: (v: number) => string;
 }) {
-  // Zoomed to the values (not from zero), so a 6 % change is a visible arrow; the ends of the
-  // axis are labeled so the zoom is plain.
+  // Zoomed to the values (not from zero), so a 6 % change is a visible arrow.
   const values = [
     ...(reference ? [reference.value] : []),
     ...rows.flatMap((r) => [r.from, r.to]),
@@ -132,7 +131,9 @@ export function ArrowRows({
 
 /**
  * Rows of changes, each with a plain description and one bar per series around a center line:
- * left is less, right is more. The highlighted row stands out (e.g. the question asked).
+ * left is less, right is more. The highlighted row stands out (e.g. the question asked). A bar
+ * with no value (a percentage from 0) is a short hatched stub on the side of `sign`, labeled with
+ * its `text`, so it reads as "a change with no percentage", never as "no change".
  */
 export function DivergingRows({
   rows,
@@ -144,7 +145,15 @@ export function DivergingRows({
     label: string;
     description?: ReactNode;
     highlight?: boolean;
-    bars: { key: string; value: number; color: string; title?: string }[];
+    bars: {
+      key: string;
+      value: number | null;
+      /** A bar with no value: which way it moves (0: not at all) and what it says instead. */
+      sign?: number;
+      text?: string;
+      color: string;
+      title?: string;
+    }[];
   }[];
   less: string;
   more: string;
@@ -152,9 +161,12 @@ export function DivergingRows({
 }) {
   const max = Math.max(
     1,
-    ...rows.flatMap((r) => r.bars.map((b) => Math.abs(b.value))),
+    ...rows.flatMap((r) => r.bars.map((b) => Math.abs(b.value ?? 0))),
   );
   const width = (v: number) => `${(Math.abs(v) / max) * 50}%`;
+  // A change too small to show in tenths of a percent still isn't "no change" unless it is 0.
+  const label = (v: number) =>
+    v === 0 ? "no change" : Math.abs(v) < 0.05 ? "< 0.1 %" : format(v);
   return (
     <div className="space-y-1">
       <div className="text-fg-muted grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-4 text-xs">
@@ -193,28 +205,37 @@ export function DivergingRows({
               aria-hidden
               className="bg-fg-muted/50 absolute inset-y-0 left-1/2 w-px"
             />
-            {r.bars.map((b) => (
-              <div key={b.key} className="relative h-4" title={b.title}>
-                <span
-                  className="absolute inset-y-0.5 rounded-[2px]"
-                  style={{
-                    background: b.color,
-                    width: width(b.value),
-                    ...(b.value < 0 ? { right: "50%" } : { left: "50%" }),
-                  }}
-                />
-                <span
-                  className="text-fg-2 absolute top-1/2 -translate-y-1/2 text-[11px] whitespace-nowrap tabular-nums"
-                  style={
-                    b.value < 0
-                      ? { right: `calc(50% + ${width(b.value)} + 4px)` }
-                      : { left: `calc(50% + ${width(b.value)} + 4px)` }
-                  }
-                >
-                  {Math.abs(b.value) < 0.05 ? "no change" : format(b.value)}
-                </span>
-              </div>
-            ))}
+            {r.bars.map((b) => {
+              const empty = b.value === null;
+              const left = empty ? (b.sign ?? 0) < 0 : b.value! < 0;
+              // No percentage: a fixed stub, hatched, unless nothing moves at all.
+              const w = empty ? (b.sign ? "6%" : "0%") : width(b.value!);
+              return (
+                <div key={b.key} className="relative h-4" title={b.title}>
+                  <span
+                    className="absolute inset-y-0.5 rounded-[2px]"
+                    style={{
+                      width: w,
+                      ...(left ? { right: "50%" } : { left: "50%" }),
+                      background: empty
+                        ? `repeating-linear-gradient(45deg, ${b.color} 0 3px, transparent 3px 6px)`
+                        : b.color,
+                      ...(empty && { boxShadow: `inset 0 0 0 1px ${b.color}` }),
+                    }}
+                  />
+                  <span
+                    className="text-fg-2 absolute top-1/2 -translate-y-1/2 text-[11px] whitespace-nowrap tabular-nums"
+                    style={
+                      left
+                        ? { right: `calc(50% + ${w} + 4px)` }
+                        : { left: `calc(50% + ${w} + 4px)` }
+                    }
+                  >
+                    {empty ? b.text : label(b.value!)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}

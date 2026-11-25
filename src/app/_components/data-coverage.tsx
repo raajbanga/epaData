@@ -1,4 +1,4 @@
-import { cn, formatNumber, plural, sourceLabel } from "~/lib/utils";
+import { cn, formatDate, formatNumber, plural, sourceLabel } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 
 type Stats = RouterOutputs["facilities"]["getStats"];
@@ -88,7 +88,7 @@ export function DataSources({
           <span className="text-fg-muted">
             {plural(datasets, "active dataset")}
             {superseded > 0 && ` and ${superseded} superseded`}, last import{" "}
-            {new Date(lastImportedAt).toLocaleDateString()}
+            {formatDate(lastImportedAt)}
           </span>
         </li>
       ))}

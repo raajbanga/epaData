@@ -370,6 +370,12 @@ export function D3Globe({
     focus,
   ]);
 
+  const renderRef = useRef(renderGlobe);
+  useEffect(() => {
+    renderRef.current = renderGlobe;
+    renderGlobe();
+  }, [renderGlobe]);
+
   // Size the canvas pixel buffer to its container
   useEffect(() => {
     const container = containerRef.current;
@@ -383,13 +389,13 @@ export function D3Globe({
       canvas.height = rect.height * dpr;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
-      renderGlobe();
+      renderRef.current();
     };
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
     handleResize();
     return () => resizeObserver.disconnect();
-  }, [renderGlobe]);
+  }, []);
 
   useEffect(() => {
     if (!autoRotate) return;
@@ -514,6 +520,8 @@ export function D3Globe({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={() => (isDraggingRef.current = false)}
+        onPointerLeave={() => setHoveredPlant(null)}
         className="h-full w-full touch-none"
       />
 

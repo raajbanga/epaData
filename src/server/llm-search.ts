@@ -130,7 +130,8 @@ export async function llmFallback(
     };
   }
   if (cache.size > 200) cache.clear();
-  cache.set(text, result);
+  // A failure (a timeout, a server error) is tried again next time.
+  if (result.ok) cache.set(text, result);
   return result;
 }
 

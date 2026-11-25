@@ -51,7 +51,7 @@ export async function parseUpload(
   }
 }
 
-/** Validation report for the dialog, including annual records the import would overwrite. */
+/** Validation report for the Upload page, including annual records the import would overwrite. */
 export async function previewUpload(parsed: ParsedUpload) {
   const { annual } = parsed.records;
   return buildImportReport(

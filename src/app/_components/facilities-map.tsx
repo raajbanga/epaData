@@ -1,10 +1,12 @@
 "use client";
 
+import { METRICS } from "~/lib/metrics";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { X } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { SourceBadge } from "~/components/ui/badge";
+import { QueryError } from "~/components/ui/empty-state";
 import { PageTitle } from "~/components/ui/page";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import {
@@ -13,6 +15,7 @@ import {
   filterSearchParams,
   type ExplorerState,
   type FilterChangeHandler,
+  yearsText,
 } from "~/lib/facility-filters";
 import {
   FUEL_CATEGORIES,
@@ -96,6 +99,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
         : allFacilities,
     [allFacilities, fuelClass],
   );
+  const years = yearsText(filters);
   const unlocated = mapQuery.data?.unlocated ?? [];
   const setFilter: FilterChangeHandler = (key, value) =>
     setFilters((f) => ({ ...f, [key]: value }));
@@ -117,8 +121,14 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
     }
     return counts;
   }, [allFacilities]);
-  const totalCapacity = facilities.reduce((n, f) => n + f.totalCapacityMW, 0);
-  const totalEmissions = facilities.reduce((n, f) => n + f.totalCo2Tons, 0);
+  const totalCapacity = facilities.reduce(
+    (n, f) => n + (f.totalCapacityMW ?? 0),
+    0,
+  );
+  const totalEmissions = facilities.reduce(
+    (n, f) => n + (f.totalCo2Tons ?? 0),
+    0,
+  );
 
   const MapView = viewMode === "globe" ? D3Globe : LeafletMap;
 
@@ -161,8 +171,8 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
               value={metricMode}
               onChange={setMetricMode}
               options={[
-                { value: "capacity", label: "Capacity" },
-                { value: "co2", label: "CO₂" },
+                { value: "capacity", label: METRICS.nameplateCapacityMW.short },
+                { value: "co2", label: METRICS.co2MassTons.short },
                 { value: "uniform", label: "Same" },
               ]}
             />
@@ -208,6 +218,12 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
         </div>
       </div>
 
+      {mapQuery.error && (
+        <QueryError
+          error={mapQuery.error}
+          onRetry={() => void mapQuery.refetch()}
+        />
+      )}
       <MapView
         facilities={facilities}
         onInspectFacility={onInspectFacility}
@@ -244,7 +260,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
         <strong className="text-fg font-medium tabular-nums">
           {formatNumber(facilities.length)}
         </strong>{" "}
-        facilities on the map,{" "}
+        {facilities.length === 1 ? "facility" : "facilities"} on the map,{" "}
         <strong className="text-fg font-medium tabular-nums">
           {formatQuantity(totalCapacity / 1000, "GW", { digits: 1 })}
         </strong>{" "}
@@ -254,11 +270,7 @@ export function MapPage({ initialState }: { initialState: ExplorerState }) {
             digits: 1,
           })}
         </strong>{" "}
-        of CO₂{" "}
-        {filters.year === "ALL"
-          ? "across all stored years"
-          : `in ${filters.year}`}
-        .
+        of CO₂ ({years || "all stored years"}).
       </p>
 
       {unlocated.length > 0 && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
-import { cn } from "~/lib/utils";
+import { GlossedText } from "~/components/ui/glossed-text";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -107,27 +107,24 @@ export function DialogHeader({
   title,
   lead,
   actions,
-  className,
 }: {
   context?: ReactNode;
   title: ReactNode;
   lead?: ReactNode;
   actions?: ReactNode;
-  className?: string;
 }) {
   return (
-    <header
-      className={cn(
-        "flex flex-wrap items-start justify-between gap-x-6 gap-y-3 pr-10",
-        className,
-      )}
-    >
+    <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 pr-10">
       <div className="min-w-0 space-y-1">
         {context && <p className="text-fg-muted text-sm">{context}</p>}
         <h2 className="text-fg text-2xl font-semibold tracking-tight text-balance sm:text-[1.75rem]">
           {title}
         </h2>
-        {lead && <p className="text-fg-2 text-sm">{lead}</p>}
+        {lead && (
+          <p className="text-fg-2 text-sm">
+            <GlossedText>{lead}</GlossedText>
+          </p>
+        )}
       </div>
       {actions && (
         <div className="flex flex-wrap items-center gap-2">{actions}</div>

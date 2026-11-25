@@ -15,7 +15,7 @@ import {
 } from "./record-diff";
 import { formatNumber } from "./utils";
 
-/** Upload contract shared by the import dialog, `/api/upload`, and `scripts/parse_import.py`. */
+/** Upload contract shared by the Upload page, `/api/upload`, and `scripts/parse_import.py`. */
 
 export const UPLOAD_EXTENSIONS = [".csv", ".tsv", ".xlsx", ".xlsm"];
 const MAX_UPLOAD_MB = 100;
@@ -113,7 +113,7 @@ export interface ParsedUpload {
   };
 }
 
-/** What the dialog previews: the parse report, the sanity flags the import will log, and how its records compare with the database. */
+/** What the Upload page previews: the parse report, the sanity flags the import will log, and how its records compare with the database. */
 export type ImportReport = Omit<ParsedUpload, "records" | "rejectedRows"> & {
   diff: DiffCounts;
   /** What the import writes: distinct facilities and units, and annual records. */

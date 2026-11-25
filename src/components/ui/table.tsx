@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { DataPanel } from "~/components/ui/data-panel";
-import { EmptyState } from "~/components/ui/empty-state";
+import { EmptyState, QueryError } from "~/components/ui/empty-state";
 import { Input } from "~/components/ui/input";
 import { Select, toOptions } from "~/components/ui/select";
 import { nextSort, type SortDirection } from "~/lib/facility-filters";
@@ -47,10 +47,8 @@ export function TableHeader({ className, ...props }: ComponentProps<"thead">) {
   );
 }
 
-export function TableBody({ className, ...props }: ComponentProps<"tbody">) {
-  return (
-    <tbody className={cn("divide-edge/70 divide-y", className)} {...props} />
-  );
+export function TableBody(props: ComponentProps<"tbody">) {
+  return <tbody className="divide-edge/70 divide-y" {...props} />;
 }
 
 export function TableRow({ className, ...props }: ComponentProps<"tr">) {
@@ -122,23 +120,29 @@ export function SortableTableHead<F extends string>({
     ) : (
       <ArrowDown className="text-primary h-3 w-3 shrink-0" />
     );
+  const Content = sort === undefined ? "div" : "button";
   return (
     <TableHead
-      className={cn(
-        className,
-        sort && "hover:text-fg cursor-pointer select-none",
-      )}
-      onClick={sort ? () => onSortChange(sort) : undefined}
+      className={cn(className, sort && "hover:text-fg select-none")}
+      aria-sort={
+        sort !== undefined && sortBy === sort
+          ? sortDir === "asc"
+            ? "ascending"
+            : "descending"
+          : undefined
+      }
     >
-      <div
+      <Content
+        {...(sort && { type: "button", onClick: () => onSortChange(sort) })}
         className={cn(
-          "flex items-center gap-1",
-          className.includes("text-right") && "justify-end",
+          "flex w-full items-center gap-1 text-left",
+          sort && "cursor-pointer",
+          className.includes("text-right") && "justify-end text-right",
         )}
       >
         {label}
         {icon}
-      </div>
+      </Content>
     </TableHead>
   );
 }
@@ -306,6 +310,8 @@ export function TablePagination({
 
 /** Paging state and handlers of a server-paged table, as the explorer passes them down. */
 export interface Paging {
+  error?: { message: string } | null;
+  onRetry?: () => void;
   page: number;
   pageSize: number;
   isLoading: boolean;
@@ -331,10 +337,12 @@ export function ResultsPanel({
   onResetFilters?: () => void;
   children: ReactNode;
 }) {
-  const { isLoading, pageSize, ...pageProps } = paging;
+  const { isLoading, error, onRetry, pageSize, ...pageProps } = paging;
   return (
     <DataPanel>
-      {isLoading ? (
+      {error ? (
+        <QueryError error={error} onRetry={onRetry} />
+      ) : isLoading ? (
         <TableSkeleton rows={pageSize} />
       ) : !data?.items.length ? (
         <EmptyState
@@ -351,13 +359,15 @@ export function ResultsPanel({
       ) : (
         children
       )}
-      <TablePagination
-        {...pageProps}
-        pageSize={pageSize}
-        totalCount={data?.totalCount ?? 0}
-        totalPages={Math.max(data?.totalPages ?? 1, 1)}
-        itemLabel={itemLabel}
-      />
+      {!error && (
+        <TablePagination
+          {...pageProps}
+          pageSize={pageSize}
+          totalCount={data?.totalCount ?? 0}
+          totalPages={Math.max(data?.totalPages ?? 1, 1)}
+          itemLabel={itemLabel}
+        />
+      )}
     </DataPanel>
   );
 }

@@ -72,23 +72,22 @@ export function sortRows<T>(
 export const uniqueStrings = (values: (string | null | undefined)[]) =>
   [...new Set(values)].filter((v): v is string => Boolean(v));
 
-/** Locale-formatted quantity with an optional unit; zero renders `fallback`, null (not reported) "—". */
+/** Locale-formatted quantity with an optional unit; null (not reported) renders "—", a reported 0 "0 t". */
 export function formatQuantity(
   value: number | null | undefined,
   unit = "",
-  { fallback = "—", digits = 0 } = {},
+  { digits = 0 } = {},
 ) {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  if (value === 0) return fallback;
   const num =
     shortNumber(value) ??
-    value.toLocaleString(undefined, { maximumFractionDigits: digits });
+    value.toLocaleString("en-US", { maximumFractionDigits: digits });
   return unit ? `${num} ${unit}` : num;
 }
 
 /** Plain number for tables and counts; zero renders "0", null "—". */
 export const formatNumber = (value: number | null | undefined, digits = 0) =>
-  formatQuantity(value, "", { digits, fallback: "0" });
+  formatQuantity(value, "", { digits });
 
 /** "12,345": a count written out in full, for row ranges that must add up exactly. */
 export const exactCount = (n: number) => n.toLocaleString("en-US");
@@ -104,7 +103,7 @@ export const inSentence = (label: string) =>
 
 /** "1 unit", "3 units", "2 facilities": the count with its noun; `many` defaults to `one` + "s". */
 export const plural = (n: number, one: string, many = `${one}s`) =>
-  `${shortNumber(n) ?? n.toLocaleString()} ${n === 1 ? one : many}`;
+  `${shortNumber(n) ?? n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
 /** Display names for `datasets.source`. */
 const DATASET_SOURCE_LABELS: Record<string, string> = {
@@ -116,12 +115,15 @@ const DATASET_SOURCE_LABELS: Record<string, string> = {
 export const sourceLabel = (source: string) =>
   DATASET_SOURCE_LABELS[source] ?? source;
 
+/** "10/7/2026", in UTC so the server and every browser show the same day. */
+export const formatDate = (date: Date | number) =>
+  new Date(date).toLocaleDateString("en-US", { timeZone: "UTC" });
+
 /** Where a record came from, e.g. "EPA CAMPD API · 10/7/2026". */
 export const datasetOriginLabel = (d: {
   source: string;
   importedAt: Date | number;
-}) =>
-  `${sourceLabel(d.source)} · ${new Date(d.importedAt).toLocaleDateString()}`;
+}) => `${sourceLabel(d.source)} · ${formatDate(d.importedAt)}`;
 
 /**
  * A dataset's history status: a failed retrieval, superseded by a later import (for an upload,

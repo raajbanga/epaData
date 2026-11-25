@@ -47,3 +47,10 @@ export const METRICS = {
     column: "MW",
   },
 } as const;
+
+/** The derived rates both Explore's ranking and Analyze use, named once. */
+export const RATES = {
+  co2Intensity: { label: "CO₂ intensity", unit: "lb/MWh" },
+  heatRate: { label: "Heat rate", unit: "MMBtu/MWh" },
+  noxRate: { label: "NOₓ emission rate", unit: "lb/MMBtu" },
+} as const;

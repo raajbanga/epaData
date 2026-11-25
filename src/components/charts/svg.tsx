@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { interpolateRgb, type ScaleContinuousNumeric } from "d3";
 import { useTheme } from "next-themes";
 import { formatTick } from "~/components/ui/chart";
@@ -12,10 +12,9 @@ import { formatTick } from "~/components/ui/chart";
 
 /** A container's width, kept current with a ResizeObserver (0 before the first layout). */
 export function useWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
+  // A callback ref: a chart that starts with nothing to draw mounts its container later.
+  const ref = useCallback((el: T | null) => {
     if (!el) return;
     const observer = new ResizeObserver(([entry]) =>
       setWidth(Math.round(entry!.contentRect.width)),
@@ -73,21 +72,17 @@ export function YGrid({
   scale,
   left,
   right,
-  ticks = 5,
   values,
-  format = formatTick,
 }: {
   scale: ScaleContinuousNumeric<number, number>;
   left: number;
   right: number;
-  ticks?: number;
   /** Explicit tick values (log scales: the powers of ten). */
   values?: number[];
-  format?: (v: number) => string;
 }) {
   return (
     <g>
-      {(values ?? scale.ticks(ticks)).map((t) => (
+      {(values ?? scale.ticks(5)).map((t) => (
         <g key={t} transform={`translate(0,${scale(t)})`}>
           <line
             x1={left}
@@ -103,7 +98,7 @@ export function YGrid({
             fontSize={12}
             fill="var(--fg-muted)"
           >
-            {format(t)}
+            {formatTick(t)}
           </text>
         </g>
       ))}

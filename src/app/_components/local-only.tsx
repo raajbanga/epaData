@@ -11,7 +11,7 @@ export function LocalOnly({ title }: { title: string }) {
       <EmptyState
         className="border-edge rounded-lg border"
         title="This page only works when you run epaData locally"
-        description="**This online version can't save new data.** To add data, download the project from GitHub and follow the README's Setup steps."
+        description="**This online version can't save new data.** To add data, download the project from GitHub and follow the README's Quick start."
         action={
           <a
             href={REPO_URL}

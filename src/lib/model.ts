@@ -5,8 +5,8 @@
  * `modelInputs` and `designRow` in step with `model_inputs` and `design_matrix` in ml/train.py.
  */
 import { formatSigned } from "./analysis";
-import { METRICS } from "./metrics";
-import { shortNumber } from "./utils";
+import { METRICS, RATES } from "./metrics";
+import { capitalize, shortNumber } from "./utils";
 
 /** A unit-year as ml/train.py's query reads it (snake_case, as stored). */
 export interface ModelRaw {
@@ -35,13 +35,15 @@ const CONTROLS = {
   },
   overfire_air: { label: "Overfire air", pattern: /overfire|ofa/ },
 } as const;
-export type Control = keyof typeof CONTROLS;
+type Control = keyof typeof CONTROLS;
+
+export type ModelKind = "baseline" | "ridge" | "tree";
 
 /**
  * Each model's chart color (globals.css palette), kept apart from the fuel colors (amber coal,
  * green gas, blue hydro, rose oil); the baseline stays neutral.
  */
-export const MODEL_COLORS: Record<string, string> = {
+export const MODEL_COLORS: Record<ModelKind, string> = {
   baseline: "var(--chart-sand)",
   ridge: "var(--chart-slate)",
   tree: "var(--chart-plum)",
@@ -81,13 +83,13 @@ export const NUMERIC_INPUTS = {
   },
   prior_nox_rate: {
     label: "Prior-year NOₓ rate",
-    unit: "lb/MMBtu",
+    unit: RATES.noxRate.unit,
     less: "lower NOₓ rates last year",
     more: "higher NOₓ rates last year",
   },
   prior_operating_hours: {
     label: "Prior-year operating time",
-    unit: "hr",
+    unit: METRICS.operatingHours.unit,
     less: "fewer hours run last year",
     more: "more hours run last year",
   },
@@ -139,7 +141,7 @@ interface Spec {
 }
 
 export interface ModelArtifact {
-  kind: "baseline" | "ridge" | "tree";
+  kind: ModelKind;
   spec: Spec;
   featureNames: string[];
   ranges: {
@@ -223,20 +225,14 @@ export function outOfRange(model: ModelArtifact, inputs: ModelInputs) {
   return warnings;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  primary_fuel: "Primary fuel",
-  unit_type: "Unit type",
-};
-
 /** A model input or feature in words: "heat_input_mmbtu" → "Heat input", "primary_fuel=Coal" → "Primary fuel: Coal". */
 export function featureLabel(name: string) {
   const [field = name, category] = name.split("=");
-  const label =
-    field in NUMERIC_INPUTS
-      ? NUMERIC_INPUTS[field as NumericInput].label
-      : field in CONTROLS
-        ? CONTROLS[field as Control].label
-        : (CATEGORY_LABELS[field] ?? field);
+  const label = Object.hasOwn(NUMERIC_INPUTS, field)
+    ? NUMERIC_INPUTS[field as NumericInput].label
+    : isCategoryInput(field)
+      ? CATEGORY_INPUTS[field]
+      : field;
   return category ? `${label}: ${category}` : label;
 }
 
@@ -262,13 +258,13 @@ export function changedInputs(base: ModelInputs, inputs: ModelInputs) {
   return (Object.keys(inputs) as (keyof ModelInputs)[]).flatMap((key) => {
     const [now, was] = [inputs[key], base[key]];
     if (now === was) return [];
-    if (key in NUMERIC_INPUTS) {
+    if (Object.hasOwn(NUMERIC_INPUTS, key)) {
       const unit = NUMERIC_INPUTS[key as NumericInput].unit;
       const show = (v: unknown) =>
         typeof v === "number" ? inputNumber(v) : "missing";
       return [`${featureLabel(key)} ${show(now)} ${unit} (from ${show(was)})`];
     }
-    if (key in CONTROLS)
+    if (Object.hasOwn(CONTROLS, key))
       return [
         `${featureLabel(key)} ${now ? "yes" : "no"} (from ${was ? "yes" : "no"})`,
       ];
@@ -287,7 +283,7 @@ export const CATEGORY_INPUTS = {
 export type CategoryInput = keyof typeof CATEGORY_INPUTS;
 
 export const isCategoryInput = (key: string): key is CategoryInput =>
-  key in CATEGORY_INPUTS;
+  Object.hasOwn(CATEGORY_INPUTS, key);
 
 /**
  * Residuals by group (fuel class): how many test unit-years, the average signed error
@@ -300,10 +296,9 @@ export function residualsByGroup(
   const groups = new Map<string, number[]>();
   for (const p of points) {
     if (p.predicted === null || !Number.isFinite(p.predicted)) continue;
-    groups.set(p.group, [
-      ...(groups.get(p.group) ?? []),
-      p.predicted - p.actual,
-    ]);
+    const errors = groups.get(p.group) ?? [];
+    groups.set(p.group, errors);
+    errors.push(p.predicted - p.actual);
   }
   return [...groups]
     .map(([group, errors]) => ({
@@ -432,7 +427,8 @@ export function applyScenario(base: ModelInputs, s: ScenarioSpec): ModelInputs {
 
 /** The scenario in a few words: "Power output +10 %, add SCR". */
 export function describeScenario(s: ScenarioSpec) {
-  const signed = (p: number) => formatSigned(p, "%");
+  // Never below −100 %, as applyScenario applies it.
+  const signed = (p: number) => formatSigned(Math.max(-100, p), "%");
   const parts = [
     s.load && `power output ${signed(s.load)}`,
     s.heat && `fuel burned ${signed(s.heat)}`,
@@ -440,8 +436,7 @@ export function describeScenario(s: ScenarioSpec) {
     s.scr === "remove" && "remove SCR",
     s.fuel && `fuel: ${s.fuel}`,
   ].filter(Boolean) as string[];
-  const text = parts.join(", ") || "as reported";
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return capitalize(parts.join(", ") || "as reported");
 }
 
 /** A unit-year in a what-if scope: who it is, its actual NOₓ, and its model inputs. */
@@ -456,8 +451,8 @@ export interface ScopeRow {
 
 /**
  * One model over a scope, as reported and under a scenario: predicted NOₓ (short tons) summed over
- * the units, the NOₓ rates (lb/MMBtu, lb/MWh) from the summed heat input and gross load, how many
- * units the scenario takes outside the training data, and each unit's change (largest first).
+ * the units, how many units the scenario takes outside the training data, and each unit's change
+ * (largest first).
  */
 export function scopeTotals(
   model: ModelArtifact,
@@ -466,10 +461,6 @@ export function scopeTotals(
 ) {
   let base = 0;
   let scenario = 0;
-  let heat = 0;
-  let load = 0;
-  let baseHeat = 0;
-  let baseLoad = 0;
   let outside = 0;
   const units = rows.map((r) => {
     const x = applyScenario(r.inputs, spec);
@@ -477,23 +468,14 @@ export function scopeTotals(
     const p1 = predict(model, x);
     base += p0;
     scenario += p1;
-    heat += x.heat_input_mmbtu ?? 0;
-    load += x.gross_load_mwh ?? 0;
-    baseHeat += r.inputs.heat_input_mmbtu ?? 0;
-    baseLoad += r.inputs.gross_load_mwh ?? 0;
     if (outOfRange(model, x).length) outside++;
     return { row: r, base: p0, scenario: p1, diff: p1 - p0 };
   });
-  /** lb per unit of `denominator`; null without one. */
-  const rate = (tons: number, denominator: number) =>
-    denominator > 0 ? (tons * 2000) / denominator : null;
   return {
     base,
     scenario,
     diff: scenario - base,
     diffPct: percentChange(scenario, base),
-    rate: { base: rate(base, baseHeat), scenario: rate(scenario, heat) },
-    perMWh: { base: rate(base, baseLoad), scenario: rate(scenario, load) },
     outside,
     units: units.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)),
   };
@@ -515,7 +497,10 @@ export function sensitivityGrid(
   const notes: string[] = [];
   let [lo, hi] = [from, to];
   if (!Number.isFinite(lo) || !Number.isFinite(hi))
-    return { values: include === undefined ? [] : [include], notes };
+    return {
+      values: include === undefined ? [] : [include],
+      notes: ["The range has no number to start or end at, so it isn't drawn."],
+    };
   if (lo > hi) {
     [lo, hi] = [hi, lo];
     notes.push("The range was entered high to low, so it is read low to high.");
@@ -636,39 +621,215 @@ export function treeBreakpoints(model: ModelArtifact, input: NumericInput) {
 }
 
 /**
+ * A tree split in the input's own terms: "Heat input above 20.1M MMBtu" (`yes`) or "… at most …",
+ * "Primary fuel is (not) Coal", "SCR: yes/no". One-hot and on/off columns split at 0.5, so the
+ * low side means "not this".
+ */
+function splitText(model: ModelArtifact, node: number, yes: boolean) {
+  const t = model.tree!;
+  const f = t.feature[node]!;
+  const numeric = model.spec.numeric[f];
+  if (numeric) {
+    const meta = NUMERIC_INPUTS[numeric.name];
+    const v = inputNumber(rawValue(numeric, t.threshold[node]!));
+    return `${meta.label} ${yes ? "above" : "at most"} ${v} ${meta.unit}`;
+  }
+  const [field = "", category] = model.featureNames[f]!.split("=");
+  return category
+    ? `${featureLabel(field)} ${yes ? "is" : "is not"} ${category}`
+    : `${featureLabel(field)}: ${yes ? "yes" : "no"}`;
+}
+
+/**
  * The checks a decision tree makes for one unit-year, root to leaf, each in the input's own terms
- * ("Heat input above 20.1M MMBtu", "Primary fuel is not Coal", "SCR: no"), and the leaf's value.
- * Null for a model without a tree.
+ * ("Heat input above 20.1M MMBtu", "Primary fuel is not Coal", "SCR: no"), the leaf it ends in, and
+ * the leaf's value. Null for a model without a tree.
  */
 export function treePath(model: ModelArtifact, inputs: ModelInputs) {
   const t = model.tree;
   if (!t) return null;
   const x = designRow(inputs, model.spec);
-  const steps: { feature: string; text: string }[] = [];
+  const steps: { node: number; yes: boolean; text: string }[] = [];
   let node = 0;
   while (t.left[node] !== -1) {
-    const f = t.feature[node]!;
-    const name = model.featureNames[f]!;
-    const below = Math.fround(x[f]!) <= t.threshold[node]!;
-    const numeric = model.spec.numeric[f];
-    let text: string;
-    if (numeric) {
-      const meta = NUMERIC_INPUTS[numeric.name];
-      const v = inputNumber(rawValue(numeric, t.threshold[node]!));
-      text = `${meta.label} ${below ? "at most" : "above"} ${v} ${meta.unit}`;
-    } else {
-      // One-hot and on/off columns split at 0.5: the low side means "not this".
-      const [field = name, category] = name.split("=");
-      text = category
-        ? `${featureLabel(field)} ${below ? "is not" : "is"} ${category}`
-        : `${featureLabel(field)}: ${below ? "no" : "yes"}`;
-    }
-    steps.push({ feature: name.split("=")[0]!, text });
-    node = below ? t.left[node]! : t.right[node]!;
+    const yes = Math.fround(x[t.feature[node]!]!) > t.threshold[node]!;
+    const at = node;
+    // Written only when read: a group's summary reads few of its units' texts.
+    steps.push({
+      node,
+      yes,
+      get text() {
+        return splitText(model, at, yes);
+      },
+    });
+    node = yes ? t.right[node]! : t.left[node]!;
   }
-  return { steps, value: t.value[node]! };
+  return { steps, leaf: node, value: t.value[node]! };
+}
+
+/** Units and their summed tree prediction (short tons). */
+interface Tally {
+  units: number;
+  tons: number;
+}
+const tally = (): Tally => ({ units: 0, tons: 0 });
+
+/**
+ * Why the tree predicts what it does for a group, in its own terms:
+ * - `paths`: the leaves the units end in, as reported and with the change, each with its checks in
+ *   words, its value, and how many units and tons end there (largest as-reported tons first);
+ * - `moved`: units the change sends to another leaf;
+ * - `flips`: the first answer the change flips for those units ("SCR: yes"), with how many units
+ *   and the change in tons, largest first;
+ * - `splits`: the checks that divide the group (some units each way), with the units and as-reported
+ *   tons on each side, ordered by the smaller side's tons, so a check that splits the NOₓ evenly
+ *   ranks first.
+ * Null for a model without a tree.
+ */
+export function treeGroupSummary(
+  model: ModelArtifact,
+  rows: readonly ScopeRow[],
+  spec: ScenarioSpec,
+) {
+  if (!model.tree) return null;
+  const paths = new Map<
+    number,
+    {
+      leaf: number;
+      steps: string[];
+      value: number;
+      before: Tally;
+      after: Tally;
+    }
+  >();
+  const flips = new Map<
+    string,
+    { text: string; units: number; diff: number }
+  >();
+  const splits = new Map<number, { yes: Tally; no: Tally }>();
+  let moved = 0;
+  const leafOf = (p: NonNullable<ReturnType<typeof treePath>>) => {
+    let entry = paths.get(p.leaf);
+    if (!entry) {
+      entry = {
+        leaf: p.leaf,
+        steps: p.steps.map((s) => s.text),
+        value: p.value,
+        before: tally(),
+        after: tally(),
+      };
+      paths.set(p.leaf, entry);
+    }
+    return entry;
+  };
+  for (const r of rows) {
+    const before = treePath(model, r.inputs)!;
+    const after = treePath(model, applyScenario(r.inputs, spec))!;
+    const b = leafOf(before).before;
+    b.units++;
+    b.tons += before.value;
+    const a = leafOf(after).after;
+    a.units++;
+    a.tons += after.value;
+    for (const s of before.steps) {
+      const side = splits.get(s.node) ?? { yes: tally(), no: tally() };
+      const t = s.yes ? side.yes : side.no;
+      t.units++;
+      t.tons += before.value;
+      splits.set(s.node, side);
+    }
+    if (after.leaf !== before.leaf) {
+      moved++;
+      const fork = after.steps.findIndex(
+        (s, i) => s.yes !== before.steps[i]?.yes,
+      );
+      const text = after.steps[fork]!.text;
+      const f = flips.get(text) ?? { text, units: 0, diff: 0 };
+      f.units++;
+      f.diff += after.value - before.value;
+      flips.set(text, f);
+    }
+  }
+  return {
+    paths: [...paths.values()].sort(
+      (a, b) => b.before.tons - a.before.tons || b.after.tons - a.after.tons,
+    ),
+    moved,
+    flips: [...flips.values()].sort(
+      (a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.units - a.units,
+    ),
+    splits: [...splits]
+      .filter(([, s]) => s.yes.units && s.no.units)
+      .map(([node, s]) => ({
+        question: splitText(model, node, true),
+        ...s,
+      }))
+      .sort(
+        (a, b) =>
+          Math.min(b.yes.tons, b.no.tons) - Math.min(a.yes.tons, a.no.tons),
+      ),
+  };
+}
+
+/**
+ * What a scenario sets across a group, one line per input it changes: "Heat input −5 % on all 88
+ * units", "SCR added on 61 of 88 units (27 already had it)", "Primary fuel set to Pipeline Natural
+ * Gas on 40 of 88 units (48 already burn it)". Units missing an input are counted out of the
+ * percentage changes.
+ */
+export function scenarioSummary(rows: readonly ScopeRow[], s: ScenarioSpec) {
+  const n = rows.length;
+  // One unit needs no count; a group says how many units each change reaches.
+  const on = (k: number) =>
+    n === 1 ? "" : ` on ${k === n ? `all ${n}` : `${k} of ${n}`} units`;
+  /** "(27 already had it)": `one` and `many` are the verb forms for one unit and several. */
+  const but = (k: number, one: string, many = one) =>
+    k ? ` (${n === 1 ? "the unit" : k} ${k === 1 ? one : many})` : "";
+  const out: string[] = [];
+  for (const [key, pct] of [
+    ["gross_load_mwh", s.load],
+    ["heat_input_mmbtu", s.heat],
+  ] as const) {
+    if (!pct) continue;
+    const none = rows.filter((r) => r.inputs[key] === null).length;
+    out.push(
+      `${featureLabel(key)} ${formatSigned(Math.max(-100, pct), "%")}${on(n - none)}${but(none, "reports none", "report none")}`,
+    );
+  }
+  if (s.scr) {
+    const add = s.scr === "add";
+    const already = rows.filter((r) => r.inputs.scr === (add ? 1 : 0)).length;
+    out.push(
+      `SCR ${add ? "added" : "removed"}${on(n - already)}${but(already, `already ${add ? "had" : "lacked"} it`)}`,
+    );
+  }
+  if (s.fuel) {
+    const already = rows.filter((r) => r.inputs.primary_fuel === s.fuel).length;
+    out.push(
+      `Primary fuel set to ${s.fuel}${on(n - already)}${but(already, "already burns it", "already burn it")}`,
+    );
+  }
+  return out;
+}
+
+/**
+ * The years a What-if can ask about, newest first: stored years whose previous year is stored too
+ * (last year's NOₓ rate is an input) and that lie within the years the models were fit and tested
+ * on ("2016-2023", "2024-2025"), so a partial year or a year after a gap is never offered.
+ */
+export function predictableYears(
+  stored: readonly number[],
+  fitYears: string,
+  testYears: string,
+) {
+  const from = Number(fitYears.split("-")[0]);
+  const to = Number(testYears.split("-").at(-1));
+  const have = new Set(stored);
+  return [...have]
+    .filter((y) => have.has(y - 1) && y >= from && y <= to)
+    .sort((a, b) => b - a);
 }
 
 /** "Ridge", "Tree": a model's short name, for chart keys and bar labels. */
 export const shortName = (m: { kind: string; name: string }) =>
-  m.kind === "tree" ? "Tree" : m.kind === "ridge" ? "Ridge" : m.name;
+  ({ ridge: "Ridge", tree: "Tree" })[m.kind] ?? m.name;

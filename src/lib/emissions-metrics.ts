@@ -1,16 +1,3 @@
-export interface EmissionTotals {
-  operatingHours: number;
-  grossGenerationMWh: number;
-  heatInputMMBtu: number;
-  steamLoadKlb: number;
-  co2MassTons: number;
-  so2MassTons: number;
-  noxMassTons: number;
-}
-
-/** A unit-year's metrics as reported: null when the source left the value out (not the same as 0). */
-export type ReportedTotals = { [K in keyof EmissionTotals]: number | null };
-
 export const TOTAL_KEYS = [
   "operatingHours",
   "grossGenerationMWh",
@@ -19,28 +6,29 @@ export const TOTAL_KEYS = [
   "co2MassTons",
   "so2MassTons",
   "noxMassTons",
-] as const satisfies readonly (keyof EmissionTotals)[];
+] as const;
 
-export const emptyTotals = (): EmissionTotals => ({
-  operatingHours: 0,
-  grossGenerationMWh: 0,
-  heatInputMMBtu: 0,
-  steamLoadKlb: 0,
-  co2MassTons: 0,
-  so2MassTons: 0,
-  noxMassTons: 0,
-});
+/** Metrics as reported: null when the source left the value out (not the same as 0). */
+export type ReportedTotals = Record<(typeof TOTAL_KEYS)[number], number | null>;
 
-/** Adds `rec` into `acc`; values that weren't reported count as 0 in a total. */
-export function addTotals(acc: EmissionTotals, rec: ReportedTotals) {
-  for (const key of TOTAL_KEYS) acc[key] += rec[key] ?? 0;
-  return acc;
+/** The sum of the values that were reported; null when none was. */
+export function sumReported(values: (number | null | undefined)[]) {
+  const reported = values.filter((v) => v != null);
+  return reported.length ? reported.reduce((a, b) => a + b, 0) : null;
+}
+
+/** The largest reported value; null when none was. */
+export function maxReported(values: (number | null)[]) {
+  const reported = values.filter((v) => v !== null);
+  return reported.length ? Math.max(...reported) : null;
 }
 
 export const sumTotals = (records: ReportedTotals[]) =>
-  records.reduce(addTotals, emptyTotals());
+  Object.fromEntries(
+    TOTAL_KEYS.map((key) => [key, sumReported(records.map((r) => r[key]))]),
+  ) as ReportedTotals;
 
-/** CO₂ intensity (lbs/MWh) and heat rate (MMBtu/MWh); null when an input is missing or gross load is 0. */
+/** CO₂ intensity (lb/MWh) and heat rate (MMBtu/MWh); null when an input is missing or gross load is 0. */
 export function deriveRates({
   co2MassTons: co2,
   heatInputMMBtu: heat,
@@ -59,9 +47,27 @@ export function deriveRates({
 }
 
 /**
- * Physical-sanity audit thresholds:
- * Operational bounds every stored unit-year is checked against.
+ * Several unit-years' totals and pooled rates. A rate adds up only the unit-years that report both
+ * of its values (gross load above 0), as Analyze and Top N do: a unit that reports load but no CO₂
+ * would otherwise make its plant look cleaner.
  */
+export function totalsAndRates(records: ReportedTotals[]) {
+  const pooled = (key: "co2MassTons" | "heatInputMMBtu") =>
+    deriveRates(
+      sumTotals(
+        records.filter(
+          (r) => r[key] !== null && (r.grossGenerationMWh ?? 0) > 0,
+        ),
+      ),
+    );
+  return {
+    ...sumTotals(records),
+    co2IntensityLbsMWh: pooled("co2MassTons").co2IntensityLbsMWh,
+    heatRateMMBtuMWh: pooled("heatInputMMBtu").heatRateMMBtuMWh,
+  };
+}
+
+/** The physical-sanity bounds every stored unit-year is checked against. */
 export const AUDIT_THRESHOLDS = {
   ZERO_EMISSIONS_MIN_HEAT_INPUT_MMBTU: 1000,
   PHANTOM_GENERATION_MIN_MWH: 0,
@@ -115,13 +121,13 @@ export function evaluatePhysicalSanityRules(
       flags.push({
         flagType: "ZERO_EMISSIONS_HIGH_HEAT",
         severity: "ERROR",
-        details: `Heat input was ${heat.toLocaleString()} MMBtu, but CO2 reported was 0.0 tons.`,
+        details: `Heat input was ${heat.toLocaleString("en-US")} MMBtu, but CO2 reported was 0.0 tons.`,
       });
     } else if (m.co2MassTons === null) {
       flags.push({
         flagType: "CO2_NOT_REPORTED",
         severity: "WARN",
-        details: `Heat input was ${heat.toLocaleString()} MMBtu, but no CO2 mass was reported.`,
+        details: `Heat input was ${heat.toLocaleString("en-US")} MMBtu, but no CO2 mass was reported.`,
       });
     }
   }
@@ -133,7 +139,7 @@ export function evaluatePhysicalSanityRules(
     flags.push({
       flagType: "PHANTOM_GENERATION",
       severity: "ERROR",
-      details: `Gross generation was ${m.grossGenerationMWh.toLocaleString()} MWh while operating time was 0 hours.`,
+      details: `Gross generation was ${m.grossGenerationMWh.toLocaleString("en-US")} MWh while operating time was 0 hours.`,
     });
   }
   const rate = m.heatRateMMBtuMWh;
@@ -147,7 +153,7 @@ export function evaluatePhysicalSanityRules(
   return flags;
 }
 
-/** Lowest lbs/MWh wins; zero-emission plants (0 intensity) rank above all fossil plants. */
+/** Lowest lb/MWh wins; zero-emission plants (0 intensity) rank above all fossil plants. */
 export function pickCleanestByCarbonIntensity<
   T extends { carbonIntensityLbsMWh: number | null },
 >(items: T[]): T | undefined {
@@ -178,17 +184,11 @@ export function buildYearlyRollups(records: AnnualRecordForRollup[] = []) {
 
   return [...byYear]
     .sort(([a], [b]) => b - a)
-    .map(([year, yearRecords]) => {
-      const totals = sumTotals(yearRecords);
-      return {
-        ...totals,
-        ...deriveRates(totals),
-        year,
-        records: yearRecords,
-        unitCount: yearRecords.length,
-        maxOperatingHours: Math.max(
-          ...yearRecords.map((r) => r.operatingHours ?? 0),
-        ),
-      };
-    });
+    .map(([year, yearRecords]) => ({
+      ...totalsAndRates(yearRecords),
+      year,
+      records: yearRecords,
+      unitCount: yearRecords.length,
+      maxOperatingHours: maxReported(yearRecords.map((r) => r.operatingHours)),
+    }));
 }

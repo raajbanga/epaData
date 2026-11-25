@@ -1,6 +1,6 @@
 "use client";
 
-import { bin, scaleBand, scaleLinear, scaleLog } from "d3";
+import { bin, max, min, scaleBand, scaleLinear, scaleLog } from "d3";
 import {
   Bar,
   BarChart,
@@ -24,6 +24,7 @@ import {
 import { quantile } from "~/lib/stats";
 import { HoverCard, powersOfTen, useHover, useWidth, YGrid } from "./svg";
 import { plural } from "~/lib/utils";
+import { useMemo } from "react";
 
 /** One group's values and color. */
 interface ValueGroup {
@@ -31,6 +32,15 @@ interface ValueGroup {
   values: number[];
   color: string;
 }
+
+/** No values, or on a log axis only 0 and negative ones. */
+const noValues = (log?: boolean) => (
+  <p className="text-fg-muted py-10 text-center text-sm">
+    {log
+      ? "No value is above 0, so there is nothing to draw on a log scale."
+      : "No unit-year has a value to draw."}
+  </p>
+);
 
 /** On a log scale only positive values can be drawn. */
 const usable = (values: number[], log?: boolean) =>
@@ -43,29 +53,30 @@ const usable = (values: number[], log?: boolean) =>
 export function Histogram({
   groups,
   log,
-  height = 320,
   unit = "",
 }: {
   groups: ValueGroup[];
   log?: boolean;
-  height?: number;
   unit?: string;
 }) {
-  const t = (v: number) => (log ? Math.log10(v) : v);
-  const shown = groups.map((g) => usable(g.values, log).map(t));
-  const all = shown.flat();
-  const thresholds = bin()
-    .thresholds(40)(all)
-    .map((b) => b.x0!);
-  const binner = bin()
-    .domain([Math.min(...all), Math.max(...all)])
-    .thresholds(thresholds);
-  const binned = shown.map((values) => binner(values));
-  const data = (binned[0] ?? []).map((b, i) => ({
-    x0: b.x0!,
-    x1: b.x1!,
-    ...Object.fromEntries(binned.map((g, j) => [`g${j}`, g[i]?.length ?? 0])),
-  }));
+  const data = useMemo(() => {
+    const t = (v: number) => (log ? Math.log10(v) : v);
+    const shown = groups.map((g) => usable(g.values, log).map(t));
+    const all = shown.flat();
+    const thresholds = bin()
+      .thresholds(40)(all)
+      .map((b) => b.x0!);
+    const binner = bin()
+      .domain([min(all) ?? 0, max(all) ?? 0])
+      .thresholds(thresholds);
+    const binned = all.length ? shown.map((values) => binner(values)) : [];
+    return (binned[0] ?? []).map((b, i) => ({
+      x0: b.x0!,
+      x1: b.x1!,
+      ...Object.fromEntries(binned.map((g, j) => [`g${j}`, g[i]?.length ?? 0])),
+    }));
+  }, [groups, log]);
+  if (!data.length) return noValues(log);
   const fromLog = (v: number) => (log ? 10 ** v : v);
   const series: Series[] = groups.map((g, j) => ({
     key: `g${j}`,
@@ -75,7 +86,7 @@ export function Histogram({
   const one = groups.length === 1;
   const Chart = one ? BarChart : LineChart;
   return (
-    <ChartContainer height={height}>
+    <ChartContainer height={320}>
       <Chart
         data={data}
         margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
@@ -103,7 +114,10 @@ export function Histogram({
                 title={`${formatValue(fromLog(row.x0))}–${formatValue(fromLog(row.x1))} ${unit}`}
                 rows={series.map((s) => ({
                   label: s.label,
-                  value: `${(row as Record<string, number>)[s.key]} unit-years`,
+                  value: plural(
+                    (row as Record<string, number>)[s.key]!,
+                    "unit-year",
+                  ),
                   color: s.color,
                 }))}
               />
@@ -171,19 +185,23 @@ const MARGIN = { top: 8, right: 8, bottom: 28, left: 56 };
 export function BoxPlot({
   groups,
   log,
-  height = 340,
   unit = "",
 }: {
   groups: ValueGroup[];
   log?: boolean;
-  height?: number;
   unit?: string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const { hover, on } = useHover<Box>();
-  const boxes = groups.map((g) => boxOf(g, log)).filter((b) => b !== null);
+  // Sorting every group's values is the costly part: once per data, not per pointer move.
+  const boxes = useMemo(
+    () => groups.map((g) => boxOf(g, log)).filter((b) => b !== null),
+    [groups, log],
+  );
+  if (!boxes.length) return noValues(log);
   const lo = Math.min(...boxes.map((b) => b.lo));
   const hi = Math.max(...boxes.map((b) => b.hi));
+  const height = 340;
   const bottom = height - MARGIN.bottom;
   const y = (
     log
@@ -217,7 +235,11 @@ export function BoxPlot({
                   width={x.step()}
                   y={MARGIN.top}
                   height={bottom - MARGIN.top}
-                  fill={hover?.item === b ? "var(--surface-2)" : "transparent"}
+                  fill={
+                    hover?.item.group.label === b.group.label
+                      ? "var(--surface-2)"
+                      : "transparent"
+                  }
                   fillOpacity={0.5}
                 />
                 <line
@@ -286,8 +308,8 @@ export function BoxPlot({
 }
 
 /**
- * How to read one box, drawn once above a box plot: the whiskers' ends, the middle half, the
- * typical (median) line, and the dots for unusual values.
+ * How to read one box, drawn once above a box plot: the whiskers' ends, the middle half, and the
+ * typical (median) line.
  */
 export function BoxKey() {
   const y = 26;
@@ -308,11 +330,11 @@ export function BoxKey() {
         How to read a box:
       </figcaption>
       <svg
-        width={470}
+        width={390}
         height={56}
-        viewBox="0 0 470 56"
+        viewBox="0 0 390 56"
         role="img"
-        aria-label="A box plot key: the line spans the usual range, the box holds the middle half of the unit-years, the line inside the box is the typical value, and dots beyond are unusual."
+        aria-label="A box plot key: the line spans the usual range, the box holds the middle half of the unit-years, and the line inside the box is the typical value."
         className="max-w-full"
       >
         <line x1={30} x2={330} y1={y} y2={y} stroke="var(--chart-slate)" />
@@ -346,25 +368,10 @@ export function BoxKey() {
           stroke="var(--chart-slate)"
           strokeWidth={2.5}
         />
-        <circle
-          cx={380}
-          cy={y}
-          r={3.5}
-          fill="var(--chart-slate)"
-          opacity={0.6}
-        />
-        <circle
-          cx={400}
-          cy={y}
-          r={3.5}
-          fill="var(--chart-slate)"
-          opacity={0.6}
-        />
         {label(180, -15, "middle half of unit-years")}
         {label(160, 24, "typical value")}
         {label(30, 24, "low end", "start")}
         {label(330, 24, "high end", "end")}
-        {label(390, 24, "unusual")}
       </svg>
     </figure>
   );

@@ -7,6 +7,7 @@ import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportButton } from "~/components/ui/export-button";
 import type { ExportMetadata, ExportTable } from "~/lib/export-bundle";
 import { cn, compactNumber } from "~/lib/utils";
+import { formatStat } from "~/lib/analysis";
 import { Swatch } from "~/components/ui/swatch";
 
 /**
@@ -72,11 +73,9 @@ export const formatTick = (v: unknown) =>
       ? v
       : "";
 
-/** Tooltip and label values: "1,234,567", "0.0123". */
+/** Tooltip and label values, as the readings write them: "1.23M", "9,193", "0.0123". */
 export const formatValue = (v: unknown) =>
-  typeof v === "number" && Number.isFinite(v)
-    ? v.toLocaleString("en-US", { maximumSignificantDigits: 4 })
-    : "—";
+  formatStat(typeof v === "number" ? v : null);
 
 const TICK = { fill: "var(--fg-muted)", fontSize: 12 };
 
@@ -103,18 +102,13 @@ export const still = { isAnimationActive: false } as const;
 export function ChartContainer({
   height,
   children,
-  className,
 }: {
   height: number;
   children: React.ReactElement;
-  className?: string;
 }) {
   return (
     <div
-      className={cn(
-        "w-full text-xs [&_.recharts-surface]:outline-none",
-        className,
-      )}
+      className="w-full text-xs [&_.recharts-surface]:outline-none"
       style={{ height }}
     >
       <ResponsiveContainer width="100%" height="100%">

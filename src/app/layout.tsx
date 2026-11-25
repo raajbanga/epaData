@@ -10,7 +10,7 @@ import { TRPCReactProvider } from "~/trpc/react";
 export const metadata: Metadata = {
   title: { default: "epaData", template: "%s · epaData" },
   description:
-    "Retrieve, validate, store, search, and download EPA Clean Air Markets (CAMPD) power-sector emissions data.",
+    "Retrieve, validate, search, analyze, predict, and download EPA Clean Air Markets (CAMPD) power-sector emissions data.",
   icons: [{ rel: "icon", url: "/icon.svg", type: "image/svg+xml" }],
 };
 

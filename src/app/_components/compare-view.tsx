@@ -12,7 +12,11 @@ import Link from "next/link";
 import { Button, buttonClass } from "~/components/ui/button";
 import { DataPanel } from "~/components/ui/data-panel";
 import { DialogHeader } from "~/components/ui/dialog";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { MetricBar, percentOf, ProgressBar } from "~/components/ui/metric-bar";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import { KpiStrip, StatTile } from "~/components/ui/stat-tile";
@@ -24,18 +28,24 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { pickCleanestByCarbonIntensity } from "~/lib/emissions-metrics";
+import {
+  pickCleanestByCarbonIntensity,
+  sumReported,
+} from "~/lib/emissions-metrics";
 import { cleanOwnerOperator, formatCountyShort } from "~/lib/plant-narrative";
-import { formatQuantity } from "~/lib/utils";
+import { hoursInYear } from "~/lib/analysis";
+import { formatQuantity, plural } from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { SelectionContext, selectionLabel } from "./selection-context";
 import { GranularEmissionsWindow } from "./granular-emissions-window";
-import { METRICS } from "~/lib/metrics";
+import { METRICS, RATES } from "~/lib/metrics";
 
 type ComparedPlant = RouterOutputs["facilities"]["compareFacilities"][number];
 type CompareTab = "overview" | "emissions" | "fleet" | "granular";
 type NumericKey = {
-  [K in keyof ComparedPlant]: ComparedPlant[K] extends number ? K : never;
+  [K in keyof ComparedPlant]: ComparedPlant[K] extends number | null
+    ? K
+    : never;
 }[keyof ComparedPlant];
 
 interface MatrixRow {
@@ -46,11 +56,11 @@ interface MatrixRow {
 type MatrixSection = [title: string, rows: MatrixRow[]];
 
 const sum = (plants: ComparedPlant[], key: NumericKey) =>
-  plants.reduce((acc, p) => acc + p[key], 0);
+  sumReported(plants.map((p) => p[key]));
 
 const topBy = (plants: ComparedPlant[], key: NumericKey) =>
   plants.reduce<ComparedPlant | undefined>(
-    (best, p) => (!best || p[key] > best[key] ? p : best),
+    (best, p) => ((p[key] ?? 0) > (best?.[key] ?? 0) ? p : best),
     undefined,
   );
 
@@ -62,23 +72,24 @@ function barRow(
   unit: string,
   leaderLabel?: string,
 ): MatrixRow {
-  const max = Math.max(...plants.map((p) => p[key]), 1);
+  const max = Math.max(...plants.map((p) => p[key] ?? 0)) || 1;
   const leader = topBy(plants, key);
   return {
     label,
     render: (p) => (
       <MetricBar
-        value={formatQuantity(p[key], unit, {
-          fallback: leaderLabel ? "—" : `0 ${unit}`,
-        })}
-        percent={percentOf(p[key], max)}
-        leaderLabel={p.id === leader?.id && p[key] > 0 && leaderLabel}
+        value={formatQuantity(p[key], unit)}
+        percent={percentOf(p[key] ?? 0, max)}
+        leaderLabel={p.key === leader?.key && leaderLabel}
       />
     ),
   };
 }
 
-function coverageRow(label: string, key: NumericKey): MatrixRow {
+function coverageRow(
+  label: string,
+  key: "so2ControlledUnits" | "noxControlledUnits" | "pmControlledUnits",
+): MatrixRow {
   return {
     label,
     render: (p) => {
@@ -86,7 +97,7 @@ function coverageRow(label: string, key: NumericKey): MatrixRow {
       return (
         <div className="space-y-1">
           <div className="text-fg text-sm font-semibold">
-            {p[key]} of {p.unitCount} units{" "}
+            {p[key]} of {plural(p.unitCount, "unit")}{" "}
             <span className="text-fg-muted">({pct}%)</span>
           </div>
           <ProgressBar percent={pct} className="h-1 w-24 2xl:w-32" />
@@ -131,16 +142,22 @@ function matrixSections(
             {
               label: "Capacity factor",
               render: (p) => {
-                if (!p.totalCapacityMW || !p.totalGenerationMWh)
+                if (!p.totalCapacityMW || p.totalGenerationMWh == null)
                   return mono("—");
-                const cf = percentOf(
-                  p.totalGenerationMWh,
-                  p.totalCapacityMW * 8760,
+                // Above 100 % when gross load exceeds the nameplate, as on Analyze.
+                const cf = Math.round(
+                  (p.totalGenerationMWh /
+                    (p.totalCapacityMW *
+                      hoursInYear(p.availableYears[0] ?? 0))) *
+                    100,
                 );
                 return (
                   <div className="space-y-1">
                     <span className="text-fg text-sm tabular-nums">{cf}%</span>
-                    <ProgressBar percent={cf} className="h-1 w-24 2xl:w-32" />
+                    <ProgressBar
+                      percent={Math.min(cf, 100)}
+                      className="h-1 w-24 2xl:w-32"
+                    />
                   </div>
                 );
               },
@@ -151,7 +168,7 @@ function matrixSections(
           "Efficiency",
           [
             {
-              label: "CO₂ rate",
+              label: RATES.co2Intensity.label,
               render: (p) => (
                 <CarbonIntensityBadge
                   intensity={p.carbonIntensityLbsMWh}
@@ -160,10 +177,10 @@ function matrixSections(
               ),
             },
             {
-              label: "Heat rate",
+              label: RATES.heatRate.label,
               render: (p) =>
                 mono(
-                  formatQuantity(p.heatRateMMBtuMWh, "MMBtu/MWh", {
+                  formatQuantity(p.heatRateMMBtuMWh, RATES.heatRate.unit, {
                     digits: 2,
                   }),
                 ),
@@ -177,9 +194,9 @@ function matrixSections(
         [
           "Emissions",
           [
-            barRow(plants, "CO₂", "totalCo2Tons", "t"),
-            barRow(plants, "SO₂", "totalSo2Tons", "t"),
-            barRow(plants, "NOₓ", "totalNoxTons", "t"),
+            barRow(plants, METRICS.co2MassTons.short, "totalCo2Tons", "t"),
+            barRow(plants, METRICS.so2MassTons.short, "totalSo2Tons", "t"),
+            barRow(plants, METRICS.noxMassTons.short, "totalNoxTons", "t"),
           ],
         ],
         [
@@ -322,7 +339,7 @@ function CompareMatrix({
                   {plant.nercRegion && ` · ${plant.nercRegion}`}
                 </div>
                 {cleanestKey === plant.key && (
-                  <Badge variant="success">Lowest CO₂ rate</Badge>
+                  <Badge variant="success">Lowest CO₂ intensity</Badge>
                 )}
               </TableHead>
             ))}
@@ -372,14 +389,18 @@ export function CompareView() {
     inspect,
   } = use(SelectionContext);
   const canCompare = compareIds.length + compareUnitIds.length >= 2;
-  const { data: plants = [], isLoading } =
-    api.facilities.compareFacilities.useQuery(
-      { ids: compareIds, unitIds: compareUnitIds },
-      { enabled: canCompare, placeholderData: (prev) => prev },
-    );
+  const {
+    data: plants = [],
+    isLoading,
+    error,
+    refetch,
+  } = api.facilities.compareFacilities.useQuery(
+    { ids: compareIds, unitIds: compareUnitIds },
+    { enabled: canCompare, placeholderData: (prev) => prev },
+  );
   const cleanest = pickCleanestByCarbonIntensity(plants);
-  const totalUnits = sum(plants, "unitCount");
-  const totalScrubbed = sum(plants, "controlledUnitsCount");
+  const totalUnits = sum(plants, "unitCount") ?? 0;
+  const totalScrubbed = sum(plants, "controlledUnitsCount") ?? 0;
   // The same selection as Analyze's Compare groups (labels as in lib/analysis DIMENSIONS); a mix
   // of facilities and units compares their facilities.
   const byUnit = plants.length > 0 && plants.every((p) => p.unitInternalId);
@@ -396,7 +417,7 @@ export function CompareView() {
     compareBy: byUnit ? "unit" : "facility",
     groups: groups.join("|"),
     variable: "co2MassTons",
-    // Every year, as the comparison above shows them.
+    // Every year of each; the comparison above shows only the latest.
     yearMin: "",
     yearMax: "",
   }).toString()}`;
@@ -426,7 +447,9 @@ export function CompareView() {
           </>
         }
       />
-      {isLoading && canCompare ? (
+      {error && canCompare ? (
+        <QueryError error={error} onRetry={() => void refetch()} />
+      ) : isLoading && canCompare ? (
         <InlineLoading title="Comparing…" />
       ) : !canCompare ? (
         <EmptyState
@@ -437,29 +460,30 @@ export function CompareView() {
         <>
           <KpiStrip>
             <StatTile
-              label="Lowest CO₂ rate"
+              label="Lowest CO₂ intensity"
               value={cleanest?.name ?? "—"}
               subtext={
                 cleanest?.carbonIntensityLbsMWh === 0
                   ? "Zero stack CO₂"
-                  : formatQuantity(cleanest?.carbonIntensityLbsMWh, "lbs/MWh")
+                  : formatQuantity(
+                      cleanest?.carbonIntensityLbsMWh,
+                      RATES.co2Intensity.unit,
+                    )
               }
             />
             <StatTile
               label="Capacity, combined"
               value={formatQuantity(sum(plants, "totalCapacityMW"), "MW")}
-              subtext={`${totalUnits} units`}
+              subtext={plural(totalUnits, "unit")}
             />
             <StatTile
-              label="Gross load, combined"
+              label={`${METRICS.grossGenerationMWh.label}, combined`}
               value={formatQuantity(sum(plants, "totalGenerationMWh"), "MWh")}
               subtext="latest years"
             />
             <StatTile
-              label="CO₂, combined"
-              value={formatQuantity(sum(plants, "totalCo2Tons"), "t", {
-                fallback: "0 t",
-              })}
+              label={`${METRICS.co2MassTons.short}, combined`}
+              value={formatQuantity(sum(plants, "totalCo2Tons"), "t")}
               subtext="latest years"
             />
             <StatTile

@@ -13,7 +13,7 @@ import {
   outlierSentence,
   spreadSentences,
 } from "~/lib/takeaways";
-import { capitalize, formatNumber } from "~/lib/utils";
+import { formatNumber, inSentence } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import { DistributionChart } from "./charts";
 import {
@@ -23,7 +23,6 @@ import {
   DimensionField,
   dimensionLabel,
   findInfo,
-  inSentence,
   VariableField,
   type TabProps,
 } from "./shared";
@@ -62,7 +61,7 @@ const STAT_COLUMNS: [string, (s: Summary) => number | null][] = [
 
 /**
  * Histogram/box plot: how one variable is spread, overall and per group, and which
- * unit-years are unusual. Headline numbers first, the picture next, the full table after.
+ * unit-years are unusual. A short reading first, the picture next, the full table after.
  */
 export function DistributionTab(props: TabProps) {
   const { filters, view, setView, catalog } = props;
@@ -102,14 +101,13 @@ export function DistributionTab(props: TabProps) {
     <div className="space-y-6">
       <QuestionSentence label="Distribution question">
         <span>How is</span>
-        <VariableField {...bind(props, "variable")} inline />
+        <VariableField {...bind(props, "variable")} />
         <span>spread across unit-years</span>
         <DimensionField
           {...bind(props, "by")}
           label="Group by"
           none="overall"
           prefix="by "
-          inline
         />
         <span className="-ml-1.5">?</span>
       </QuestionSentence>
@@ -126,6 +124,7 @@ export function DistributionTab(props: TabProps) {
         <InlineLoading title="Computing statistics…" />
       ) : (
         <div
+          inert={q.isPlaceholderData}
           className={
             q.isFetching
               ? "space-y-6 opacity-60 transition-opacity"
@@ -134,7 +133,7 @@ export function DistributionTab(props: TabProps) {
         >
           <Takeaways
             items={[
-              `Of the ${formatNumber(o.count + (o.missing ?? 0))} unit-years picked, ${formatNumber(o.count)} report ${inSentence(info.label)}${o.missing ? ` (${formatNumber(o.missing)} don't)` : ""}. ${capitalize(combined.toLowerCase())}: **${formatStat(o.value)} ${info.unit}**.`,
+              `Of the ${formatNumber(o.count + (o.missing ?? 0))} unit-years picked, ${formatNumber(o.count)} report ${inSentence(info.label)}${o.missing ? ` (${formatNumber(o.missing)} don't)` : ""}. ${combined}: **${formatStat(o.value)} ${info.unit}**.`,
               ...spreadSentences(o, info.unit),
               by &&
                 groupMedianSentence(
@@ -157,8 +156,7 @@ export function DistributionTab(props: TabProps) {
             hint="Mean, median, spread, quartiles, and percentiles, with a download"
           >
             <Section
-              title=""
-              note={`${info.definition} ${by ? `${formatNumber(data.groups.length)} of ${formatNumber(data.totalGroups)} groups, ${by === "year" ? "in year order" : `largest ${combined.toLowerCase()} first`}. ` : ""}Missing values are left out, never counted as 0. Click a column to sort.`}
+              note={`${info.definition} ${by ? `${formatNumber(data.groups.length)} of ${formatNumber(data.totalGroups)} groups, ${by === "year" ? "in year order" : `largest ${inSentence(combined)} first`}. ` : ""}Missing values are left out, never counted as 0. Click a column to sort.`}
               actions={
                 <ExportButton
                   name={`statistics-${view.variable}${by ? `-by-${by}` : ""}`}
@@ -176,7 +174,7 @@ export function DistributionTab(props: TabProps) {
                     group,
                     ...nums.map((n) => formatStat(n as number | null)),
                   ])}
-                  sortKeys={rows.map((r) => r.map((c) => c))}
+                  sortKeys={rows}
                 />
               </div>
             </Section>
@@ -188,7 +186,6 @@ export function DistributionTab(props: TabProps) {
               hint={`${formatNumber(unusual.above + unusual.below)} unit-years far from the rest`}
             >
               <Section
-                title=""
                 note={`${formatNumber(unusual.below)} unit-years below and ${formatNumber(unusual.above)} above Tukey's far-out fences (Q1 − 3 × IQR to Q3 + 3 × IQR: ${formatStat(unusual.low)} to ${formatStat(unusual.high)} ${info.unit}). They are reported values, not errors; the Audit flags tab on Explore lists records that break physical rules.`}
               >
                 {unusual.extreme.length > 0 && (
@@ -201,7 +198,9 @@ export function DistributionTab(props: TabProps) {
                     rows={unusual.extreme.map((u) => [
                       u.label,
                       formatStat(u.value),
-                      o.median ? `${formatStat(u.value / o.median)}×` : "—",
+                      o.median && o.median > 0 && u.value > 0
+                        ? `${formatStat(u.value / o.median)}×`
+                        : "—",
                     ])}
                   />
                 )}

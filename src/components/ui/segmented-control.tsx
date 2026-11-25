@@ -37,6 +37,7 @@ export function SegmentedControl<T extends string>({
           key={option.value}
           type="button"
           title={option.title}
+          aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={cn(
             "flex cursor-pointer items-center gap-1.5 font-medium whitespace-nowrap",

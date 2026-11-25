@@ -12,9 +12,9 @@ rejected rows, an in-file duplicate, and a physical-sanity flag.
   retrieved on 2026-10-09: reporting year 2014 for the new rows and 2023 for the two rows
   that already exist in `db.sqlite`.
 - **Unit attribute columns** (fuel, unit type, controls, program code) are copied from the
-  units already stored in `db.sqlite`. Units keep one set of attributes, so an import of
-  2014 attributes would overwrite today's values. Copying them means the import changes no
-  unit columns. Units whose fuel changed since 2014 (for example Big Sandy BSU1, converted
+  units already stored in `db.sqlite`. A unit keeps its latest values (controls and program
+  codes are also kept per unit-year), so an import of 2014 attributes would overwrite today's.
+  Copying them means the import changes no unit columns. Units whose fuel changed since 2014 (for example Big Sandy BSU1, converted
   from coal to gas) were left out for the same reason.
 - **Defects** were added on purpose to rows 12, 18, 19, 23, and 25 (see below). Row 16 is
   unmodified EPA data that trips a sanity rule by itself.
@@ -54,7 +54,8 @@ three emission rates); epaData recomputes rates from the stored masses.
 
 After **Approve and import**:
 
-- The **Unit-years** tab with **Advanced → Origin: File upload** lists 21 unit-years.
+- The **Unit-years** tab with **+ Filter → IDs and data checks → Record origin: File upload**
+  lists 21 unit-years with years 2014 and 2023.
 - **Download → Invalid records** for the upload dataset holds the 3 rejected rows, the
   duplicate, and the flagged row, each with its original columns.
 - Uploading the other file (CSV after Excel, or the reverse) shows 21 Unchanged and no New.

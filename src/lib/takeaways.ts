@@ -4,7 +4,7 @@
  * numbers the tabs already have; every one returns null when there's nothing worth saying.
  */
 import type { Aggregation } from "./analysis";
-import { formatStat } from "./analysis";
+import { formatSigned, formatStat } from "./analysis";
 import { capitalize, formatNumber, inSentence, plural } from "./utils";
 
 /** "18 %", "0.4 %", "103 %". */
@@ -27,7 +27,10 @@ function measureName(label: string, aggregation: Aggregation) {
       : `The pooled ${lower}`;
 }
 
-/** "Total CO₂ mass fell 25 % from 2015 to 2025 (2.1B → 1.6B short tons)." */
+/**
+ * "The yearly total of CO₂ mass **fell 25 %** from 2015 to 2024 (2B → 1.5B short tons)." From a
+ * first year of 0 there is no percentage: "… **rose from 0** to 12 short tons from 2015 to 2024."
+ */
 export function trendSentence({
   label,
   unit,
@@ -44,21 +47,30 @@ export function trendSentence({
     .sort((a, b) => a.year - b.year);
   const first = known[0];
   const last = known.at(-1);
-  if (!first || !last || first.year === last.year || first.value === 0)
-    return null;
-  const change = (last.value - first.value) / Math.abs(first.value);
-  const span = `from ${first.year} to ${last.year} (${formatStat(first.value)} → ${formatStat(last.value)} ${unit})`;
+  if (!first || !last || first.year === last.year) return null;
   // Per year: "the yearly total", so it doesn't read as the overall total said just before.
   const what =
     aggregation === "sum"
       ? `The yearly total of ${inSentence(label)}`
       : measureName(label, aggregation);
+  if (first.value === 0)
+    return last.value === 0
+      ? `${what} **stayed at 0** from ${first.year} to ${last.year}.`
+      : `${what} **${last.value < 0 ? "fell" : "rose"} from 0** to ${formatStat(last.value)} ${unit} from ${first.year} to ${last.year}.`;
+  const diff = last.value - first.value;
+  const change = diff / first.value;
+  const span = `from ${first.year} to ${last.year} (${formatStat(first.value)} → ${formatStat(last.value)} ${unit})`;
+  // A percentage needs two positive values; across signs the difference is stated.
+  if (first.value < 0 || last.value < 0)
+    return diff === 0
+      ? `${what} **stayed the same** ${span}.`
+      : `${what} **${diff < 0 ? "fell" : "rose"} by ${formatStat(Math.abs(diff))}** ${span}.`;
   return Math.abs(change) < 0.02
     ? `${what} **stayed about the same** ${span}.`
     : `${what} **${change < 0 ? "fell" : "rose"} ${pct(change)}** ${span}.`;
 }
 
-/** "Coal made up 58 % of the total from 12 % of the unit-years." Totals only. */
+/** "**Coal** units put out **60 % of the total**, though they are only 10 % of the unit-years." Totals only. */
 export function shareSentence(
   groups: { group: string; value: number | null; n: number }[],
 ) {
@@ -69,20 +81,21 @@ export function shareSentence(
   const share = top.value / total;
   const ofRows = top.n / count;
   return `**${top.group}** units put out **${pct(share)} of the total**${
-    Math.abs(share - ofRows) > 0.1
+    share - ofRows > 0.1
       ? `, though they are only ${pct(ofRows)} of the unit-years`
-      : ""
+      : ofRows - share > 0.1
+        ? `, from ${pct(ofRows)} of the unit-years`
+        : ""
   }.`;
 }
 
-/** "The largest, James H Miller Jr (6002), was 1.2 % of it on its own." Totals only. */
+/** "The biggest facility, **Miller (6002)**, accounts for **1.2 %** of it on its own (12)." Totals only. */
 export function leaderSentence(
   top: { group: string; value: number | null } | undefined,
   total: number,
-  noun = "facility",
 ) {
   if (!top?.value || total <= 0) return null;
-  return `The biggest ${noun}, **${top.group}**, accounts for **${pct(top.value / total)}** of it on its own (${formatStat(top.value)}).`;
+  return `The biggest facility, **${top.group}**, accounts for **${pct(top.value / total)}** of it on its own (${formatStat(top.value)}).`;
 }
 
 interface Spread {
@@ -94,8 +107,8 @@ interface Spread {
 }
 
 /**
- * "Half of the unit-years fall between 13K and 626K short tons; the typical one is 89K." Plus,
- * when the mean is far from the median, why: a few large values pull it.
+ * "A typical unit-year has **89K short tons** (the median: …). The middle half fall between 13K and
+ * 626K." Plus, when the mean is far from the median, why: a few large values pull it.
  */
 export function spreadSentences(s: Spread, unit: string) {
   const out: string[] = [];
@@ -111,7 +124,7 @@ export function spreadSentences(s: Spread, unit: string) {
   return out;
 }
 
-/** "2,077 unit-years (5 %) are far above the rest; the most extreme is …, 103× the median." */
+/** "**2,077 unit-years (5 %)** are unusually large, far above the rest. The most extreme, …, is 103× the typical one." */
 export function outlierSentence(
   u: {
     above: number;
@@ -132,14 +145,15 @@ export function outlierSentence(
       : u.above === 0
         ? "unusually small"
         : "unusual";
-  return `**${formatStat(n)} unit-years (${pct(n / count)})** are ${size}, ${where} the rest${
-    top && median
+  return `**${plural(n, "unit-year")} (${pct(n / count)})** ${n === 1 ? "is" : "are"} ${size}, ${where} the rest${
+    // A ratio needs two positive values (a change variable can have either sign).
+    top && top.value > 0 && median && median > 0
       ? `. The most extreme, ${top.label}, is ${times(top.value / median)} the typical one`
       : ""
   }.`;
 }
 
-/** "TX has the highest median (364K short tons) and IL the lowest (14.4K)." */
+/** "**TX** has the highest typical unit-year (364K short tons) and **IL** the lowest (14.4K)." */
 export function groupMedianSentence(
   groups: { group: string; median: number | null }[],
   unit: string,
@@ -183,14 +197,10 @@ export function correlationSentence(
 }
 
 /**
- * The strongest pairs of a correlation matrix, skipping each variable with itself and pairs
+ * The strongest pair of a correlation matrix and its strongest opposite one, skipping each variable with itself and pairs
  * that are the same quantity twice (|r| ≥ 0.995, e.g. CO₂ intensity and heat rate).
  */
-export function strongestPairs(
-  labels: string[],
-  matrix: (number | null)[][],
-  count = 2,
-) {
+export function strongestPairs(labels: string[], matrix: (number | null)[][]) {
   const pairs: { a: string; b: string; r: number }[] = [];
   matrix.forEach((row, i) =>
     row.forEach((r, j) => {
@@ -198,16 +208,14 @@ export function strongestPairs(
         pairs.push({ a: labels[i]!, b: labels[j]!, r });
     }),
   );
-  const strongest = [...pairs]
-    .sort((p, q) => Math.abs(q.r) - Math.abs(p.r))
-    .slice(0, count);
+  const strongest = [...pairs].sort((p, q) => Math.abs(q.r) - Math.abs(p.r))[0];
   const negative = pairs.filter((p) => p.r < -0.1).sort((p, q) => p.r - q.r)[0];
   return { strongest, negative };
 }
 
 /**
- * "The best model, decision tree, is off by 26.3 t of NOₓ per unit-year on average (21 % of the
- * actual value), 76 % less than the simple baseline. …" Relative error is the scale that reads
+ * "The most accurate model, the decision tree, is off by about 26 tons of NOₓ a year for a typical
+ * unit (about 21 % of its real amount), 76 % closer than simply guessing …" Relative error is the scale that reads
  * right: most units are small, so tons alone look large against a typical unit.
  */
 export function modelSentence(
@@ -250,8 +258,6 @@ export function leadersSentence(
 interface WhatIfResult {
   /** In a sentence: "Ridge", "the tree". */
   model: string;
-  /** Predicted NOₓ as reported (short tons). */
-  base: number;
   /** Scenario minus as reported. */
   diff: number;
   diffPct: number | null;
@@ -466,7 +472,7 @@ export function baselineReading(
   actual: number,
   models: { model: string; base: number }[],
 ) {
-  const close = models.every((m) => Math.abs(m.base / actual - 1) < 0.1);
+  const close = models.every((m) => Math.abs(m.base - actual) <= 0.1 * actual);
   if (close)
     return `The models' starting points are close to the **${formatStat(actual)} t** actually reported, so where each arrow ends is a fair estimate of the new total.`;
   const below = models.every((m) => m.base < actual);
@@ -480,16 +486,23 @@ export function baselineReading(
 
 /**
  * Which change matters most for these units, averaged over the models, and where the asked-about
- * change ranks: "Switching to gas cuts the most (−34 % on average) …".
+ * change ranks: "Switching to gas cuts the most (−34 % on average) …". A model predicting 0 as
+ * reported has no percentage (`pct` null): it is left out of the average, and a change none of the
+ * models can put in percent is read in tons ("Add SCR: from 0 t, +12 t with Ridge").
  */
 export function otherChangesReading(
-  changes: { label: string; pcts: number[] }[],
+  changes: {
+    label: string;
+    results: { model: string; pct: number | null; tons: number }[];
+  }[],
   current: string | undefined,
 ) {
-  const avg = changes.map((c) => ({
-    label: c.label,
-    pct: c.pcts.reduce((a, b) => a + b, 0) / Math.max(1, c.pcts.length),
-  }));
+  const avg = changes.flatMap((c) => {
+    const pcts = c.results.flatMap((r) => (r.pct === null ? [] : [r.pct]));
+    return pcts.length
+      ? [{ label: c.label, pct: pcts.reduce((a, b) => a + b, 0) / pcts.length }]
+      : [];
+  });
   const cuts = avg.filter((c) => c.pct <= -0.5).sort((a, b) => a.pct - b.pct);
   const rises = avg.filter((c) => c.pct >= 0.5).sort((a, b) => b.pct - a.pct);
   const parts: string[] = [];
@@ -500,6 +513,25 @@ export function otherChangesReading(
   if (rises[0])
     parts.push(
       `**${rises[0].label}** raises it the most (+${Math.round(rises[0].pct)} %)`,
+    );
+  // From a prediction of 0 nothing is a percentage: say the moves in tons.
+  const fromZero = changes
+    .filter((c) =>
+      c.results.some((r) => r.pct === null && Math.abs(r.tons) >= 0.5),
+    )
+    .map(
+      (c) =>
+        `${c.label}: ${c.results
+          .filter((r) => r.pct === null && Math.abs(r.tons) >= 0.5)
+          .map(
+            (r) =>
+              `${formatSigned(Number(r.tons.toPrecision(2)), "t")} with ${r.model}`,
+          )
+          .join(", ")}`,
+    );
+  if (fromZero.length)
+    parts.push(
+      `from a prediction of 0 t there is no percentage, so in tons: ${fromZero.join("; ")}`,
     );
   if (!parts.length)
     return "None of these changes moves predicted NOₓ by more than 0.5 % for these units.";
@@ -515,7 +547,10 @@ const ordinal = (n: number) =>
 
 /**
  * How concentrated a group's change is: "With Ridge, Martin Lake accounts for 23 % of the change
- * and the top 3 plants for 55 %." For the tree, why few places move.
+ * and the top 3 plants for 55 %." Shares are of the total movement (every place's change counted
+ * as a positive amount), so places moving in opposite directions can't push a share past 100 %;
+ * when they do move both ways, the reading says how many rise and fall. For the tree, why few
+ * places move.
  */
 export function breakdownReading(
   lists: { model: string; tree: boolean; rows: [string, number][] }[],
@@ -523,14 +558,17 @@ export function breakdownReading(
   total: number,
 ) {
   return lists.map(({ model, tree, rows }) => {
-    const sum = rows.reduce((s, [, d]) => s + d, 0);
-    if (!rows.length || !sum)
+    const moved = rows.reduce((s, [, d]) => s + Math.abs(d), 0);
+    if (!rows.length || !moved)
       return `${capitalize(model)} doesn't change its prediction for any ${noun}.`;
-    const share = (d: number) => `${Math.round((d / sum) * 100)} %`;
-    const top3 = rows.slice(0, 3).reduce((s, [, d]) => s + d, 0);
+    const share = (d: number) => `${Math.round((Math.abs(d) / moved) * 100)} %`;
+    const top3 = rows.slice(0, 3).reduce((s, [, d]) => s + Math.abs(d), 0);
     let s = `With ${model}, **${rows[0]![0]}** accounts for ${share(rows[0]![1])} of the change`;
     if (rows.length > 3) s += ` and the top 3 ${noun}s for ${share(top3)}`;
     s += ".";
+    const up = rows.filter(([, d]) => d > 0).length;
+    if (up && up < rows.length)
+      s += ` ${plural(up, noun)} ${up === 1 ? "rises" : "rise"} and ${plural(rows.length - up, noun)} ${rows.length - up === 1 ? "falls" : "fall"}, so the net change is smaller than the movement.`;
     if (tree && rows.length < total)
       s += ` It moves only ${rows.length} of ${total} ${noun}s: the tree changes a prediction only when the change crosses one of its thresholds.`;
     return s;
@@ -557,6 +595,56 @@ export function treePathReading(
       : `The first ${fork === 1 ? "answer stays" : `${fork} answers stay`} the same; at step ${fork + 1} the change flips it`;
   const step = after.steps[fork]!.text;
   return `${same} to “${inSentence(step)}”, which leads to past unit-years averaging **${formatStat(after.value)} t** instead of ${formatStat(before.value)} t.`;
+}
+
+/**
+ * The tree's reasons for a group, in words: how many paths its units take and how concentrated
+ * the predicted NOₓ is, which answer the change flips most (or that it flips none), and the
+ * check that divides the units' NOₓ most evenly.
+ */
+export function treeGroupReading(
+  g: {
+    paths: { before: { units: number; tons: number } }[];
+    moved: number;
+    flips: { text: string; units: number; diff: number }[];
+    splits: {
+      question: string;
+      yes: { units: number; tons: number };
+      no: { units: number; tons: number };
+    }[];
+  },
+  units: number,
+) {
+  const used = g.paths.filter((p) => p.before.units);
+  const total = used.reduce((s, p) => s + p.before.tons, 0);
+  const top = used.slice(0, 3);
+  const out: string[] = [];
+  out.push(
+    used.length === 1
+      ? units === 1
+        ? "The unit takes one path."
+        : `All ${plural(units, "unit")} give the same answers, so the tree predicts each of them the same amount.`
+      : `These ${formatNumber(units)} units take **${used.length} different paths**${
+          used.length > 3 && total > 0
+            ? `; the ${top.length} with the most predicted NOₓ hold ${plural(
+                top.reduce((s, p) => s + p.before.units, 0),
+                "unit",
+              )} and **${pct(top.reduce((s, p) => s + p.before.tons, 0) / total)}** of it`
+            : ""
+        }.`,
+  );
+  const flip = g.flips[0];
+  out.push(
+    !g.moved || !flip
+      ? "The change doesn't flip any unit's answers, so the tree's prediction stays the same."
+      : `The change sends **${formatNumber(g.moved)} of ${plural(units, "unit")}** down a different path; the flip that moves predicted NOₓ most is to “${inSentence(flip.text)}” (${plural(flip.units, "unit")}, ${formatSigned(Number(flip.diff.toPrecision(3)), "t")}).`,
+  );
+  const split = g.splits[0];
+  if (split)
+    out.push(
+      `The check that divides these units' NOₓ most evenly is “${inSentence(split.question)}”: yes for ${plural(split.yes.units, "unit")} (${formatStat(split.yes.tons)} t), no for ${formatNumber(split.no.units)} (${formatStat(split.no.tons)} t)${split.yes.units + split.no.units < units ? `, of the ${formatNumber(split.yes.units + split.no.units)} that reach it` : ""}.`,
+    );
+  return out;
 }
 
 /**
@@ -615,10 +703,18 @@ export function compareSentences({
   const [base, ...rest] = groups;
   if (!base) return [];
   const what = inSentence(label);
+  if (base.mean == null)
+    return [`**${base.group}** has no ${what} value to compare with.`];
+  const from = base.mean;
   const lines = rest.map((g) => {
-    if (g.mean == null || base.mean == null || !base.mean)
+    if (g.mean == null)
       return `**${g.group}** has no ${what} value to compare.`;
-    const ratio = g.mean / base.mean;
+    const avg = `A typical unit-year in **${g.group}** has ${formatStat(g.mean)} ${unit} of ${what} on average`;
+    // A ratio needs two positive averages; from 0, or across signs (a change variable), the
+    // difference is stated instead.
+    if (from <= 0 || g.mean <= 0)
+      return `${avg}, **${formatSigned(Number((g.mean - from).toPrecision(3)), unit)}** against one in **${base.group}** (${formatStat(from)} ${unit}).`;
+    const ratio = g.mean / from;
     const size =
       ratio >= 2 || ratio <= 0.5
         ? ratio >= 1
@@ -627,7 +723,7 @@ export function compareSentences({
         : Math.abs(ratio - 1) < 0.05
           ? "about the same as"
           : `${Math.round(Math.abs(ratio - 1) * 100)} % ${ratio > 1 ? "more" : "less"} than`;
-    return `A typical unit-year in **${g.group}** has ${formatStat(g.mean)} ${unit} of ${what} on average, **${size}** one in **${base.group}** (${formatStat(base.mean)} ${unit}).`;
+    return `${avg}, **${size}** one in **${base.group}** (${formatStat(from)} ${unit}).`;
   });
   const sig = (t: { p: number } | null) => t !== null && t.p < 0.05;
   const [a, b] =
@@ -641,9 +737,10 @@ export function compareSentences({
         : sig(a) || sig(b)
           ? "The two statistical tests disagree on whether this gap is real, usually because a few extreme unit-years pull the average; treat it as uncertain."
           : "This gap **could be chance**: neither statistical test finds a real difference.",
+      "The tests treat every unit-year as independent, but the same unit appears in several years, so they overstate how sure a gap is.",
     );
   lines.push(
-    `This shows the groups differ, not why. They also differ in other ways (size, fuel, hours run), so ${inSentence(dimension)} alone isn't proven to cause the gap.`,
+    `Even a real gap doesn't say why: the groups also differ in other ways (size, fuel, hours run), so ${inSentence(dimension)} alone isn't proven to cause it.`,
   );
   return lines;
 }

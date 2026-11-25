@@ -19,7 +19,9 @@ import { TryExamples } from "~/components/ui/try-examples";
 import type { PredictView } from "~/lib/analysis-state";
 import { DEFAULT_FILTERS } from "~/lib/facility-filters";
 import { sameScenario, WHAT_IF_CHANGES, type ScenarioSpec } from "~/lib/model";
+import { METRICS } from "~/lib/metrics";
 import { stateName } from "~/lib/search-suggestions";
+import { inSentence } from "~/lib/utils";
 import type { RouterOutputs } from "~/trpc/react";
 import { Controls } from "../analyze/shared";
 import { FacilitySearch } from "../facility-search";
@@ -145,7 +147,9 @@ export function Question({
 
       {change === CUSTOM && (
         <Controls>
-          <Field label="Power output (%)">
+          <Field
+            label={`Power output: ${inSentence(METRICS.grossGenerationMWh.label)} (%)`}
+          >
             <Input
               type="number"
               value={view.load}
@@ -153,7 +157,9 @@ export function Question({
               className="h-9 w-24"
             />
           </Field>
-          <Field label="Fuel burned (%)">
+          <Field
+            label={`Fuel burned: ${inSentence(METRICS.heatInputMMBtu.label)} (%)`}
+          >
             <Input
               type="number"
               value={view.heat}

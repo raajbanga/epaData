@@ -1,6 +1,6 @@
 import { type Metadata } from "next";
 import { Explorer } from "~/app/_components/explorer";
-import { parseExplorerParams } from "~/lib/facility-filters";
+import { parseExplorerParams, type Params } from "~/lib/facility-filters";
 import { api, HydrateClient } from "~/trpc/server";
 
 export const metadata: Metadata = { title: "Explore" };
@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Explore" };
 export default async function ExplorePage({
   searchParams,
 }: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<Params>;
 }) {
   // The tab, filters, sort, and page come from the URL (see explorerSearchParams).
   const initialState = parseExplorerParams(await searchParams);

@@ -1,4 +1,4 @@
-/** CSV downloads: the one CSV writer and the `/api/export` URL contract shared by the dialog and the route. */
+/** CSV downloads: the one CSV writer and the `/api/export` URL contract shared by the pages and the route. */
 
 export const EXPORT_TYPES = [
   "dataset",

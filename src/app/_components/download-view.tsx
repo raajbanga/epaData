@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { use, useDeferredValue, useEffect, useState } from "react";
 import { Button, buttonClass } from "~/components/ui/button";
-import { EmptyState, InlineLoading } from "~/components/ui/empty-state";
+import {
+  EmptyState,
+  InlineLoading,
+  QueryError,
+} from "~/components/ui/empty-state";
 import { PageTitle, PageView } from "~/components/ui/page";
 import { Section } from "~/components/ui/report";
 import { SegmentedControl } from "~/components/ui/segmented-control";
@@ -16,7 +20,13 @@ import {
   type ExplorerState,
   type FilterChangeHandler,
 } from "~/lib/facility-filters";
-import { cn, datasetStatus, replaceUrlQuery, sourceLabel } from "~/lib/utils";
+import {
+  cn,
+  datasetStatus,
+  formatDate,
+  replaceUrlQuery,
+  sourceLabel,
+} from "~/lib/utils";
 import { api, type RouterOutputs } from "~/trpc/react";
 import { SelectionContext, selectionLabel } from "./selection-context";
 import { datasetParams } from "./dataset-history";
@@ -71,7 +81,7 @@ const DATASET_TYPES: readonly ExportType[] = [
 ];
 
 const datasetLabel = (d: DatasetRow) =>
-  `${d.reportingYear} · ${sourceLabel(d.source)} · ${datasetParams(d)} · ${datasetStatus(d)} · ${d.importedAt.toLocaleDateString()}`;
+  `${d.reportingYear} · ${sourceLabel(d.source)} · ${datasetParams(d)} · ${datasetStatus(d)} · ${formatDate(d.importedAt)}`;
 
 /**
  * Download page: what to export (dataset, search results, selection, reports,
@@ -277,7 +287,12 @@ export function DownloadView({
         <div className="min-w-0 space-y-6">
           {DATASET_TYPES.includes(type) && (
             <Section title="2. Dataset">
-              {historyQuery.isLoading ? (
+              {historyQuery.error ? (
+                <QueryError
+                  error={historyQuery.error}
+                  onRetry={() => void historyQuery.refetch()}
+                />
+              ) : historyQuery.isLoading ? (
                 <InlineLoading className="py-6" title="Loading datasets…" />
               ) : datasetOptions.length === 0 ? (
                 <EmptyState title="No datasets yet" />

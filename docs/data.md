@@ -39,7 +39,7 @@ flowchart LR
 | Download (all six types)                                      | Local database                                               |
 
 Each panel carries a label saying which source it shows ("Local database · last import …"
-or "Live EPA CAMPD API"). Every unit-year also records the dataset that last wrote it, shown
+or "Live EPA API"). Every unit-year also records the dataset that last wrote it, shown
 as its **Origin** (CAMPD API or file upload) in the Unit-years table, the unit details, and the CSV
 exports.
 
@@ -209,13 +209,22 @@ erDiagram
         text pipeline_version
         integer trained_at
     }
+
+    RESULT_CACHE {
+        text key PK "procedure + input"
+        text procedure
+        text input "JSON"
+        text data_version
+        text value "JSON"
+        integer computed_at
+    }
 ```
 
 Design assumptions to be aware of:
 
 - **Controls and program codes are stored per unit-year** on `annual_records`; `units` keeps the latest values for display. Fuel and unit type are
   still per unit, so the latest import wins for those.
-- **Metrics are `NULL` when not reported.** Totals treat them as 0; range filters and
+- **Metrics are `NULL` when not reported.** A total adds what was reported (and is missing when nothing was); range filters and
   percentile thresholds skip them; CSV exports leave them blank.
 - **`annual_records.dataset_id` is the dataset that last wrote the record.** Re-importing a
   year moves its records to the new dataset; the older dataset stays in the history as
@@ -237,6 +246,9 @@ npm run db:seed -- --csv-dir "../CAMPD DATA" # facilities + units from CAMPD fac
 # up to unit-year totals, each imported as an upload; then the API years on top
 npm run db:rebuild -- --facility-dir ../epaData/csv --csv-dir csv
 npm run sync:campd -- --from 2015 --to 2026
+npm run traci:import                         # TRACI 2.2 factors from data/traci
+npm run ml:train                             # retrain the models (needs the Python venv)
+npm run db:precompute                        # refresh the stored Analyze results
 ```
 
 `sync:campd` writes directly. The **Retrieve** page does the same with a preview and an

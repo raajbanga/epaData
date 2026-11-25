@@ -1,3 +1,13 @@
+import { GROUP_EXPLAIN } from "./analysis";
+
+/** Terms both tables and running text define, written once. */
+const DEF = {
+  MAPE: "Mean absolute percentage error: how far off a prediction is, as a share of the actual value, on average. Counts unit-years of at least 1 ton.",
+  MAE: "Mean absolute error: how many tons off a prediction is, on average. Lower is better.",
+  R2: "Share of the differences in the actual values that the model accounts for: 1 is perfect, 0 is no better than always guessing the average.",
+  IQR: "Interquartile range: Q3 − Q1, the width of the middle half of the values.",
+};
+
 /**
  * Plain definitions for the statistics and model terms the tables use. ReportTable looks up each
  * column header here, so "Test MAE (t)" or "IQR" explains itself on hover without each page
@@ -8,26 +18,14 @@ const GLOSSARY: [RegExp, string][] = [
     /no same-year activity/i,
     "Ablation: R² when the model can't use this year's heat input, load, or hours, only last year's values and the unit's attributes.",
   ],
-  [
-    /\bMAPE\b/,
-    "Mean absolute percentage error: how far off a prediction is, as a share of the actual value, on average. Counts unit-years of at least 1 ton.",
-  ],
-  [
-    /\bMAE\b/,
-    "Mean absolute error: how many tons off a prediction is, on average. Lower is better.",
-  ],
+  [/\bMAPE\b/, DEF.MAPE],
+  [/\bMAE\b/, DEF.MAE],
   [
     /\bRMSE\b/,
     "Root mean squared error: like MAE, but large misses count more. Lower is better.",
   ],
-  [
-    /\bR²/,
-    "Share of the differences in the actual values that the model accounts for: 1 is perfect, 0 is no better than always guessing the average.",
-  ],
-  [
-    /\bIQR\b/,
-    "Interquartile range: Q3 − Q1, the width of the middle half of the values.",
-  ],
+  [/\bR²/, DEF.R2],
+  [/\bIQR\b/, DEF.IQR],
   [/^Q1$/, "First quartile: a quarter of the values are below it."],
   [/^Q3$/, "Third quartile: three quarters of the values are below it."],
   [/^P(\d+)$/, "Percentile: that share of the values are at or below it."],
@@ -87,7 +85,7 @@ const IN_TEXT: [RegExp, string][] = [
     "Correlation r: from −1 (one falls as the other rises) to 1 (they rise together); 0 means no straight-line link.",
   ],
   [
-    /\b(?:kg )?(?:CO₂|SO₂|PM2\.5|O₃|N) eq\b/,
+    /\b(?:kg )?(?:CO₂|SO₂|PM2\.5|O₃) eq\b/,
     "Equivalent: the amount of a reference pollutant with the same potential effect, so different pollutants add up within one category.",
   ],
   [
@@ -104,7 +102,7 @@ const IN_TEXT: [RegExp, string][] = [
   ],
   [
     /\b95 % intervals?\b|\bbootstrap\b/i,
-    "95 % interval from resampling the test unit-years (bootstrap): the range the score would likely fall in on similar data.",
+    "95 % interval from resampling the test units, each with both its test years (bootstrap): the range the score would likely fall in on similar data.",
   ],
   [
     /\bablation\b/i,
@@ -114,30 +112,27 @@ const IN_TEXT: [RegExp, string][] = [
     /\bpersistence\b/i,
     "A rule, not a trained model: last year's NOₓ rate times this year's heat input.",
   ],
-  [/\bMAPE\b/, GLOSSARY.find(([p]) => p.source === "\\bMAPE\\b")![1]],
-  [/\bMAE\b/, GLOSSARY.find(([p]) => p.source === "\\bMAE\\b")![1]],
-  [/\bR²/, GLOSSARY.find(([p]) => p.source === "\\bR²")![1]],
-  [/\bIQR\b/, GLOSSARY.find(([p]) => p.source === "\\bIQR\\b")![1]],
+  [/\bMAPE\b/, DEF.MAPE],
+  [/\bMAE\b/, DEF.MAE],
+  [/\bR²/, DEF.R2],
+  [/\bIQR\b/, DEF.IQR],
   [
     /\bwhiskers?\b/,
-    "The thin line out from a box or bar. On a box it spans the usual range of values (points beyond are unusual); on an average it spans where the true average likely is.",
+    "The thin line out from a box or bar. On a box it spans the usual range of values (the unusual ones beyond aren't drawn); on an average it spans where the true average likely is.",
   ],
   [
     /\bunit-years?\b/,
     "One generating unit's record for one year. A power plant has one or more units (boilers or turbines), and each reports once a year.",
   ],
   [/\bshort tons?\b/, "The U.S. ton: 2,000 pounds, about 907 kg."],
-  [
-    /\bSCR\b/,
-    "Selective catalytic reduction: a catalyst in the exhaust that removes most NOₓ, often 80–90 %.",
-  ],
+  [/\bSCR\b/, GROUP_EXPLAIN.noxControl!.SCR!],
   [
     /\bmedian\b/,
     "The middle value: half are above it, half below. Unlike the average, a few huge values don't pull it.",
   ],
   [
     /\bTRACI\b/,
-    "EPA's Tool for the Reduction and Assessment of Chemical and other environmental Impacts: factors that turn emissions into potential-impact indicators.",
+    "EPA's Tool for the Reduction and Assessment of Chemicals and Other Environmental Impacts: factors that turn emissions into potential-impact indicators.",
   ],
 ];
 

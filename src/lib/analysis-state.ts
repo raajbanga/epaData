@@ -1,5 +1,11 @@
 import { DIMENSION_KEYS } from "~/lib/analysis";
-import { DEFAULT_FILTERS, type FacilityFilters } from "~/lib/facility-filters";
+import {
+  DEFAULT_FILTERS,
+  firstParam,
+  type FacilityFilters,
+  type Params,
+} from "~/lib/facility-filters";
+import { isCategoryInput, MODEL_COLORS, NUMERIC_INPUTS } from "~/lib/model";
 
 /**
  * Analyze page state (reproducible through URL parameters): the Explore filters
@@ -37,7 +43,7 @@ export const DEFAULT_VIEW = {
   x: "heatInputMMBtu",
   y: "noxMassTons",
   color: "fuelClass",
-  box: "", // "1" = box plot instead of histogram
+  box: "", // "" = automatic (box plot when grouped), "1" = box plot, "0" = histogram
   log: "", // "1" = log axis
   order: "desc", // ranking: "desc" = highest first
   rankBy: "facility",
@@ -59,13 +65,6 @@ export const DEFAULT_ANALYSIS_FILTERS: FacilityFilters = {
   operatingHoursMinStrict: "1",
 };
 
-type Params = Record<string, string | string[] | undefined>;
-
-const first = (params: Params, key: string) => {
-  const v = params[key];
-  return Array.isArray(v) ? v[0] : v;
-};
-
 /** `defaults` overridden by the URL's values for the same keys. */
 function readView<T extends Record<string, string>>(
   defaults: T,
@@ -73,7 +72,7 @@ function readView<T extends Record<string, string>>(
 ): T {
   const view = { ...defaults };
   for (const key of Object.keys(defaults) as (keyof T & string)[]) {
-    const v = first(params, key);
+    const v = firstParam(params, key);
     if (v !== undefined) view[key] = v as T[typeof key];
   }
   return view;
@@ -100,7 +99,7 @@ export function parseAnalysisParams(params: Params) {
   const tab: string = view.tab;
   view.tab =
     tab === "charts"
-      ? (MOVED[first(params, "chart") ?? "trend"] ?? "overview")
+      ? (MOVED[firstParam(params, "chart") ?? "trend"] ?? "overview")
       : (MOVED[tab] ?? view.tab);
   if (!ANALYSIS_TABS.includes(view.tab)) view.tab = DEFAULT_VIEW.tab;
   // An unknown grouping field in a hand-edited link falls back to the default, not an error.
@@ -120,11 +119,29 @@ export function parseAnalysisParams(params: Params) {
   // The default groups (SCR|None) are NOₓ-control values; they mean nothing for another field.
   if (
     view.compareBy !== DEFAULT_VIEW.compareBy &&
-    first(params, "groups") === undefined
+    firstParam(params, "groups") === undefined
   )
     view.groups = "";
+  // The Compare tab takes up to eight groups.
+  view.groups = view.groups.split("|").slice(0, 8).join("|");
   return { filters, view };
 }
+
+/** The view keys each Analyze tab reads; the others don't change what it shows. */
+const TAB_VIEW_KEYS: Record<AnalysisTab, (keyof AnalysisView)[]> = {
+  overview: ["variable", "series", "order", "rankBy"],
+  distribution: ["variable", "by", "box", "log"],
+  relationships: ["x", "y", "color", "log"],
+  compare: ["variable", "compareBy", "groups"],
+  impacts: ["impactBy", "perMWh"],
+};
+
+/** Exported metadata: the tab and only the choices it uses, so it reads back as the same view. */
+export const analysisViewRecord = (view: AnalysisView) =>
+  Object.fromEntries([
+    ["tab", view.tab],
+    ...TAB_VIEW_KEYS[view.tab].map((k) => [k, view[k]]),
+  ]) as Partial<AnalysisView>;
 
 /** The filters that differ from Analyze's defaults, a removed default as an empty value. */
 export const analysisFilterParams = (filters: FacilityFilters) =>
@@ -137,8 +154,8 @@ export const analysisFilterParams = (filters: FacilityFilters) =>
 
 /**
  * The filters as exported metadata records them: every filter that is set, plus Analyze's own
- * defaults (a removed one as an empty value), so the record reads on its own and parseAnalysisParams gives back
- * exactly this selection.
+ * defaults (a removed one as an empty value), so the record reads on its own and
+ * parseAnalysisParams gives back exactly this selection.
  */
 export const analysisFilterRecord = (filters: FacilityFilters) =>
   Object.fromEntries(
@@ -161,9 +178,11 @@ export const analysisSearchParams = (
 const PREDICT_TABS = ["models", "whatif"] as const;
 /** What a what-if covers: one unit, every unit at a plant, in a state, or in the US. */
 const PREDICT_SCOPES = ["unit", "plant", "state", "us"] as const;
+/** The range a sensitivity opens on, and the one any new input starts from. */
+export const DEFAULT_RANGE = { by: "pct", from: "-50", to: "50", step: "5" };
 const DEFAULT_PREDICT_VIEW = {
   tab: "models" as (typeof PREDICT_TABS)[number],
-  model: "both", // Models tab: "ridge" | "tree" | "both"
+  model: "ridge", // Models tab: the model whose details are shown, "baseline" | "ridge" | "tree"
   scope: "unit" as (typeof PREDICT_SCOPES)[number],
   fid: "1356", // unit and plant: Ghent unit 2, 2024 (coal, no SCR)
   uid: "2",
@@ -178,30 +197,104 @@ const DEFAULT_PREDICT_VIEW = {
   input: "heat_input_mmbtu", // one input varied
   // Its range: from, to, and step, as a % change of each unit's value ("pct") or, for one
   // unit, in the input's own unit ("unit").
-  by: "pct",
-  from: "-50",
-  to: "50",
-  step: "5",
+  ...DEFAULT_RANGE,
 };
 export type PredictView = typeof DEFAULT_PREDICT_VIEW;
+
+/**
+ * A range in the input's own unit only means something for one unit: a group gets the default
+ * percentage range instead, never those numbers read as percentages.
+ */
+export const normalizeRange = (view: PredictView): PredictView =>
+  view.by === "unit"
+    ? view.scope === "unit"
+      ? view
+      : { ...view, ...DEFAULT_RANGE }
+    : { ...view, by: "pct" };
 
 export function parsePredictParams(params: Params) {
   const view = readView(DEFAULT_PREDICT_VIEW, params);
   // Sensitivity and Scenarios were separate tabs before 11/11; both now live on What-if.
   const tab: string = view.tab;
   if (tab === "sensitivity" || tab === "scenarios") view.tab = "whatif";
+  // An unknown model shows Ridge, as did "both", the default before What-if stopped using it.
+  if (!Object.hasOwn(MODEL_COLORS, view.model)) view.model = "ridge";
+  if (!["", "add", "remove"].includes(view.scr)) view.scr = "";
   if (!PREDICT_TABS.includes(view.tab)) view.tab = DEFAULT_PREDICT_VIEW.tab;
   if (!PREDICT_SCOPES.includes(view.scope)) view.scope = "unit";
+  // Not an ID or a state code: never "every plant", which an empty filter would mean.
+  if (!/^\d+$/.test(view.fid)) view.fid = DEFAULT_PREDICT_VIEW.fid;
+  if (!/^[A-Z]{2}$/.test(view.st)) view.st = DEFAULT_PREDICT_VIEW.st;
+  // An input the models don't have (a hand-edited link) falls back to the default.
+  if (
+    !Object.hasOwn(NUMERIC_INPUTS, view.input) &&
+    !isCategoryInput(view.input)
+  )
+    view.input = DEFAULT_PREDICT_VIEW.input;
   // Before 11/22 a sensitivity was "± range %"; such links keep their range.
-  const range = first(params, "range");
-  if (range && first(params, "from") === undefined) {
+  const range = firstParam(params, "range");
+  if (range && firstParam(params, "from") === undefined) {
     view.from = `-${range}`;
     view.to = range;
   }
-  if (view.by !== "unit" || view.scope !== "unit") view.by = "pct";
-  return view;
+  return normalizeRange(view);
+}
+
+/**
+ * The Predict view as exported metadata records it: only the fields the current tab and scope use
+ * (a state's question carries no unit; the Models tab no what-if), so the record reads on its own.
+ */
+export function predictViewRecord(view: PredictView): Partial<PredictView> {
+  if (view.tab === "models") return { tab: view.tab, model: view.model };
+  const { tab, scope, fid, uid, st, burns, year, load, heat, scr, fuel } = view;
+  const { input, by, from, to, step } = view;
+  return {
+    tab,
+    scope,
+    ...(scope === "unit" && { fid, uid }),
+    ...(scope === "plant" && { fid }),
+    ...(scope === "state" && { st }),
+    ...(scope !== "unit" && { burns }),
+    year,
+    load,
+    heat,
+    scr,
+    fuel,
+    input,
+    ...(Object.hasOwn(NUMERIC_INPUTS, input) ? { by, from, to, step } : {}),
+  };
 }
 
 /** The inverse of parsePredictParams: the non-default choices. */
 export const predictSearchParams = (view: PredictView) =>
   writeView(DEFAULT_PREDICT_VIEW, view).toString();
+
+/**
+ * Links from a facility's or unit's details: Analyze for its unit-years (every year), and What-if
+ * for the plant or the unit in its last complete year (a year Predict can't use falls back there).
+ */
+export function detailLinks(
+  facilityId: number,
+  unitId: string | undefined,
+  years: readonly number[],
+) {
+  const year = years.find((y) => y < new Date().getFullYear());
+  const analyze = new URLSearchParams({
+    facilityId: String(facilityId),
+    ...(unitId !== undefined && { unitId }),
+    yearMin: "",
+    yearMax: "",
+  });
+  const predict = predictSearchParams({
+    ...DEFAULT_PREDICT_VIEW,
+    tab: "whatif",
+    scope: unitId === undefined ? "plant" : "unit",
+    fid: String(facilityId),
+    uid: unitId ?? DEFAULT_PREDICT_VIEW.uid,
+    year: year ? String(year) : DEFAULT_PREDICT_VIEW.year,
+  });
+  return {
+    analyze: `/analyze?${analyze.toString()}`,
+    predict: `/predict?${predict}`,
+  };
+}

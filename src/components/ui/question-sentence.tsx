@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { cn } from "~/lib/utils";
 
 /**
  * A question whose blanks are the controls: "What if [every unit in Texas] [added SCR] in [2024]?".
@@ -10,21 +9,16 @@ import { cn } from "~/lib/utils";
 export function QuestionSentence({
   label,
   children,
-  className,
 }: {
   /** What the question sets, for screen readers: "What-if question". */
   label: string;
   children: ReactNode;
-  className?: string;
 }) {
   return (
     <div
       role="group"
       aria-label={label}
-      className={cn(
-        "text-fg flex flex-wrap items-center gap-x-2 gap-y-2 text-[15px]",
-        className,
-      )}
+      className="text-fg flex flex-wrap items-center gap-x-2 gap-y-2 text-[15px]"
     >
       {children}
     </div>

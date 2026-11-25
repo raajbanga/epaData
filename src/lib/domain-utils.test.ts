@@ -13,17 +13,18 @@ import {
 import {
   buildYearlyRollups,
   deriveRates,
-  emptyTotals,
   evaluatePhysicalSanityRules,
+  maxReported,
   pickCleanestByCarbonIntensity,
+  sumReported,
   sumTotals,
+  totalsAndRates,
   type ReportedTotals,
 } from "./emissions-metrics";
 import {
   activeCampdFilters,
   applyDescribed,
   campdRetrievalSchema,
-  ADVANCED_FILTER_KEYS,
   DEFAULT_FILTERS,
   DEFAULT_AUDIT_TABLE_STATE,
   DEFAULT_TABLE_STATE,
@@ -33,20 +34,29 @@ import {
   explorerSearchParams,
   filterSearchParams,
   isFilterActive,
-  isStrictKey,
   multiValueOptions,
   nextSort,
   parseExplorerParams,
   parseFacilityIds,
+  yearsText,
 } from "./facility-filters";
 import { FUEL_CATEGORIES, getFuelTheme, getMarkerRadius } from "./map-utils";
 import {
   cleanOwnerOperator,
+  formatCountyShort,
+  generatePlantStory,
   getCarbonIntensityTier,
+  getPlantRole,
   hasAirQualityControls,
   isOperatingStatus,
 } from "./plant-narrative";
-import { isNumericValue, sortRows } from "./utils";
+import { describeChanges } from "./record-diff";
+import {
+  formatNumber,
+  formatQuantity,
+  isNumericValue,
+  sortRows,
+} from "./utils";
 
 void test("emissions metrics handle valid and missing generation", () => {
   const rates = (co2: number, heat: number, gen: number) =>
@@ -74,7 +84,8 @@ void test("emissions metrics handle valid and missing generation", () => {
 
 void test("not reported (null) is kept apart from 0 in rates, totals, and sanity rules", () => {
   const record: ReportedTotals = {
-    ...emptyTotals(),
+    so2MassTons: 0,
+    noxMassTons: 0,
     heatInputMMBtu: 38801.9,
     grossGenerationMWh: 2012,
     operatingHours: 111,
@@ -101,11 +112,18 @@ void test("not reported (null) is kept apart from 0 in rates, totals, and sanity
     flags({ ...record, co2MassTons: 1, operatingHours: null }),
     [],
   );
-  // Totals count unreported values as 0.
-  assert.equal(
-    sumTotals([record, { ...record, co2MassTons: 5 }]).co2MassTons,
-    5,
-  );
+  // A total adds what was reported, and is missing when nothing was.
+  const reported = { ...record, co2MassTons: 1006 };
+  assert.equal(sumTotals([record, reported]).co2MassTons, 1006);
+  assert.equal(totalsAndRates([record]).co2MassTons, null);
+  assert.equal(totalsAndRates([record]).co2IntensityLbsMWh, null);
+  // A pooled rate leaves out the unit that reports load but no CO₂ (1006 t × 2000 / 2012 MWh).
+  assert.equal(totalsAndRates([record, reported]).co2IntensityLbsMWh, 1000);
+  // On screen a reported 0 reads "0 t" and a missing value "—".
+  assert.equal(formatQuantity(0, "t"), "0 t");
+  assert.equal(formatQuantity(null, "t"), "—");
+  assert.equal(formatQuantity(12_345.6, "t"), "12.3K t");
+  assert.equal(formatNumber(0), "0");
 });
 
 void test("fuel metadata stays consistent and filters remain distinct", () => {
@@ -354,6 +372,12 @@ void test("a description search keeps the page's years unless it names some", ()
     ),
     { ...DEFAULT_FILTERS, yearMin: "2024", yearMax: "2024" },
   );
+  // "At least 5000 hours" replaces Analyze's own "> 0", strictness included.
+  const ran = { ...page, operatingHoursMin: "0", operatingHoursMinStrict: "1" };
+  assert.deepEqual(
+    applyDescribed(ran, { ...DEFAULT_FILTERS, operatingHoursMin: "5000" }),
+    { ...page, operatingHoursMin: "5000" },
+  );
 });
 
 void test("a strict flag is kept in the URL only while its bound is set", () => {
@@ -370,7 +394,6 @@ void test("a strict flag is kept in the URL only while its bound is set", () => 
   const flagOnly = { ...DEFAULT_FILTERS, co2MassTonsMinStrict: "1" };
   assert.equal(isFilterActive(flagOnly, "co2MassTonsMinStrict"), false);
   assert.equal(filterSearchParams(flagOnly).toString(), "");
-  assert.equal(ADVANCED_FILTER_KEYS.some(isStrictKey), false);
 });
 
 void test("explorer params ignore unknown keys and invalid values", () => {
@@ -465,10 +488,82 @@ void test("audit tab sort and page round-trip through the URL", () => {
     explorerSearchParams(state),
     "tab=audit&auditFlag=EXTREME_HEAT_RATE&sort=severity&dir=asc&page=3",
   );
-  // A unit-view sort key is not valid on the Audits tab.
+  // A unit-view sort key is not valid on the Audit flags tab.
   assert.equal(
     parseExplorerParams({ tab: "audit", sort: "co2MassTons" }).auditTable
       .sortBy,
     "year",
+  );
+});
+
+void test("a plant's role and story come from its category, fuel, size, and hours", () => {
+  const role = (p: Parameters<typeof getPlantRole>[0]) => getPlantRole(p).label;
+  assert.equal(role({ sourceCategory: "Cogeneration" }), "Cogeneration");
+  assert.equal(role({ operatingHours: 5000 }), "Baseload");
+  assert.equal(role({ capacityMW: 1500 }), "Baseload");
+  assert.equal(role({ operatingHours: 0, capacityMW: 1500 }), "Standby");
+  assert.equal(role({ operatingHours: 100, capacityMW: 1500 }), "Peaking");
+  assert.equal(role({ operatingHours: 100 }), "Peaking");
+  assert.equal(role({ operatingHours: 2000 }), "Load-following");
+  assert.equal(role({ capacityMW: 50 }), "Standby");
+  assert.equal(formatCountyShort("Kings County"), "Kings Co.");
+  assert.equal(formatCountyShort(null), "County N/A");
+  const story = generatePlantStory({
+    name: "Ghent",
+    county: "Carroll",
+    stateCode: "KY",
+    nercRegion: "SERC",
+    sourceCategory: "Electric Utility",
+    ownerOperator: null,
+    totalCapacityMW: 100,
+    primaryFuels: ["Coal"],
+    co2Tons: 0,
+    operatingHours: 8784,
+    grossGenerationMWh: 2_000_000,
+    carbonIntensity: null,
+    hasControls: true,
+    year: 2024,
+  });
+  assert.match(
+    story.headline,
+    /^Ghent is a 100 MW Coal facility in Carroll County, KY/,
+  );
+  // A leap year's full hours.
+  assert.match(story.gridStory, /\(about 100% of the year\)/);
+  assert.match(
+    story.environmentalStory,
+    /^No direct annual carbon emissions were reported for 2024/,
+  );
+});
+
+void test("years, changes, and reported totals read in words without guessing", () => {
+  const f = DEFAULT_FILTERS;
+  assert.equal(yearsText(f), "");
+  assert.equal(yearsText({ ...f, year: "2024" }), "2024");
+  assert.equal(
+    yearsText({ ...f, yearMin: "2015", yearMax: "2025" }),
+    "2015–2025",
+  );
+  assert.equal(yearsText({ ...f, yearMin: "2024", yearMax: "2024" }), "2024");
+  assert.equal(yearsText({ ...f, yearMin: "2015" }), "≥ 2015");
+  assert.equal(
+    yearsText({ ...f, yearMin: "2015", yearMinStrict: "1" }),
+    "> 2015",
+  );
+  assert.equal(sumReported([null, undefined]), null);
+  assert.equal(sumReported([null, 0, 2]), 2);
+  assert.equal(maxReported([null]), null);
+  assert.equal(maxReported([null, 3, 1]), 3);
+  const changes = [
+    { field: "co2MassTons", database: 1, incoming: 2 },
+    { field: "noxControls", database: "SCR", incoming: "SNCR" },
+  ] as Parameters<typeof describeChanges>[0];
+  assert.equal(
+    describeChanges(changes, String),
+    "CO₂: 1 → 2 · NOₓ controls: SCR → SNCR",
+  );
+  assert.equal(
+    describeChanges(changes, String, { values: false }),
+    "CO₂, NOₓ controls",
   );
 });

@@ -3,7 +3,6 @@ import { cn } from "~/lib/utils";
 
 const VARIANTS = {
   default: "bg-fg text-canvas hover:bg-fg/85",
-  secondary: "bg-surface text-fg hover:bg-surface-2 border border-edge",
   outline:
     "border border-edge bg-surface hover:bg-surface-2 hover:text-fg text-fg-2",
   ghost: "hover:bg-surface-2 hover:text-fg text-fg-2",

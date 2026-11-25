@@ -3,13 +3,14 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { SourceBadge } from "~/components/ui/badge";
 import { Button, buttonClass } from "~/components/ui/button";
-import { EmptyState } from "~/components/ui/empty-state";
+import { EmptyState, QueryError } from "~/components/ui/empty-state";
 import { PageTitle } from "~/components/ui/page";
 import { SegmentedControl } from "~/components/ui/segmented-control";
 import {
   analysisFilterParams,
   analysisSearchParams,
   analysisFilterRecord,
+  analysisViewRecord,
   DEFAULT_ANALYSIS_FILTERS,
   DEFAULT_VIEW,
   type AnalysisView,
@@ -109,7 +110,7 @@ export function AnalyzeView({
       value={analyzeMetadata(
         source,
         analysisFilterRecord(deferredFilters),
-        view,
+        analysisViewRecord(view),
       )}
     >
       <div className="space-y-6">
@@ -166,7 +167,12 @@ export function AnalyzeView({
           }
         />
 
-        {empty ? (
+        {summary.error ? (
+          <QueryError
+            error={summary.error}
+            onRetry={() => void summary.refetch()}
+          />
+        ) : empty ? (
           <EmptyState
             className="border-edge rounded-lg border border-dashed"
             title={

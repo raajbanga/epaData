@@ -5,33 +5,27 @@ import { ChartGrid, ChartFrame, queryStatus } from "~/components/ui/chart";
 import { BLANK, QuestionSentence } from "~/components/ui/question-sentence";
 import { Select } from "~/components/ui/select";
 import { Takeaways } from "~/components/ui/takeaways";
+import { getFuelTheme } from "~/lib/map-utils";
 import { leadersSentence } from "~/lib/takeaways";
 import { InlineLoading, QueryError } from "~/components/ui/empty-state";
 import { ExportButton } from "~/components/ui/export-button";
 import { Disclosure, ReportTable, Section } from "~/components/ui/report";
-import { formatStat } from "~/lib/analysis";
+import { formatStat, type DimensionKey } from "~/lib/analysis";
+import { METRICS } from "~/lib/metrics";
 import { IMPACT_DISCLAIMER, SHORT_TON_KG } from "~/lib/traci";
-import { formatNumber, chemUnit } from "~/lib/utils";
+import { chemUnit, formatNumber, inSentence } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import {
   asDimension,
   bind,
   DimensionField,
   dimensionLabel,
-  inSentence,
   valueColumn,
   type TabProps,
+  shownOf,
 } from "./shared";
 
-const POLLUTANT_LABELS: Record<string, string> = {
-  co2: "CO₂",
-  so2: "SO₂",
-  nox: "NOₓ",
-};
-
 const TOP = 15;
-
-/** "2.23T", "915M": impact totals run to 13 digits, which no one reads. */
 
 /** CAMPD emissions × TRACI factors, one result per impact category in its own unit. */
 export function ImpactsTab(props: TabProps) {
@@ -45,7 +39,13 @@ export function ImpactsTab(props: TabProps) {
   // for global warming.
   const tops = api.useQueries((t) =>
     impacts.map((v) =>
-      t.analysis.aggregate({ filters, variables: [v.key], by, limit: TOP }),
+      t.analysis.aggregate({
+        filters,
+        variables: [v.key],
+        by,
+        limit: TOP,
+        order: by === "year" ? "desc" : undefined, // years default to time order
+      }),
     ),
   );
   const version = catalog.factors[0]?.traciVersion;
@@ -65,7 +65,7 @@ export function ImpactsTab(props: TabProps) {
 
       <QuestionSentence label="Impact question">
         <span>Which</span>
-        <DimensionField {...bind(props, "impactBy")} inline />
+        <DimensionField {...bind(props, "impactBy")} label="Group by" />
         <span>carries the most potential impact</span>
         <Select
           aria-label="Result"
@@ -106,22 +106,27 @@ export function ImpactsTab(props: TabProps) {
             <ChartFrame
               key={v.key}
               title={`${v.label} by ${groupName}`}
-              subtitle={`In ${chemUnit(v.unit)}; the ${Math.min(TOP, rows.length)} largest of ${formatNumber(q.data?.total)}.`}
+              subtitle={`In ${v.unit}${shownOf(TOP, q.data?.total)}.`}
               note={v.definition}
               filename={`impact-${v.key}-by-${by}`}
               meta={traciMeta}
               height={TOP * 26}
               {...queryStatus(q)}
               table={{
-                head: [by, valueColumn(v)],
-                rows: rows.map((r) => [r.group, r.values[v.key]]),
+                head: [by, valueColumn(v), "unit_years"],
+                rows: rows.map((r) => [r.group, r.values[v.key], r.n]),
               }}
             >
               <BarList
-                unit={chemUnit(v.unit)}
-                rows={rows.slice(0, TOP).map((r) => ({
+                unit={v.unit}
+                rows={rows.map((r) => ({
                   label: r.group,
                   value: r.values[v.key] ?? null,
+                  color:
+                    by === "fuelClass"
+                      ? getFuelTheme(r.group).color
+                      : undefined,
+                  details: [{ label: "Unit-years", value: formatNumber(r.n) }],
                 }))}
               />
             </ChartFrame>
@@ -133,12 +138,15 @@ export function ImpactsTab(props: TabProps) {
         title={`All results by ${groupName}`}
         hint="every category side by side, with a CSV download"
       >
-        <ResultsTable {...props} impacts={impacts} traciMeta={traciMeta} />
+        <ResultsTable
+          {...props}
+          {...{ impacts, traciMeta, perMWh, by, version }}
+        />
       </Disclosure>
 
       <Disclosure
         title={`TRACI ${version} factors used`}
-        hint="which EPA pollutant counts toward which harm, and by how much"
+        hint="which EPA pollutant counts toward which impact, and by how much"
       >
         <p className="text-fg-muted text-sm">
           Matched by exact TRACI substance and the air medium; masses converted
@@ -155,12 +163,12 @@ export function ImpactsTab(props: TabProps) {
             "Unit per kg",
           ]}
           rows={catalog.factors.map((f) => [
-            POLLUTANT_LABELS[f.pollutant] ?? f.pollutant,
+            METRICS[`${f.pollutant as "co2" | "so2" | "nox"}MassTons`].short,
             f.substance,
             f.cas,
             f.impactCategory,
             String(Number(f.factor.toPrecision(6))),
-            f.factorUnit,
+            chemUnit(f.factorUnit),
           ])}
         />
         <div className="text-fg-muted space-y-1 text-xs">
@@ -179,16 +187,19 @@ export function ImpactsTab(props: TabProps) {
 /** Every category per group (up to 100 groups), loaded only when opened. */
 function ResultsTable({
   filters,
-  view,
   catalog,
   impacts,
   traciMeta,
+  perMWh,
+  by,
+  version,
 }: TabProps & {
   impacts: TabProps["catalog"]["variables"];
   traciMeta: Record<string, unknown>;
+  perMWh: boolean;
+  by: DimensionKey;
+  version?: string;
 }) {
-  const perMWh = view.perMWh === "1";
-  const by = asDimension(view.impactBy) ?? "state";
   const q = api.analysis.aggregate.useQuery({
     filters,
     variables: impacts.map((v) => v.key),
@@ -198,7 +209,6 @@ function ResultsTable({
   if (q.error)
     return <QueryError error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data) return <InlineLoading title="Loading results…" />;
-  const version = catalog.factors[0]?.traciVersion;
   const head = [
     dimensionLabel(catalog, by),
     "Unit-years",
@@ -212,7 +222,7 @@ function ResultsTable({
   return (
     <Section
       title={`${formatNumber(q.data.rows.length)} of ${formatNumber(q.data.total)} groups`}
-      note={`Each category is summed only over its own pollutants and keeps its own unit; categories are never added together. A unit-year is left out of a category when one of its pollutants was not reported. Largest ${impacts[0]?.label.toLowerCase()} first; click a column to sort. The download has full precision.`}
+      note={`Each category is summed only over its own pollutants and keeps its own unit; categories are never added together. A unit-year is left out of a category when one of its pollutants was not reported. ${by === "year" ? "In order of year" : `Largest ${inSentence(impacts[0]?.label ?? "")} first`}; click a column to sort. The download has full precision.`}
       actions={
         <ExportButton
           name={`traci-${version}-impacts-by-${by}${perMWh ? "-per-mwh" : ""}`}
@@ -230,7 +240,7 @@ function ResultsTable({
           formatNumber(n as number),
           ...values.map((x) => formatStat(x as number | null)),
         ])}
-        sortKeys={table.map((r) => r.map((c) => c))}
+        sortKeys={table}
       />
     </Section>
   );

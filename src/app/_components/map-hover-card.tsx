@@ -1,4 +1,5 @@
 import { FuelBadge } from "~/components/ui/badge";
+import { METRICS } from "~/lib/metrics";
 import { type MapFacility } from "~/lib/map-utils";
 import { formatCountyShort } from "~/lib/plant-narrative";
 import { formatQuantity } from "~/lib/utils";
@@ -37,7 +38,7 @@ export function MapHoverCard({
       <dl className="border-edge mt-2 grid grid-cols-2 gap-x-3 gap-y-1 border-t pt-2 text-sm">
         {[
           [
-            "Capacity",
+            METRICS.nameplateCapacityMW.short,
             formatQuantity(plant.totalCapacityMW, "MW", { digits: 1 }),
           ],
           ["CO₂", formatQuantity(plant.totalCo2Tons, "t")],

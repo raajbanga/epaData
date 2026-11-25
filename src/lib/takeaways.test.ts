@@ -12,6 +12,7 @@ import {
   compareSentences,
   correlationMethodsReading,
   otherChangesReading,
+  treeGroupReading,
   treePathReading,
   sensitivitySentences,
   whatIfAnswer,
@@ -53,6 +54,48 @@ void test("a trend reads as a rise or fall between the first and last year", () 
     trendSentence({ label: "x", unit: "", aggregation: "sum", points: [] }),
     null,
   );
+  // From a first year of 0 there is no percentage: the change is read from 0.
+  assert.equal(
+    trendSentence({
+      label: "SO₂ mass",
+      unit: "short tons",
+      aggregation: "sum",
+      points: [
+        { year: 2015, value: 0 },
+        { year: 2024, value: 12 },
+      ],
+    }),
+    "The yearly total of SO₂ mass **rose from 0** to 12 short tons from 2015 to 2024.",
+  );
+  // Across signs (a change variable) there is none either.
+  assert.equal(
+    trendSentence({
+      label: "CO₂ change",
+      unit: "short tons",
+      aggregation: "sum",
+      points: [
+        { year: 2016, value: -80_000 },
+        { year: 2025, value: 70_000 },
+      ],
+    }),
+    "The yearly total of CO₂ change **rose by 150K** from 2016 to 2025 (-80K → 70K short tons).",
+  );
+  assert.equal(
+    outlierSentence({ above: 3582, below: 0, extreme: [] }, 45441, null),
+    "**3,582 unit-years (7.9 %)** are unusually large, far above the rest.",
+  );
+});
+
+void test("an outlier reads as a ratio only between two positive values", () => {
+  const one = { label: "Gavin unit 1", value: -20 };
+  assert.equal(
+    outlierSentence({ above: 0, below: 1, extreme: [one] }, 100, 10),
+    "**1 unit-year (1 %)** is unusually small, far below the rest.",
+  );
+  assert.equal(
+    outlierSentence({ above: 1, below: 1, extreme: [one] }, 100, -2),
+    "**2 unit-years (2 %)** are unusual, far from the rest.",
+  );
 });
 
 void test("shares name the largest group, and its share of rows when they differ", () => {
@@ -69,6 +112,13 @@ void test("shares name the largest group, and its share of rows when they differ
       { group: "Gas", value: 50, n: 50 },
     ]),
     "**Coal** units put out **50 % of the total**.",
+  );
+  assert.equal(
+    shareSentence([
+      { group: "Gas", value: 60, n: 80 },
+      { group: "Coal", value: 40, n: 20 },
+    ]),
+    "**Gas** units put out **60 % of the total**, from 80 % of the unit-years.",
   );
   assert.equal(shareSentence([{ group: "Coal", value: 1, n: 1 }]), null);
   assert.match(
@@ -135,9 +185,8 @@ void test("correlations get a strength in words; pairs skip duplicates of one qu
       [0.999, 1, -0.3],
       [0.6, -0.3, 1],
     ],
-    1,
   );
-  assert.deepEqual(strongest, [{ a: "A", b: "C", r: 0.6 }]);
+  assert.deepEqual(strongest, { a: "A", b: "C", r: 0.6 });
   assert.deepEqual(negative, { a: "B", b: "C", r: -0.3 });
 });
 
@@ -183,8 +232,8 @@ void test("a what-if answer reads as plain sentences", () => {
       units: 400,
       share,
       results: [
-        { ...ridge, base: 77_000, diff: -36_000, diffPct: -46.8 },
-        { ...tree, base: 85_000, diff: -1_900, diffPct: -2.3, outside: 3 },
+        { ...ridge, diff: -36_000, diffPct: -46.8 },
+        { ...tree, diff: -1_900, diffPct: -2.3, outside: 3 },
       ],
     }),
     [
@@ -201,8 +250,8 @@ void test("a what-if answer reads as plain sentences", () => {
     units: 1,
     share,
     results: [
-      { ...ridge, base: 2972, diff: -1750, diffPct: -58.9 },
-      { ...tree, base: 2738, diff: 0, diffPct: 0 },
+      { ...ridge, diff: -1750, diffPct: -58.9 },
+      { ...tree, diff: 0, diffPct: 0 },
     ],
   });
   assert.equal(
@@ -215,8 +264,8 @@ void test("a what-if answer reads as plain sentences", () => {
       units: 1,
       share,
       results: [
-        { ...ridge, base: 0, diff: 12, diffPct: null },
-        { ...tree, base: 40, diff: 4, diffPct: 10 },
+        { ...ridge, diff: 12, diffPct: null },
+        { ...tree, diff: 4, diffPct: 10 },
       ],
     })[0],
     "Predicted NOₓ would rise from 0 to 12 t with Ridge; the tree predicts it would rise 10 %.",
@@ -234,8 +283,8 @@ void test("a what-if answer reads as plain sentences", () => {
     units: 1,
     share,
     results: [
-      { ...ridge, base: 3000, diff: -150, diffPct: -5 },
-      { ...tree, base: 2700, diff: 20, diffPct: 0.7 },
+      { ...ridge, diff: -150, diffPct: -5 },
+      { ...tree, diff: 20, diffPct: 0.7 },
     ],
   });
   assert.equal(
@@ -247,7 +296,7 @@ void test("a what-if answer reads as plain sentences", () => {
     whatIfAnswer({
       units: 1,
       share,
-      results: [{ ...ridge, base: 3000, diff: 3, diffPct: 0.1 }],
+      results: [{ ...ridge, diff: 3, diffPct: 0.1 }],
     }),
     [
       "NOₓ would barely change: under 0.5 % with Ridge.",
@@ -273,6 +322,11 @@ void test("a sensitivity reads as plain sentences", () => {
   );
 });
 
+const two = (ridge: number, tree: number) => [
+  { model: "Ridge", pct: ridge, tons: ridge },
+  { model: "the tree", pct: tree, tons: tree },
+];
+
 void test("chart readings explain the What-if numbers", () => {
   assert.equal(
     baselineReading(4146, [
@@ -282,19 +336,46 @@ void test("chart readings explain the What-if numbers", () => {
     "The models start below the **4,146 t** actually reported (Ridge at 2,972 t, the tree at 2,738 t), because no model is exact. So read the **length of each arrow**, the change, not where it ends.",
   );
   assert.match(
+    baselineReading(0, [{ model: "Ridge", base: 0 }]),
+    /^The models' starting points are close to the \*\*0 t\*\*/,
+  );
+  assert.match(
     baselineReading(100, [{ model: "Ridge", base: 104 }]),
     /close to the/,
   );
   assert.equal(
     otherChangesReading(
       [
-        { label: "Add SCR", pcts: [-59, 0] },
-        { label: "Run 10 % more", pcts: [6, 10] },
-        { label: "Switch to gas", pcts: [-69, 0] },
+        { label: "Add SCR", results: two(-59, 0) },
+        { label: "Run 10 % more", results: two(6, 10) },
+        { label: "Switch to gas", results: two(-69, 0) },
       ],
       "Add SCR",
     ),
     "**Switch to gas** cuts predicted NOₓ the most (-34 % averaged over the models); **Run 10 % more** raises it the most (+8 %). Your question ranks 2nd of 2 changes that cut it.",
+  );
+  // From a prediction of 0 there is no percentage: never averaged as 0, read in tons.
+  assert.equal(
+    otherChangesReading(
+      [
+        {
+          label: "Add SCR",
+          results: [
+            { model: "Ridge", pct: null, tons: 0 },
+            { model: "the tree", pct: null, tons: 0 },
+          ],
+        },
+        {
+          label: "Switch to coal",
+          results: [
+            { model: "Ridge", pct: null, tons: 12.3 },
+            { model: "the tree", pct: null, tons: 0 },
+          ],
+        },
+      ],
+      undefined,
+    ),
+    "From a prediction of 0 t there is no percentage, so in tons: Switch to coal: +12 t with Ridge.",
   );
   assert.deepEqual(
     breakdownReading(
@@ -318,6 +399,59 @@ void test("chart readings explain the What-if numbers", () => {
       "With Ridge, **A** accounts for 50 % of the change and the top 3 plants for 90 %.",
       "With the tree, **A** accounts for 100 % of the change. It moves only 1 of 9 plants: the tree changes a prediction only when the change crosses one of its thresholds.",
     ],
+  );
+  // Opposite moves: shares of the movement stay at most 100 %, and the reading says so.
+  assert.deepEqual(
+    breakdownReading(
+      [
+        {
+          model: "Ridge",
+          tree: false,
+          rows: [
+            ["A", -30],
+            ["B", 20],
+          ],
+        },
+      ],
+      "plant",
+      2,
+    ),
+    [
+      "With Ridge, **A** accounts for 60 % of the change. 1 plant rises and 1 plant falls, so the net change is smaller than the movement.",
+    ],
+  );
+});
+
+void test("the group tree reading: paths, the flipped answer, and the dividing check", () => {
+  const p = (units: number, tons: number) => ({ before: { units, tons } });
+  assert.deepEqual(
+    treeGroupReading(
+      {
+        paths: [p(2, 600), p(3, 300), p(1, 50), p(4, 50), p(0, 0)],
+        moved: 3,
+        flips: [{ text: "SCR: yes", units: 3, diff: -412.6 }],
+        splits: [
+          {
+            question: "Heat input above 2M MMBtu",
+            yes: { units: 3, tons: 700 },
+            no: { units: 6, tons: 300 },
+          },
+        ],
+      },
+      10,
+    ),
+    [
+      "These 10 units take **4 different paths**; the 3 with the most predicted NOₓ hold 6 units and **95 %** of it.",
+      "The change sends **3 of 10 units** down a different path; the flip that moves predicted NOₓ most is to “SCR: yes” (3 units, -413 t).",
+      "The check that divides these units' NOₓ most evenly is “heat input above 2M MMBtu”: yes for 3 units (700 t), no for 6 (300 t), of the 9 that reach it.",
+    ],
+  );
+  assert.match(
+    treeGroupReading(
+      { paths: [p(2, 10)], moved: 0, flips: [], splits: [] },
+      2,
+    )[1]!,
+    /doesn't flip any/,
   );
 });
 
@@ -385,5 +519,30 @@ void test("a comparison reads in plain words", () => {
     "A typical unit-year in **None** has 90.6K short tons of CO₂ mass on average, **88 % less than** one in **SCR** (749K short tons).",
   );
   assert.match(lines[1]!, /too big to be chance/);
-  assert.match(lines[2]!, /NOₓ control alone isn't proven/);
+  assert.match(lines[2]!, /same unit appears in several years/);
+  assert.match(lines[3]!, /NOₓ control alone isn't proven/);
+  // From an average of 0, or across signs, there is no ratio: the difference is stated.
+  const noTests = {
+    welch: null,
+    mannWhitney: null,
+    anova: null,
+    kruskal: null,
+  };
+  const read = (a: number, b: number) =>
+    compareSentences({
+      groups: [
+        { group: "A", mean: a, count: 5 },
+        { group: "B", mean: b, count: 5 },
+      ],
+      tests: noTests,
+      label: "SO₂ mass",
+      unit: "t",
+      dimension: "fuel",
+    })[0];
+  assert.equal(
+    read(0, 12),
+    "A typical unit-year in **B** has 12 t of SO₂ mass on average, **+12 t** against one in **A** (0 t).",
+  );
+  assert.match(read(-50, 30)!, /\*\*\+80 t\*\* against/);
+  assert.match(read(-50, -150)!, /\*\*-100 t\*\* against/);
 });

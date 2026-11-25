@@ -18,7 +18,7 @@ import {
   formatCountyShort,
   getCarbonIntensityTier,
 } from "~/lib/plant-narrative";
-import { METRICS } from "~/lib/metrics";
+import { METRICS, RATES } from "~/lib/metrics";
 import { cn, formatNumber, formatQuantity } from "~/lib/utils";
 import { type RouterOutputs } from "~/trpc/react";
 import { DetailLink } from "./detail-link";
@@ -128,13 +128,13 @@ export function UnitsTable({
               />
             ))}
             <SortableTableHead
-              label="lbs/MWh"
+              label={RATES.co2Intensity.unit}
               sort="co2Intensity"
               className="text-right"
               {...head}
             />
             <SortableTableHead
-              label="Heat rate"
+              label={RATES.heatRate.unit}
               sort="heatRate"
               className="text-right"
               {...head}

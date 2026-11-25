@@ -27,11 +27,9 @@ const K = {
   blue: "1D4ED8",
   green: "15803D",
   amber: "B45309",
-  red: "B91C1C",
-  ridge: "6683B0", // model colors as in the app
-  tree: "A0628E",
-  base: "9B8B7A",
-  persist: "15803D",
+  ridge: "5A78A8", // model colors as in the app
+  tree: "9A5B8A",
+  base: "8F8070",
   code: "2A1F16",
   codeText: "E5D9C9",
 };
@@ -147,18 +145,16 @@ function step(slide, x, y, w, h, n, head, body, opts = {}) {
   slide.addText(body, { x: x + 0.18, y: y + 0.62, w: w - 0.3, h: h - 0.72, fontSize: 12, color: K.ink2, margin: 0, valign: "top", isTextBox: true });
 }
 
-function arrow(slide, x1, y1, x2, y2, label, dash = "solid") {
+function arrow(slide, x1, y1, x2, y2) {
   slide.addShape(pres.shapes.LINE, {
     x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1),
     flipH: x2 < x1, flipV: y2 < y1,
-    line: { color: K.muted, width: 1, endArrowType: "triangle", dashType: dash },
+    line: { color: K.muted, width: 1, endArrowType: "triangle"},
   });
-  if (label)
-    slide.addText(label, { x: (x1 + x2) / 2 + 0.08, y: (y1 + y2) / 2 - 0.14, w: 2.6, h: 0.28, fontFace: MONO, fontSize: 10, color: K.muted, margin: 0, isTextBox: true });
 }
 
-/** A dark code panel, as tall as its lines plus even padding (h is ignored). Returns its height. */
-function code(slide, x, y, w, _h, lines, size = 13) {
+/** A dark code panel, as tall as its lines plus even padding. Returns its height. */
+function code(slide, x, y, w, lines, size = 13) {
   const pad = 0.2, textH = (lines.length * size * 1.2) / 72;
   const h = textH + 2 * pad;
   slide.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h, rectRadius: 0.06, fill: { color: K.code }, line: { color: K.code } });
@@ -215,7 +211,7 @@ pres.addSection({ title: "Introduction" });
     { b: "Q4 Prediction.", t: "How well can a unit's NOₓ be predicted, and how does it respond to changes?" },
   ], 0.6, 2.15, 6.3, 4.4);
   stat(s, 7.4, 2.15, "57,414", "unit-years stored: one unit's record for one year");
-  stat(s, 10.25, 2.15, "6,031", "units at 1,777 plants");
+  stat(s, 10.25, 2.15, "6,031", "units at 1,777 plants on file");
   stat(s, 7.4, 4.15, "45,441", "analyzed by default: 2015–2025, units that ran");
   stat(s, 10.25, 4.15, "3 new tables", "traci_factors · models · result_cache", K.amber);
 }
@@ -224,7 +220,7 @@ pres.addSection({ title: "Introduction" });
 pres.addSection({ title: "What Phase 2 added" });
 {
   const s = frame("Phase 2 · architecture", "What Phase 2 added", "What Phase 2 added", "Raaj", "Phase 1's tables stay as they are; Phase 2 reads them and adds three of its own.");
-  node(s, 0.6, 2.15, 3.3, 3.3, "Kept from Phase 1", "core tables and their keys\n17 indexes\nRetrieve and Upload\none-transaction imports\nread-only host on Vercel", { dash: "dash", bodySize: 13, headSize: 15 });
+  node(s, 0.6, 2.15, 3.3, 3.3, "Kept from Phase 1", "core tables and their keys\n16 indexes\nRetrieve and Upload\none-transaction imports\nread-only host on Vercel", { dash: "dash", bodySize: 13, headSize: 15 });
   const blue = { line: K.blue, lineW: 1.75 };
   node(s, 4.3, 2.15, 2.5, 1.2, "Core tables", "facilities · units\nannual_records", { dash: "dash" });
   node(s, 7.2, 2.15, 2.7, 1.2, "Analysis query", "one join per selection\n(slide 5)", blue);
@@ -246,7 +242,7 @@ pres.addSection({ title: "What Phase 2 added" });
   const s = frame("Phase 2 · schema", "Three new tables", "What Phase 2 added", "Raaj", "Each is written by one script and read by the app, so the hosted copy never writes.");
   [
     ["traci_factors", "6 rows", ["traci_version · pollutant · medium", "impact_category · factor", "factor_unit · substance · cas", "source"], "UNIQUE (version, pollutant, medium, category)", "Factors are data", "A new TRACI version is new rows, not new code. source names the workbook column."],
-    ["models", "3 rows", ["id · kind · target · features", "params · metrics", "train / validation / test years", "artifact (JSON) · pipeline_version"], "PK id: nox-baseline, nox-ridge, nox-tree", "Models are rows", "The app replays the JSON in TypeScript, so What-if runs on the read-only host."],
+    ["models", "3 rows", ["id · kind · target · features", "params · metrics", "train / validation / fit / test years", "artifact (JSON) · pipeline_version"], "PK id: nox-baseline, nox-ridge, nox-tree", "Models are rows", "The app replays the JSON in TypeScript, so What-if runs on the read-only host."],
     ["result_cache", "90 rows · 3.8 MB", ["key · procedure · input", "data_version", "value (SuperJSON)", "computed_at"], "PK key = procedure + sorted input JSON", "Results are versioned", "Every import changes data_version, so an old result is never served."],
   ].forEach(([name, n, cols, key, why, text], i) => {
     const x = 0.6 + i * 4.1, w = 3.8;
@@ -264,7 +260,7 @@ pres.addSection({ title: "What Phase 2 added" });
 // ── 5. One query per selection ───────────────────────────────────────────
 {
   const s = frame("Phase 2 · queries", "One query per selection", "What Phase 2 added", "Raaj", "Every Analyze view starts from one join, served by indexes Phase 1 already had.");
-  const h = code(s, 0.6, 2.15, 7.3, 0, [
+  const h = code(s, 0.6, 2.15, 7.3, [
     "SELECT r.*, u.primary_fuel, u.unit_type, f.state_code,",
     "       p.nox_mass_tons AS prev_nox, …",
     "FROM annual_records r",
@@ -276,7 +272,7 @@ pres.addSection({ title: "What Phase 2 added" });
     "WHERE <Explore's filters, including Top N>",
   ], 12);
   caption(s, "EXPLAIN QUERY PLAN", 0.6, 2.15 + h + 0.12, 7.3);
-  code(s, 0.6, 2.15 + h + 0.45, 7.3, 0, [
+  code(s, 0.6, 2.15 + h + 0.45, 7.3, [
     "SEARCH r USING INDEX annual_record_year_co2_idx (year>? AND year<?)",
     "SEARCH p USING INDEX annual_record_unit_year_idx (unit_internal_id=? AND year=?)",
   ], 10);
@@ -322,7 +318,7 @@ pres.addSection({ title: "Impacts and models" });
     [strong("SO₂  (so2_mass_tons)"), d, "1", "0.0611", d],
     [strong("NOₓ  (nox_mass_tons)"), d, "0.7", "0.00722", "24.79"],
   ], { x: 0.6, y: 2.15, w: 7.3, colW: [2.5, 1.15, 1.25, 1.25, 1.15], fontSize: 13, rowH: [0.6, 0.42, 0.42, 0.42] });
-  caption(s, "EPA TRACI 2.2 workbook, Substances sheet; each row's source cell is stored with it", 0.6, 4.05, 7.3);
+  caption(s, "EPA TRACI 2.2 workbook, Substances sheet; each row's source column is stored with it", 0.6, 4.05, 7.3);
   const y = 4.65, w = 1.62, g = 0.3;
   [["annual_records", "mass, short tons"], ["× 907.18474", "kg per short ton"], ["× factor", "a traci_factors row"], ["Σ per category", "4 totals"]].forEach(([h, b], i) => {
     const x = 0.6 + i * (w + g);
@@ -410,7 +406,7 @@ const demo = (n, title, speaker, subtitle) => frame(`Demo · steps ${n}–${n + 
 {
   const s = demo(3, "Spread by fuel, then SCR vs none", "Arnav", "Q2: how much lower is the NOₓ rate of units with SCR?");
   half(s, 0.6, 3, "visualization 2 · statistics", "NOₓ rate by fuel, log scale", fig("p2-box"), [["0.034 · 0.574", "gas and oil medians, lb/MMBtu"], ["2.5×", "mean over median: use the median"]]);
-  half(s, 6.8, 4, "comparison", "SCR vs no NOₓ control", img("compare-all"), [["+252.6 %", "no control vs SCR, pooled", K.amber], ["p < 0.001", "Welch t and Mann–Whitney"]]);
+  half(s, 6.8, 4, "comparison", "SCR vs no NOₓ control", img("compare-all"), [["+252.6 %", "no control vs SCR, 2015–2025", K.amber], ["p < 0.001", "Welch t and Mann–Whitney"]]);
 }
 
 // 12. Steps 5–6
@@ -436,7 +432,7 @@ const demo = (n, title, speaker, subtitle) => frame(`Demo · steps ${n}–${n + 
 // ── 14. Limitations ──────────────────────────────────────────────────────
 pres.addSection({ title: "Wrap-up" });
 {
-  const s = frame("Wrap-up", "What these results don't show", "Wrap-up", "Arnav", "Each one is said on the page where it applies.");
+  const s = frame("Wrap-up", "What these results don't show", "Wrap-up", "Arnav", "The pages say each one where it applies.");
   const cells = [
     ["Potential, not actual harm", "TRACI ignores stack height, weather, and who lives nearby. Three pollutants only."],
     ["Associations, not effects", "SCR vs none compares different fleets; what-if moves one input at a time."],
@@ -465,7 +461,7 @@ pres.addSection({ title: "Wrap-up" });
   const s = frame("Thank you", "Questions?", "Wrap-up", "Raaj + Arnav");
   s.addText("What we found", { x: 0.6, y: 1.95, w: 6, h: 0.4, fontSize: 18, bold: true, color: K.ink, margin: 0, isTextBox: true });
   [["Q1 Trends", "CO₂ fell 22 %; coal's intensity stayed flat, so the mix shifted to gas"],
-   ["Q2 Controls", "uncontrolled units: a 252.6 % higher NOₓ rate than SCR units"],
+   ["Q2 Controls", "uncontrolled units, 2015–2025: a 252.6 % higher NOₓ rate than SCR units"],
    ["Q3 Impacts", "Texas leads in total; Nebraska, North Dakota, Missouri per MWh"],
    ["Q4 Prediction", "the tree cuts the baseline's error 76 %; persistence still forecasts best"]].forEach(([h, t], i) => {
     s.addText([{ text: h, options: { bold: true, color: K.ink, breakLine: true } }, { text: t, options: { color: K.muted, fontSize: 13 } }], { x: 0.6, y: 2.5 + i * 0.85, w: 6.2, h: 0.8, fontSize: 15, margin: 0, valign: "top", isTextBox: true });
@@ -481,9 +477,9 @@ pres.addSection({ title: "Wrap-up" });
     { text: "Together: ", options: { bold: true, color: K.ink } },
     { text: "the questions, testing, the demo, documentation", options: { color: K.ink2, fontSize: 13 } },
   ], { x: 7.65, y: 2.1, w: 4.8, h: 2.5, fontSize: 15, margin: 0, valign: "top", isTextBox: true });
-  s.addImage({ path: img("leaf").replace(/\.jpg$/, ".png"), x: 7.4, y: 4.75, w: 0.34, h: 0.34, altText: "epaData leaf icon" });
+  s.addImage({ path: path.join(IMG, "leaf.png"), x: 7.4, y: 4.75, w: 0.34, h: 0.34, altText: "epaData leaf icon" });
   s.addText("github.com/raajbanga/epaData", { x: 7.86, y: 4.73, w: 4.8, h: 0.38, fontFace: MONO, fontSize: 14, bold: true, color: K.ink, margin: 0, valign: "middle", hyperlink: { url: "https://github.com/raajbanga/epaData" }, isTextBox: true });
-  code(s, 7.4, 5.27, 5.3, 0, ["$ npm install && npm run build && npm start", "$ npm test", "$ npm run ml:train      # retrain models", "$ npm run db:precompute # refresh stored results"], 11);
+  code(s, 7.4, 5.27, 5.3, ["$ npm install && npm run build && npm start", "$ npm test", "$ npm run ml:train      # retrain models", "$ npm run db:precompute # refresh stored results"], 11);
   s.addText([
     { text: "Live at  ", options: { fontFace: SANS, bold: false, color: K.muted } },
     { text: "epadata.vercel.app", options: { hyperlink: { url: "https://epadata.vercel.app" } } },
@@ -507,7 +503,7 @@ pres.addSection({ title: "Wrap-up" });
     const row = line.match(/^\s*\| (.+?) \|(.+)\|$/);
     if (row) {
       const cells = row[2].split("|").map((c) => c.trim());
-      if (!/^(Question|Change)$/.test(row[1])) cur.lines.push(`- ${row[1]}: ${cells.join(", ")}`);
+      if (row[1] !== "Question") cur.lines.push(`- ${row[1]}: ${cells.join(", ")}`);
       continue;
     }
     // A hard-wrapped continuation (indented, not a new bullet or step) joins the line above.

@@ -1,9 +1,5 @@
 import { UNIT_METRICS } from "./facility-filters";
-import {
-  TOTAL_KEYS,
-  type EmissionTotals,
-  type ReportedTotals,
-} from "./emissions-metrics";
+import { TOTAL_KEYS, type ReportedTotals } from "./emissions-metrics";
 
 /** How an incoming unit-year compares with what the database already holds. */
 export type DiffStatus = "new" | "changed" | "unchanged";
@@ -25,7 +21,7 @@ export type RecordAttributes = Record<
 export type ComparableRecord = ReportedTotals & Partial<RecordAttributes>;
 
 export interface FieldChange {
-  field: keyof EmissionTotals | keyof RecordAttributes;
+  field: keyof ReportedTotals | keyof RecordAttributes;
   database: number | string | null;
   incoming: number | string | null;
 }

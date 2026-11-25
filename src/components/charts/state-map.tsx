@@ -21,17 +21,21 @@ type StateShape = GeoPermissibleObjects & {
 let shapes: Promise<StateShape[]> | undefined;
 const loadShapes = () =>
   (shapes ??= fetch("/geo/us-states-10m.json")
-    .then(
-      (r) =>
-        r.json() as Promise<
-          Topology<{ states: GeometryCollection<{ name: string }> }>
-        >,
-    )
+    .then((r) => {
+      if (!r.ok) throw new Error(`State outlines: HTTP ${r.status}`);
+      return r.json() as Promise<
+        Topology<{ states: GeometryCollection<{ name: string }> }>
+      >;
+    })
     .then(
       (topo) =>
         topojson.feature(topo, topo.objects.states)
           .features as unknown as StateShape[],
-    ));
+    )
+    .catch((e: unknown) => {
+      shapes = undefined; // the next map tries again
+      throw e;
+    }));
 
 const TOKENS = ["surface-2", "chart-ochre", "chart-rust"] as const;
 const RATIO = 0.62;
@@ -61,7 +65,7 @@ export function StateMap({
   } | null>(null);
   const t = useTokens(TOKENS);
   useEffect(() => {
-    void loadShapes().then(setStates);
+    loadShapes().then(setStates, () => undefined); // no outlines: the values stay in the table
   }, []);
   const height = Math.round(width * RATIO);
 
@@ -82,21 +86,20 @@ export function StateMap({
     }));
   }, [states, width, height]);
 
-  const max = useMemo(
-    () =>
-      Math.max(
-        1,
-        ...Object.values(values).filter((v): v is number => v != null),
-      ),
-    [values],
-  );
+  // From 0, or from the lowest value of a variable that can be negative (a change).
+  const [min, max] = useMemo(() => {
+    const known = Object.values(values).filter((v): v is number => v != null);
+    const lo = Math.min(0, ...known);
+    const hi = Math.max(0, ...known);
+    return [lo, hi === lo ? 1 : hi];
+  }, [values]);
   const color = useMemo(
     () =>
       t &&
       scaleSequential(
         colorRamp([t["surface-2"], t["chart-ochre"], t["chart-rust"]]),
-      ).domain([0, max]),
-    [t, max],
+      ).domain([min, max]),
+    [t, min, max],
   );
 
   // The filled states change only with the data, so hovering re-renders just the outline and card.
@@ -177,11 +180,11 @@ export function StateMap({
       </div>
       {color && (
         <div className="text-fg-muted flex items-center gap-2 text-xs">
-          <span>0</span>
+          <span>{formatTick(min)}</span>
           <span
             className="h-2 w-40 rounded-full"
             style={{
-              background: `linear-gradient(to right, ${color(0)}, ${color(max / 2)}, ${color(max)})`,
+              background: `linear-gradient(to right, ${color(min)}, ${color((min + max) / 2)}, ${color(max)})`,
             }}
           />
           <span>

@@ -1,4 +1,3 @@
-import { dataVersion } from "~/server/result-cache";
 import { execSync } from "node:child_process";
 import { and, count, eq, max, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
@@ -29,6 +28,7 @@ import {
 import type { TraciFactor } from "~/lib/traci";
 import { unitYearConditions } from "~/server/api/routers/facilities";
 import { db } from "~/server/db";
+import { dataVersion } from "~/server/result-cache";
 import pkg from "../../package.json";
 import {
   annualRecords,
@@ -44,7 +44,12 @@ import {
  * selection) and computes in memory; the browser receives only the results.
  */
 
-const prev = alias(annualRecords, "prev");
+/** The same unit's previous year, for the year-over-year variables and the prior-year NOₓ rate. */
+export const prev = alias(annualRecords, "prev");
+export const onPrevYear = and(
+  eq(prev.unitInternalId, annualRecords.unitInternalId),
+  eq(prev.year, sql`${annualRecords.year} - 1`),
+);
 
 /** Async so the cache holds a settled promise: a Drizzle query re-runs on every `await`. */
 async function selectRows(filters: FilterInput): Promise<AnalysisRow[]> {
@@ -78,13 +83,7 @@ async function selectRows(filters: FilterInput): Promise<AnalysisRow[]> {
     .from(annualRecords)
     .innerJoin(units, eq(annualRecords.unitInternalId, units.id))
     .innerJoin(facilities, eq(annualRecords.facilityId, facilities.id))
-    .leftJoin(
-      prev,
-      and(
-        eq(prev.unitInternalId, annualRecords.unitInternalId),
-        eq(prev.year, sql`${annualRecords.year} - 1`),
-      ),
-    )
+    .leftJoin(prev, onPrevYear)
     .where(and(...unitYearConditions(filters)));
 }
 
@@ -235,7 +234,6 @@ export function describeVariable(
   rows: AnalysisRow[],
   v: Variable,
   by?: DimensionKey,
-  limit = 100,
 ) {
   const overall = { ...describe(rows.map(v.value)), value: aggregate(v, rows) };
   const unusual = unusualRows(rows, v, overall);
@@ -245,7 +243,7 @@ export function describeVariable(
     by,
     v,
     by === "year" ? "label" : "desc",
-    limit,
+    100,
   );
   return {
     overall,
@@ -317,7 +315,6 @@ export function distribution(
   rows: AnalysisRow[],
   v: Variable,
   by?: DimensionKey,
-  max = 20_000,
 ) {
   const groups = by
     ? [...groupRows(rows, by)]
@@ -329,7 +326,7 @@ export function distribution(
     values: list.map(v.value).filter((x): x is number => x !== null),
   }));
   const total = all.reduce((n, g) => n + g.values.length, 0);
-  const share = Math.min(1, max / Math.max(total, 1));
+  const share = Math.min(1, 20_000 / Math.max(total, 1));
   return {
     sampled: share < 1,
     total,
@@ -340,13 +337,12 @@ export function distribution(
   };
 }
 
-/** Scatter plots: complete (x, y) pairs colored by `color`, sampled to `max`. */
+/** Scatter plots: complete (x, y) pairs colored by `color`, sampled to 4,000. */
 export function scatterPoints(
   rows: AnalysisRow[],
   x: Variable,
   y: Variable,
   color: DimensionKey,
-  max = 4000,
 ) {
   const label = dimension("unit").value;
   const colorOf = dimension(color).value;
@@ -359,7 +355,7 @@ export function scatterPoints(
   });
   return {
     total: points.length,
-    points: sample(points, max),
+    points: sample(points, 4000),
     r: pearson(
       points.map((p) => p.x),
       points.map((p) => p.y),
@@ -394,11 +390,12 @@ export function compareGroups(
   const grouped = groupRows(rows, by);
   const sides = groups.map((group) => {
     const list = grouped.get(group) ?? [];
-    const values = list.map(v.value).filter((x): x is number => x !== null);
+    const all = list.map(v.value);
+    const values = all.filter((x): x is number => x !== null);
     return {
       group,
       value: aggregate(v, list),
-      ...describe(list.map(v.value)),
+      ...describe(all),
       ci: meanCi(values),
       values,
     };
@@ -407,9 +404,10 @@ export function compareGroups(
   const withDiffs = sides.map(({ values: _values, ...s }) => ({
     ...s,
     diff: base?.value != null && s.value !== null ? s.value - base.value : null,
+    // Only between values of 0 or more, from a base above 0.
     diffPct:
-      base?.value && s.value !== null
-        ? ((s.value - base.value) / Math.abs(base.value)) * 100
+      base?.value != null && base.value > 0 && s.value !== null && s.value >= 0
+        ? ((s.value - base.value) / base.value) * 100
         : null,
   }));
   const samples = sides.map((s) => s.values).filter((xs) => xs.length > 1);
